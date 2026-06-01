@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/prodewty.db
+backend/**/__pycache__/
+backend/**/*.pyc
+
+# Frontend
+app/node_modules/
+app/.expo/
+app/dist/
