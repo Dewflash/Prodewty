@@ -7,12 +7,13 @@ import { spacing, radius } from '../theme/spacing';
 type Props = {
   value: number | null;
   onChange: (value: number) => void;
+  label?: string;
 };
 
-export function MoodSelector({ value, onChange }: Props) {
+export function MoodSelector({ value, onChange, label = 'Mood' }: Props) {
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Mood</Text>
+      <Text style={styles.label}>{label}</Text>
       <View style={styles.row}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
           const isSelected = value === n;

@@ -1,5 +1,6 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
@@ -7,13 +8,7 @@ import { fonts, fontSize } from '../../src/theme/typography';
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
 function TabIcon({ name, focused }: { name: FeatherName; focused: boolean }) {
-  return (
-    <Feather
-      name={name}
-      size={20}
-      color={focused ? colors.primary : colors.textMuted}
-    />
-  );
+  return <Feather name={name} size={20} color={focused ? colors.primary : colors.textMuted} />;
 }
 
 export default function TabsLayout() {
@@ -30,22 +25,36 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
+          title: 'Progress',
+          tabBarIcon: ({ focused }) => <TabIcon name="trending-up" focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="stats"
+        name="history"
         options={{
-          title: 'Stats',
-          tabBarIcon: ({ focused }) => <TabIcon name="bar-chart-2" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="journal"
-        options={{
-          title: 'Journal',
+          title: 'History',
           tabBarIcon: ({ focused }) => <TabIcon name="calendar" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="log"
+        options={{
+          title: '',
+          tabBarLabel: () => null,
+          tabBarButton: ({ onPress }) => (
+            <Pressable onPress={onPress ?? undefined} style={styles.plusTabBtn}>
+              <View style={styles.plusIcon}>
+                <Feather name="plus" size={22} color={colors.bg} />
+              </View>
+            </Pressable>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Recharge',
+          tabBarIcon: ({ focused }) => <TabIcon name="heart" focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -55,13 +64,10 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="shield" focused={focused} />,
         }}
       />
-      <Tabs.Screen
-        name="recommendations"
-        options={{
-          title: 'Insights',
-          tabBarIcon: ({ focused }) => <TabIcon name="zap" focused={focused} />,
-        }}
-      />
+      {/* Legacy screens — hidden from tab bar */}
+      <Tabs.Screen name="stats"           options={{ href: null }} />
+      <Tabs.Screen name="journal"         options={{ href: null }} />
+      <Tabs.Screen name="recommendations" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -79,5 +85,23 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.medium,
     fontSize: fontSize.xs,
     marginTop: 2,
+  },
+  plusTabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
   },
 });

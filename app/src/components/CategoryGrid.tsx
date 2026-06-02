@@ -1,201 +1,193 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, TextInput, ScrollView } from 'react-native';
+import {
+  View, Text, Pressable, StyleSheet, Modal, TextInput,
+  ScrollView, KeyboardAvoidingView, Platform, Switch,
+} from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
-import { useAppStore, type Category } from '../store/useAppStore';
+import { addCategory, type DBCategory } from '../db/categories';
 
 type Props = {
-  selected: string | null;
-  onSelect: (id: string) => void;
+  categories: DBCategory[];
+  selected: string[];
+  onSelect: (names: string[]) => void;
+  onAdded: () => void;
 };
 
-const ATTRIBUTES: Category['attribute'][] = ['strength', 'wisdom', 'focus', 'agility', 'resilience'];
+const ATTRIBUTES = ['strength', 'wisdom', 'focus', 'agility', 'resilience'] as const;
 
-export function CategoryGrid({ selected, onSelect }: Props) {
-  const { categories, addCategory } = useAppStore();
+export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [newLabel, setNewLabel] = useState('');
-  const [newAttribute, setNewAttribute] = useState<Category['attribute']>('focus');
+  const [newName, setNewName] = useState('');
+  const [newWeight, setNewWeight] = useState(3);
+  const [newAttr, setNewAttr] = useState<typeof ATTRIBUTES[number]>('focus');
+  const [isPhysical, setIsPhysical] = useState(false);
+  const [isRecreational, setIsRecreational] = useState(false);
+
+  function toggle(name: string) {
+    onSelect(selected.includes(name) ? selected.filter(n => n !== name) : [...selected, name]);
+  }
 
   function handleAdd() {
-    if (!newLabel.trim()) return;
-    addCategory({
-      id: newLabel.toLowerCase().replace(/\s+/g, '_'),
-      label: newLabel.trim(),
-      attribute: newAttribute,
-    });
-    setNewLabel('');
+    if (!newName.trim()) return;
+    addCategory(newName.trim(), newWeight, newAttr, isPhysical, isRecreational);
+    setNewName('');
+    setNewWeight(3);
+    setIsPhysical(false);
+    setIsRecreational(false);
     setModalVisible(false);
+    onAdded();
   }
 
   return (
     <>
-      <View style={styles.grid}>
+      <View style={s.grid}>
         {categories.map((cat) => {
-          const isSelected = selected === cat.id;
+          const active = selected.includes(cat.name);
           return (
-            <Pressable
-              key={cat.id}
-              onPress={() => onSelect(cat.id)}
-              style={[
-                styles.pill,
-                isSelected && styles.pillSelected,
-              ]}
-            >
-              <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
-                {cat.label}
-              </Text>
+            <Pressable key={cat.id} onPress={() => toggle(cat.name)}
+              style={[s.pill, active && s.pillActive]}>
+              <Text style={[s.pillText, active && s.pillTextActive]}>{cat.name}</Text>
             </Pressable>
           );
         })}
-        <Pressable onPress={() => setModalVisible(true)} style={styles.addPill}>
-          <Text style={styles.addText}>+ New</Text>
+        <Pressable onPress={() => setModalVisible(true)} style={s.addPill}>
+          <Text style={s.addText}>+ New</Text>
         </Pressable>
       </View>
 
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <Pressable style={styles.overlay} onPress={() => setModalVisible(false)}>
-          <Pressable style={styles.modal} onPress={() => {}}>
-            <Text style={styles.modalTitle}>New Category</Text>
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.kbAvoid}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setModalVisible(false)} />
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>New Activity Tag</Text>
+
             <TextInput
-              style={styles.input}
+              style={s.input}
               placeholder="Name"
               placeholderTextColor={colors.textMuted}
-              value={newLabel}
-              onChangeText={setNewLabel}
+              value={newName}
+              onChangeText={setNewName}
               autoFocus
             />
-            <Text style={styles.attrLabel}>Maps to attribute</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attrRow}>
-              {ATTRIBUTES.map((attr) => (
-                <Pressable
-                  key={attr}
-                  onPress={() => setNewAttribute(attr)}
-                  style={[styles.attrPill, newAttribute === attr && styles.attrPillSelected]}
-                >
-                  <Text style={[styles.attrText, newAttribute === attr && styles.attrTextSelected]}>
-                    {attr}
-                  </Text>
+
+            <Text style={s.subLabel}>Weight (XP impact)</Text>
+            <View style={s.weightRow}>
+              {[1, 2, 3, 4, 5].map(w => (
+                <Pressable key={w} onPress={() => setNewWeight(w)}
+                  style={[s.weightBtn, newWeight === w && s.weightBtnActive]}>
+                  <Text style={[s.weightText, newWeight === w && s.weightTextActive]}>{w}</Text>
                 </Pressable>
               ))}
+            </View>
+
+            <View style={s.toggleRow}>
+              <View>
+                <Text style={s.toggleLabel}>Physical Activity</Text>
+                <Text style={s.toggleHint}>Restores Physical health when logged</Text>
+              </View>
+              <Switch
+                value={isPhysical}
+                onValueChange={setIsPhysical}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.textPrimary}
+              />
+            </View>
+
+            <View style={s.toggleRow}>
+              <View>
+                <Text style={s.toggleLabel}>Recreational</Text>
+                <Text style={s.toggleHint}>Restores Mental health when logged</Text>
+              </View>
+              <Switch
+                value={isRecreational}
+                onValueChange={setIsRecreational}
+                trackColor={{ false: colors.border, true: colors.accent }}
+                thumbColor={colors.textPrimary}
+              />
+            </View>
+
+            <Text style={s.subLabel}>Attribute</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={s.attrRow}>
+                {ATTRIBUTES.map(attr => (
+                  <Pressable key={attr} onPress={() => setNewAttr(attr)}
+                    style={[s.attrPill, newAttr === attr && s.attrPillActive]}>
+                    <Text style={[s.attrText, newAttr === attr && s.attrTextActive]}>{attr}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </ScrollView>
-            <Pressable onPress={handleAdd} style={styles.confirmBtn}>
-              <Text style={styles.confirmText}>Add</Text>
+
+            <Pressable onPress={handleAdd} style={s.addBtn}>
+              <Text style={s.addBtnText}>Add</Text>
             </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
+const s = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pill: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  pillSelected: {
+  pillActive: {
     borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35, shadowRadius: 8,
   },
-  pillText: {
-    fontFamily: fonts.ui.medium,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  pillTextSelected: {
-    color: colors.primary,
-  },
+  pillText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
+  pillTextActive: { color: colors.primary },
   addPill: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    borderStyle: 'dashed',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill,
+    borderStyle: 'dashed', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  addText: {
-    fontFamily: fonts.ui.medium,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
+  addText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
+  kbAvoid: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,
+    padding: spacing.lg, gap: spacing.md, paddingBottom: 40,
   },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modal: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  modalTitle: {
-    fontFamily: fonts.ui.semibold,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-  },
+  sheetTitle: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontFamily: fonts.ui.regular,
-    fontSize: fontSize.base,
-    color: colors.textPrimary,
-    backgroundColor: colors.bg,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    padding: spacing.md, fontFamily: fonts.ui.regular, fontSize: fontSize.base,
+    color: colors.textPrimary, backgroundColor: colors.bg,
   },
-  attrLabel: {
-    fontFamily: fonts.ui.medium,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
+  subLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
+  weightRow: { flexDirection: 'row', gap: spacing.sm },
+  weightBtn: {
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: spacing.sm, alignItems: 'center',
   },
-  attrRow: {
-    flexDirection: 'row',
+  weightBtnActive: { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.08)' },
+  weightText: { fontFamily: fonts.mono.bold, fontSize: fontSize.base, color: colors.textMuted },
+  weightTextActive: { color: colors.primary },
+  toggleRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 4,
   },
+  toggleLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textPrimary },
+  toggleHint: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 },
+  attrRow: { flexDirection: 'row', gap: spacing.sm },
   attrPill: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    marginRight: spacing.sm,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill,
+    paddingHorizontal: spacing.md, paddingVertical: 6,
   },
-  attrPillSelected: {
-    borderColor: colors.accent,
-  },
+  attrPillActive: { borderColor: colors.accent },
   attrText: {
-    fontFamily: fonts.mono.regular,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    textTransform: 'capitalize',
+    fontFamily: fonts.mono.regular, fontSize: fontSize.sm,
+    color: colors.textMuted, textTransform: 'capitalize',
   },
-  attrTextSelected: {
-    color: colors.accent,
+  attrTextActive: { color: colors.accent },
+  addBtn: {
+    backgroundColor: colors.primary, borderRadius: radius.md,
+    padding: spacing.md, alignItems: 'center', marginTop: spacing.sm,
   },
-  confirmBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  confirmText: {
-    fontFamily: fonts.ui.semibold,
-    fontSize: fontSize.base,
-    color: colors.bg,
-  },
+  addBtnText: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.bg },
 });

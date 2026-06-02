@@ -15,6 +15,9 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { initDB } from '../src/db/schema';
 
+// Initialize DB synchronously before any component renders
+initDB();
+
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -26,10 +29,6 @@ export default function RootLayout() {
     JetBrainsMono_400Regular,
     JetBrainsMono_700Bold,
   });
-
-  useEffect(() => {
-    initDB();
-  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

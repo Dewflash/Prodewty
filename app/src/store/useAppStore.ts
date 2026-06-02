@@ -1,38 +1,27 @@
 import { create } from 'zustand';
 import type { RPGState } from '../db/rpg';
 import type { ActivityLog } from '../db/logs';
-
-export type Category = {
-  id: string;
-  label: string;
-  attribute: 'strength' | 'wisdom' | 'focus' | 'agility' | 'resilience';
-};
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'workout',  label: 'Workout',  attribute: 'strength' },
-  { id: 'coding',   label: 'Coding',   attribute: 'focus' },
-  { id: 'reading',  label: 'Reading',  attribute: 'wisdom' },
-  { id: 'study',    label: 'Study',    attribute: 'wisdom' },
-  { id: 'admin',    label: 'Admin',    attribute: 'agility' },
-  { id: 'journal',  label: 'Journal',  attribute: 'resilience' },
-  { id: 'devotion', label: 'Devotion', attribute: 'wisdom' },
-];
+import type { DBCategory } from '../db/categories';
+import type { Habit } from '../db/habits';
 
 type AppState = {
-  categories: Category[];
+  categories: DBCategory[];
+  habits: Habit[];
   rpgState: RPGState | null;
   recentLogs: ActivityLog[];
-  addCategory: (category: Category) => void;
+  setCategories: (categories: DBCategory[]) => void;
+  setHabits: (habits: Habit[]) => void;
   setRPGState: (state: RPGState) => void;
   setRecentLogs: (logs: ActivityLog[]) => void;
 };
 
 export const useAppStore = create<AppState>((set) => ({
-  categories: DEFAULT_CATEGORIES,
+  categories: [],
+  habits: [],
   rpgState: null,
   recentLogs: [],
-  addCategory: (category) =>
-    set((state) => ({ categories: [...state.categories, category] })),
+  setCategories: (categories) => set({ categories }),
+  setHabits: (habits) => set({ habits }),
   setRPGState: (rpgState) => set({ rpgState }),
   setRecentLogs: (recentLogs) => set({ recentLogs }),
 }));
