@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Prodewty",
+    "slug": "prodewty",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "prodewty",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.anonymous.prodewty"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
