@@ -1,12 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
-import { getLogsForDate, getLogsForMonth, getWeeklyLogs, deleteLog, type ActivityLog } from '../../src/db/logs';
+import { getLogsForDate, getLogsForMonth, getWeeklyLogs, deleteLog, searchLogs, editLog, type ActivityLog } from '../../src/db/logs';
+import { TopRibbon } from '../../src/components/TopRibbon';
+import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -52,9 +54,11 @@ const chip = StyleSheet.create({
   val: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs },
 });
 
-function MoodCard({ log }: { log: ActivityLog }) {
+function MoodCard({ log, onSaved }: { log: ActivityLog; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
   return (
     <View style={cd.card}>
+      <Text style={cd.moodTitle}>Daily Entry</Text>
       <View style={cd.topRow}>
         <View style={cd.scores}>
           <ScoreChip label="Mood" value={log.mood_rating} />
@@ -68,13 +72,67 @@ function MoodCard({ log }: { log: ActivityLog }) {
       ) : null}
       <View style={cd.footer}>
         <Text style={cd.entryBadge}>Mood</Text>
+        <Pressable onPress={() => setEditing(true)} style={{ marginRight: spacing.sm }}>
+          <Feather name="edit-2" size={13} color={colors.textMuted} />
+        </Pressable>
         <Text style={cd.time}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
       </View>
+      {editing && <EditModal log={log} onClose={() => setEditing(false)} onSaved={onSaved} />}
     </View>
   );
 }
 
+function EditModal({ log, onClose, onSaved }: { log: ActivityLog; onClose: () => void; onSaved: () => void }) {
+  const isMood = log.entry_type === 'mood';
+  const [note,   setNote]   = useState(log.description || '');
+  const [well,   setWell]   = useState(log.what_went_well || '');
+  const [revel,  setRevel]  = useState(log.what_to_improve || '');
+  const [journl, setJournl] = useState(log.journal_entry || '');
+
+  function save() {
+    editLog(log.id, {
+      note:           !isMood ? note   : null,
+      what_went_well:            well,
+      what_to_improve:           revel,
+      journal_entry:  isMood  ? journl : null,
+    });
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal visible transparent animationType="slide">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={em.kbAvoid}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <View style={em.sheet}>
+          <Text style={em.title}>Edit {isMood ? 'Mood Entry' : 'Activity'}</Text>
+          <Text style={em.locked}>Category, date, XP and duration are locked.</Text>
+          {!isMood && <><Text style={em.label}>Note</Text><TextInput style={em.input} value={note} onChangeText={setNote} multiline placeholderTextColor={colors.textMuted} placeholder="Note..." /></>}
+          <Text style={em.label}>What went well?</Text>
+          <TextInput style={em.input} value={well} onChangeText={setWell} multiline placeholderTextColor={colors.textMuted} placeholder="Wins..." />
+          <Text style={em.label}>Revelation</Text>
+          <TextInput style={em.input} value={revel} onChangeText={setRevel} multiline placeholderTextColor={colors.textMuted} placeholder="Revelation..." />
+          {isMood && <><Text style={em.label}>Journal</Text><TextInput style={em.input} value={journl} onChangeText={setJournl} multiline placeholderTextColor={colors.textMuted} placeholder="Journal..." /></>}
+          <Pressable onPress={save} style={em.saveBtn}><Text style={em.saveBtnText}>Save</Text></Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const em = StyleSheet.create({
+  kbAvoid: { flex: 1, justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, paddingBottom: 40, maxHeight: '85%' },
+  title: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
+  locked: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  label: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 4 },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textPrimary, backgroundColor: colors.bg, minHeight: 52, textAlignVertical: 'top' },
+  saveBtn: { backgroundColor: colors.primary, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', marginTop: spacing.sm },
+  saveBtnText: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.bg },
+});
+
 function ActivityCard({ log, onDelete }: { log: ActivityLog; onDelete: () => void }) {
+  const [editing, setEditing] = useState(false);
   const cats = parseCategories(log.categories);
   const primary = cats[0] || log.category || '—';
   const isWeekly = log.log_type === 'weekly';
@@ -101,10 +159,14 @@ function ActivityCard({ log, onDelete }: { log: ActivityLog; onDelete: () => voi
         </View>
         <View style={cd.rightRow}>
           <Text style={cd.xp}>+{log.xp_awarded} XP</Text>
+          <Pressable onPress={() => setEditing(true)} style={cd.deleteBtn}>
+            <Feather name="edit-2" size={13} color={colors.textMuted} />
+          </Pressable>
           <Pressable onPress={confirmDelete} style={cd.deleteBtn}>
             <Feather name="trash-2" size={14} color={colors.danger} />
           </Pressable>
         </View>
+        {editing && <EditModal log={log} onClose={() => setEditing(false)} onSaved={onDelete} />}
       </View>
       {log.description ? <Text style={cd.note}>{log.description}</Text> : null}
       {log.duration_mins ? <Text style={cd.meta}>{log.duration_mins} min</Text> : null}
@@ -138,6 +200,7 @@ const cd = StyleSheet.create({
   noteLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
   noteText: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textPrimary, flex: 1 },
   note: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textPrimary },
+  moodTitle: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.accent },
   entryBadge: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.accent, flex: 1 },
   footer: { flexDirection: 'row', alignItems: 'center' },
   time: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, alignSelf: 'flex-end' },
@@ -156,6 +219,8 @@ export default function HistoryScreen() {
   const [weekGroups, setWeekGroups] = useState<{ weekStart: string; logs: ActivityLog[] }[]>([]);
   const [monthPicker, setMonthPicker] = useState(false);
   const [yearPicker, setYearPicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ActivityLog[] | null>(null);
 
   function reload() {
     if (tab === 'daily') {
@@ -168,7 +233,25 @@ export default function HistoryScreen() {
 
   useFocusEffect(useCallback(() => { reload(); }, [tab, year, month, selected]));
 
-  const logDates = new Set(monthLogs.map(l => resolveDate(l)));
+  const moodByDate: Record<string, number> = {};
+  for (const l of monthLogs) {
+    if (l.entry_type === 'mood' && l.mood_rating) {
+      moodByDate[resolveDate(l)] = l.mood_rating;
+    }
+  }
+
+  function prevMonth() {
+    if (month === 1) { setMonth(12); setYear(y => y - 1); }
+    else setMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (month === 12) { setMonth(1); setYear(y => y + 1); }
+    else setMonth(m => m + 1);
+  }
+  function handleSearch(q: string) {
+    setSearchQuery(q);
+    setSearchResults(q.trim() ? searchLogs(q) : null);
+  }
 
   const daysInMonth = getDaysInMonth(year, month);
   const offset = getFirstDayOffset(year, month);
@@ -178,7 +261,9 @@ export default function HistoryScreen() {
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
 
   return (
+    <SwipeNavWrapper currentIndex={1}>
     <SafeAreaView style={s.safe}>
+      <TopRibbon title="History" />
 
       {/* Tab toggle */}
       <View style={s.tabRow}>
@@ -194,12 +279,35 @@ export default function HistoryScreen() {
       {tab === 'daily' ? (
         <ScrollView contentContainerStyle={s.content}>
 
+          {/* Search */}
+          <View style={s.searchRow}>
+            <Feather name="search" size={15} color={colors.textMuted} />
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search notes & journal..."
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={handleSearch}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => handleSearch('')}>
+                <Feather name="x" size={15} color={colors.textMuted} />
+              </Pressable>
+            )}
+          </View>
+
           {/* Header */}
           <View style={s.headerRow}>
             <Text style={s.heading}>History</Text>
             <View style={s.pickerRow}>
+              <Pressable onPress={prevMonth} style={s.arrowBtn}>
+                <Feather name="chevron-left" size={18} color={colors.textPrimary} />
+              </Pressable>
               <Pressable style={s.pickerBtn} onPress={() => setMonthPicker(true)}>
                 <Text style={s.pickerText}>{MONTHS[month - 1]}</Text>
+              </Pressable>
+              <Pressable onPress={nextMonth} style={s.arrowBtn}>
+                <Feather name="chevron-right" size={18} color={colors.textPrimary} />
               </Pressable>
               <Pressable style={s.pickerBtn} onPress={() => setYearPicker(true)}>
                 <Text style={s.pickerText}>{year}</Text>
@@ -217,14 +325,21 @@ export default function HistoryScreen() {
                 {cells.slice(row * 7, row * 7 + 7).map((day, col) => {
                   if (!day) return <View key={col} style={s.emptyCell} />;
                   const ds = dateStr(year, month, day);
-                  const hasLog = logDates.has(ds);
+                  const moodRating = moodByDate[ds];
+                  const hasLog = ds in moodByDate;
                   const isSel = selected === ds;
                   const isToday = ds === todayStr();
                   return (
                     <Pressable key={col} onPress={() => setSelected(ds)}
                       style={[s.cell, isSel && s.cellSel, isToday && !isSel && s.cellToday]}>
                       <Text style={[s.cellNum, isSel && s.cellNumSel]}>{day}</Text>
-                      {hasLog && <View style={[s.dot, { backgroundColor: isSel ? colors.bg : colors.primary }]} />}
+                      {hasLog && (
+                      <View style={[s.dot, {
+                        backgroundColor: isSel
+                          ? colors.bg
+                          : colors.moodActive[Math.min(Math.max((moodRating ?? 5) - 1, 0), 9)],
+                      }]} />
+                    )}
                     </Pressable>
                   );
                 })}
@@ -232,23 +347,36 @@ export default function HistoryScreen() {
             ))}
           </View>
 
-          {/* Day header */}
-          <View style={s.dayHeader}>
-            <Text style={s.dayTitle}>
-              {selected === todayStr() ? 'Today' : new Date(selected + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-            </Text>
-          </View>
-
-          {(() => {
-            const filteredLogs = dayLogs.filter(l => l.log_type !== 'weekly');
-            return filteredLogs.length === 0
-              ? <Text style={s.emptyNote}>No logs for this date.</Text>
-              : filteredLogs.map(log =>
-                  log.entry_type === 'mood'
-                    ? <MoodCard key={log.id} log={log} />
-                    : <ActivityCard key={log.id} log={log} onDelete={reload} />
-                );
-          })()}
+          {/* Search results override calendar day */}
+          {searchResults !== null ? (
+            <>
+              <View style={s.dayHeader}>
+                <Text style={s.dayTitle}>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</Text>
+              </View>
+              {searchResults.length === 0
+                ? <Text style={s.emptyNote}>Nothing found.</Text>
+                : searchResults.map(log => <ActivityCard key={log.id} log={log} onDelete={reload} />)
+              }
+            </>
+          ) : (
+            <>
+              <View style={s.dayHeader}>
+                <Text style={s.dayTitle}>
+                  {selected === todayStr() ? 'Today' : new Date(selected + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+              </View>
+              {(() => {
+                const filteredLogs = dayLogs.filter(l => l.log_type !== 'weekly');
+                return filteredLogs.length === 0
+                  ? <Text style={s.emptyNote}>No logs for this date.</Text>
+                  : filteredLogs.map(log =>
+                      log.entry_type === 'mood'
+                        ? <MoodCard key={log.id} log={log} onSaved={reload} />
+                        : <ActivityCard key={log.id} log={log} onDelete={reload} />
+                    );
+              })()}
+            </>
+          )}
         </ScrollView>
       ) : (
         // Weekly tab
@@ -300,6 +428,7 @@ export default function HistoryScreen() {
         </Pressable>
       </Modal>
     </SafeAreaView>
+    </SwipeNavWrapper>
   );
 }
 
@@ -311,6 +440,13 @@ const s = StyleSheet.create({
   tabText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
   tabTextActive: { color: colors.primary },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: colors.card, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  searchInput: { flex: 1, fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textPrimary },
+  arrowBtn: { padding: 4 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { fontFamily: fonts.ui.semibold, fontSize: fontSize.xl, color: colors.textPrimary },
   pickerRow: { flexDirection: 'row', gap: spacing.sm },

@@ -10,11 +10,13 @@ type Props = {
   xpToNext: number;
   title: string;
   streakDays: number;
+  frozen?: boolean;
 };
 
-export function XPBar({ level, totalXP, xpToNext, title, streakDays }: Props) {
+export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = false }: Props) {
   const currentLevelXP = totalXP % xpToNext;
   const progress = Math.min(currentLevelXP / xpToNext, 1);
+  const streakColor = frozen ? colors.primary : colors.success;
 
   return (
     <View style={styles.container}>
@@ -24,12 +26,15 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays }: Props) {
         </View>
         <View style={styles.meta}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.xpText}>
-            {currentLevelXP} / {xpToNext} XP
-          </Text>
+          <Text style={styles.xpText}>{currentLevelXP} / {xpToNext} XP</Text>
         </View>
         {streakDays > 0 && (
-          <Text style={styles.streak}>{streakDays}d</Text>
+          <View style={[styles.streakBadge, { borderColor: streakColor, shadowColor: streakColor }]}>
+            {frozen && <Text style={[styles.frozenIcon, { color: streakColor }]}>❄</Text>}
+            <Text style={[styles.streakText, { color: streakColor }]}>
+              Streak: {streakDays}
+            </Text>
+          </View>
         )}
       </View>
       <View style={styles.track}>
@@ -40,63 +45,29 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: spacing.sm,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
+  container: { gap: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   levelBadge: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm, paddingVertical: 3,
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4, shadowRadius: 6,
   },
-  levelText: {
-    fontFamily: fonts.mono.bold,
-    fontSize: fontSize.xs,
-    color: colors.primary,
-    letterSpacing: 1,
+  levelText: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.primary, letterSpacing: 1 },
+  meta: { flex: 1 },
+  title: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textPrimary },
+  xpText: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 },
+  streakBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm, paddingVertical: 3,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.35, shadowRadius: 6,
   },
-  meta: {
-    flex: 1,
-  },
-  title: {
-    fontFamily: fonts.ui.medium,
-    fontSize: fontSize.sm,
-    color: colors.textPrimary,
-  },
-  xpText: {
-    fontFamily: fonts.mono.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  streak: {
-    fontFamily: fonts.mono.regular,
-    fontSize: fontSize.sm,
-    color: colors.success,
-  },
-  track: {
-    height: 3,
-    backgroundColor: colors.border,
-    borderRadius: radius.pill,
-    overflow: 'hidden',
-  },
+  frozenIcon: { fontSize: 10 },
+  streakText: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs },
+  track: { height: 3, backgroundColor: colors.border, borderRadius: radius.pill, overflow: 'hidden' },
   fill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
+    height: '100%', backgroundColor: colors.primary, borderRadius: radius.pill,
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 4,
   },
 });

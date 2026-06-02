@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import { TopRibbon } from '../../src/components/TopRibbon';
+import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
@@ -165,7 +167,9 @@ export default function RechargeScreen() {
   const penalty = minBar <= 0 ? '−50%' : minBar < 30 ? '−25%' : minBar < 60 ? '−10%' : null;
 
   return (
+    <SwipeNavWrapper currentIndex={3}>
     <SafeAreaView style={s.safe}>
+      <TopRibbon title="Recharge" />
       <ScrollView contentContainerStyle={s.content}>
 
         {/* Header */}
@@ -253,6 +257,7 @@ export default function RechargeScreen() {
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
+    </SwipeNavWrapper>
   );
 }
 

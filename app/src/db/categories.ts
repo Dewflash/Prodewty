@@ -8,6 +8,7 @@ export type DBCategory = {
   is_default: number;
   is_physical: number;
   is_recreational: number;
+  color: string;
 };
 
 export function getCategories(): DBCategory[] {
@@ -22,9 +23,10 @@ export function addCategory(
   attribute: string,
   isPhysical: boolean,
   isRecreational: boolean,
+  color: string = '#38BDF8',
 ): void {
   db.runSync(
-    `INSERT OR IGNORE INTO categories (name, weight, attribute, is_physical, is_recreational) VALUES (?, ?, ?, ?, ?)`,
-    name.trim(), weight, attribute, isPhysical ? 1 : 0, isRecreational ? 1 : 0,
+    `INSERT OR IGNORE INTO categories (name, weight, attribute, is_physical, is_recreational, color) VALUES (?, ?, ?, ?, ?, ?)`,
+    name.trim(), weight, attribute, isPhysical ? 1 : 0, isRecreational ? 1 : 0, color,
   );
 }

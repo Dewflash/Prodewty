@@ -10,6 +10,7 @@ import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
 import { CategoryGrid } from '../../src/components/CategoryGrid';
+import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { MoodSelector } from '../../src/components/MoodSelector';
 import { useAppStore } from '../../src/store/useAppStore';
 import { getCategories } from '../../src/db/categories';
@@ -176,6 +177,10 @@ export default function LogScreen() {
             energy_rating: energy!,
             productivity_rating: productivity!,
             journal_entry: journal || undefined,
+            // Insight + reflection live in activity log when activity is also logged;
+            // when mood-only, save them here so they appear in the insights feed
+            what_went_well: !hasActivity ? (wentWell || undefined) : undefined,
+            what_to_improve: !hasActivity ? (toImprove || undefined) : undefined,
           });
           totalXP += r.xp_awarded;
         }
@@ -207,6 +212,8 @@ export default function LogScreen() {
   while (pickerCells.length % 7 !== 0) pickerCells.push(null);
 
   return (
+    <>
+    <SwipeNavWrapper currentIndex={2}>
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
@@ -312,7 +319,7 @@ export default function LogScreen() {
             <Text style={s.sectionLabel}>What went well?</Text>
             <TextInput style={s.textArea} placeholder="Wins..." placeholderTextColor={colors.textMuted}
               value={wentWell} onChangeText={setWentWell} multiline />
-            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Insight</Text>
+            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Revelation</Text>
             <TextInput style={s.textArea} placeholder="What to carry forward..."
               placeholderTextColor={colors.textMuted} value={toImprove} onChangeText={setToImprove} multiline />
           </View>
@@ -377,7 +384,10 @@ export default function LogScreen() {
         </Pressable>
       </Modal>
 
-      {/* Add Habit Modal */}
+    </SafeAreaView>
+    </SwipeNavWrapper>
+
+      {/* ─── Modals live outside SwipeNavWrapper so they aren't clipped ─── */}
       <Modal visible={habitModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.kbAvoid}>
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setHabitModal(false)} />
@@ -400,7 +410,7 @@ export default function LogScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </>
   );
 }
 

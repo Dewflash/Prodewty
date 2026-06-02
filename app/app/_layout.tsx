@@ -14,9 +14,11 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import { initDB } from '../src/db/schema';
+import { checkStreakFreeze } from '../src/db/rpg';
 
 // Initialize DB synchronously before any component renders
 initDB();
+checkStreakFreeze();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +43,10 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="revelations" />  {/* Revelations feed — drawn from the Revelation field in all logs */}
+        <Stack.Screen name="store" />
+        <Stack.Screen name="inventory" />
+        <Stack.Screen name="milestones" />
       </Stack>
     </>
   );

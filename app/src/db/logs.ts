@@ -46,6 +46,8 @@ export type MoodLogInput = {
   energy_rating: number;
   productivity_rating: number;
   journal_entry?: string;
+  what_went_well?: string;
+  what_to_improve?: string;
 };
 
 export type CreateLogResult = {
@@ -209,10 +211,16 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
     db.runSync(
       `UPDATE activity_logs SET
          mood_rating = ?, energy_rating = ?, productivity_rating = ?,
-         journal_entry = ?, xp_awarded = xp_awarded + ?
+         journal_entry = ?,
+         what_went_well = COALESCE(NULLIF(?, ''), what_went_well),
+         what_to_improve = COALESCE(NULLIF(?, ''), what_to_improve),
+         xp_awarded = xp_awarded + ?
        WHERE id = ?`,
       input.mood_rating, input.energy_rating, input.productivity_rating,
-      newJournal, journalXP, existing.id,
+      newJournal,
+      input.what_went_well?.trim() ?? '',
+      input.what_to_improve?.trim() ?? '',
+      journalXP, existing.id,
     );
 
     if (journalXP > 0) applyXP(journalXP, 'journal');
@@ -227,11 +235,13 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
     `INSERT INTO activity_logs
        (category, description, log_type, entry_type, log_date,
         mood_rating, energy_rating, productivity_rating, journal_entry,
-        categories, xp_awarded)
-     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, '[]', ?)`,
+        what_went_well, what_to_improve, categories, xp_awarded)
+     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
     input.log_date,
     input.mood_rating, input.energy_rating, input.productivity_rating,
     input.journal_entry?.trim() || null,
+    input.what_went_well?.trim() || null,
+    input.what_to_improve?.trim() || null,
     xp,
   );
 
@@ -248,5 +258,169 @@ export function deleteLog(id: number): void {
   }
 }
 
-// ─── Legacy compat (still used by progress page via getRecentLogs) ────────────
+// ─── Editing ─────────────────────────────────────────────────────────────────
+
+export function editLog(id: number, updates: {
+  note?: string | null;
+  what_went_well?: string | null;
+  what_to_improve?: string | null;
+  journal_entry?: string | null;
+  // duration_mins intentionally excluded — future XP variable, locked
+}): void {
+  db.runSync(
+    `UPDATE activity_logs SET
+       description   = ?,
+       what_went_well = ?,
+       what_to_improve = ?,
+       journal_entry = ?
+     WHERE id = ?`,
+    updates.note?.trim() || null,
+    updates.what_went_well?.trim() || null,
+    updates.what_to_improve?.trim() || null,
+    updates.journal_entry?.trim() || null,
+    id,
+  );
+}
+
+// ─── Category next-day effects ────────────────────────────────────────────────
+
+export type CategoryEffect = {
+  category: string;
+  sampleCount: number;
+  nextDayMood: number | null;
+  nextDayEnergy: number | null;
+  baselineMood: number | null;
+  baselineEnergy: number | null;
+};
+
+export function getCategoryEffects(): CategoryEffect[] {
+  try {
+    const baseline = db.getFirstSync<{ m: number; e: number }>(
+      "SELECT avg(mood_rating) as m, avg(energy_rating) as e FROM activity_logs WHERE entry_type = 'mood' AND mood_rating > 0",
+    );
+
+    const cats = db.getAllSync<{ name: string }>(
+      "SELECT DISTINCT json_extract(categories, '$[0]') as name FROM activity_logs WHERE entry_type = 'activity' AND categories != '[]' AND categories IS NOT NULL",
+    ).map(r => r.name).filter(Boolean);
+
+    const results: CategoryEffect[] = [];
+    for (const cat of cats) {
+      const row = db.getFirstSync<{ nextMood: number; nextEnergy: number; cnt: number }>(
+        `SELECT avg(m.mood_rating) as nextMood, avg(m.energy_rating) as nextEnergy, count(*) as cnt
+         FROM activity_logs a
+         JOIN activity_logs m
+           ON date(m.log_date) = date(a.log_date, '+1 day')
+           AND m.entry_type = 'mood'
+           AND m.mood_rating > 0
+         WHERE a.entry_type = 'activity'
+           AND a.categories LIKE ?`,
+        `%"${cat}"%`,
+      );
+      if (row && row.cnt >= 3) {
+        results.push({
+          category: cat,
+          sampleCount: row.cnt,
+          nextDayMood:    row.nextMood    ? Math.round(row.nextMood    * 10) / 10 : null,
+          nextDayEnergy:  row.nextEnergy  ? Math.round(row.nextEnergy  * 10) / 10 : null,
+          baselineMood:   baseline?.m     ? Math.round(baseline.m      * 10) / 10 : null,
+          baselineEnergy: baseline?.e     ? Math.round(baseline.e      * 10) / 10 : null,
+        });
+      }
+    }
+    return results.sort((a, b) => (b.nextDayMood ?? 0) - (a.nextDayMood ?? 0));
+  } catch { return []; }
+}
+
+// ─── Revelations (formerly Insights) ─────────────────────────────────────────
+
+export type Revelation = {
+  id: number;
+  log_date: string;
+  category: string;
+  revelation: string;
+  log_type: string;
+};
+
+export function getRevelations(query?: string): Revelation[] {
+  const rows = db.getAllSync<ActivityLog>(
+    "SELECT * FROM activity_logs WHERE what_to_improve IS NOT NULL AND what_to_improve != '' ORDER BY log_date DESC, created_at DESC",
+  );
+  const q = query?.toLowerCase().trim();
+  return rows
+    .map(l => ({
+      id: l.id,
+      log_date: l.log_date ?? l.created_at.split(' ')[0],
+      category: (() => { try { return JSON.parse(l.categories)[0]; } catch { return l.category || '—'; } })(),
+      revelation: l.what_to_improve!,
+      log_type: l.log_type,
+    }))
+    .filter(r => !q || r.revelation.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
+}
+
+// getRevelations reads the `what_to_improve` DB column (internal name).
+// User-facing name is "Revelation" throughout the UI.
+
+export function searchLogs(query: string): ActivityLog[] {
+  if (!query.trim()) return [];
+  const q = `%${query.trim()}%`;
+  return db.getAllSync<ActivityLog>(
+    `SELECT * FROM activity_logs
+     WHERE (description LIKE ? OR journal_entry LIKE ?)
+     ORDER BY log_date DESC, created_at DESC
+     LIMIT 100`,
+    q, q,
+  );
+}
+
+function getWeekStartStr(): string {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+  const d = new Date(now.getFullYear(), now.getMonth(), diff);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+export type WeeklySummary = {
+  daysLogged: number;
+  totalLogs: number;
+  totalXP: number;
+  avgMood: string;
+  avgEnergy: string;
+  avgProd: string;
+  topCategory: string | null;
+  weekStart: string;
+};
+
+export function getWeeklySummary(): WeeklySummary {
+  const weekStart = getWeekStartStr();
+  const all = getRecentLogs(7);
+  const weekLogs = all.filter(l => (l.log_date ?? '') >= weekStart);
+  const activity = weekLogs.filter(l => l.entry_type === 'activity');
+  const mood = weekLogs.filter(l => l.entry_type === 'mood');
+
+  const avg = (arr: (number | null)[]) => {
+    const v = arr.filter(x => x !== null) as number[];
+    return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '—';
+  };
+
+  const catCounts: Record<string, number> = {};
+  for (const l of activity) {
+    try { (JSON.parse(l.categories) as string[]).forEach(c => { catCounts[c] = (catCounts[c] ?? 0) + 1; }); } catch {}
+  }
+  const topCategory = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const daysLogged = new Set(activity.map(l => l.log_date)).size;
+
+  return {
+    weekStart,
+    daysLogged,
+    totalLogs: activity.length,
+    totalXP: weekLogs.reduce((s, l) => s + l.xp_awarded, 0),
+    avgMood:   avg(mood.map(l => l.mood_rating)),
+    avgEnergy: avg(mood.map(l => l.energy_rating)),
+    avgProd:   avg(mood.map(l => l.productivity_rating)),
+    topCategory,
+  };
+}
+
+// ─── Legacy compat ────────────────────────────────────────────────────────────
 export function createLog() { throw new Error('Use createActivityLog or upsertMoodLog'); }

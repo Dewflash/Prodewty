@@ -15,25 +15,50 @@ export type RPGState = {
   streak_days: number;
   last_active_date: string | null;
   highest_xp_attained: number;
+  coins: number;
+  gp: number;
+  streak_freezes: number;
 };
 
 export function getRPGState(): RPGState {
   return db.getFirstSync<RPGState>('SELECT * FROM rpg_state WHERE id = 1')!;
 }
 
-export function applyXP(xp: number, categoryName: string): { levelUp: boolean; state: RPGState } {
+// Called on app open — auto-applies streak freeze if exactly one day was missed
+export function checkStreakFreeze(): void {
+  try {
+    const state = getRPGState();
+    if (!state.last_active_date) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (state.last_active_date >= today) return;
+    const daysMissed = Math.floor(
+      (new Date(today).getTime() - new Date(state.last_active_date).getTime()) / 86400000,
+    );
+    if (daysMissed === 1) return; // only missed today, streak safe until tomorrow
+    if (daysMissed === 2 && (state.streak_freezes ?? 0) > 0) {
+      // Auto-consume one freeze to cover the missed day
+      db.runSync('UPDATE rpg_state SET streak_freezes = streak_freezes - 1 WHERE id = 1');
+    } else if (daysMissed > 1) {
+      db.runSync('UPDATE rpg_state SET streak_days = 0 WHERE id = 1');
+    }
+  } catch {}
+}
+
+export function applyXP(xp: number, categoryName: string): { levelUp: boolean; newLevel?: number; state: RPGState } {
   const state = getRPGState();
   let { current_level, total_xp, xp_to_next_level, unallocated_points } = state;
 
   total_xp += xp;
   const newHighest = Math.max(state.highest_xp_attained ?? 0, total_xp);
   let levelUp = false;
+  let levelsGained = 0;
 
   while (total_xp >= xp_to_next_level) {
     total_xp -= xp_to_next_level;
     current_level += 1;
     xp_to_next_level = xpRequiredForLevel(current_level);
     unallocated_points += 3;
+    levelsGained++;
     levelUp = true;
   }
 
@@ -56,17 +81,20 @@ export function applyXP(xp: number, categoryName: string): { levelUp: boolean; s
     streak_days = 1;
   }
 
+  const gpGained = levelsGained * 10; // 10 GP per level up
+
   db.runSync(
     `UPDATE rpg_state SET
        current_level = ?, total_xp = ?, xp_to_next_level = ?,
        unallocated_points = ?, ${String(attribute)} = ?,
-       title = ?, streak_days = ?, last_active_date = ?
+       title = ?, streak_days = ?, last_active_date = ?,
+       gp = COALESCE(gp, 0) + ?
      WHERE id = 1`,
     current_level, total_xp, xp_to_next_level,
     unallocated_points, newAttrVal,
     title, streak_days, today,
+    gpGained,
   );
-  // highest_xp_attained added in migration v3 — guard in case column not yet present
   try {
     db.runSync(
       'UPDATE rpg_state SET highest_xp_attained = MAX(COALESCE(highest_xp_attained, 0), ?) WHERE id = 1',
@@ -74,15 +102,23 @@ export function applyXP(xp: number, categoryName: string): { levelUp: boolean; s
     );
   } catch {}
 
-  return { levelUp, state: getRPGState() };
+  return { levelUp, newLevel: levelUp ? current_level : undefined, state: getRPGState() };
 }
 
-// Spend XP for Recharge purchases.
-// Level protection multiplier K is TBD — currently level never drops.
-// When K is decided: if (highest - newXP) > current_level * K → recalculate level downward.
 export function spendXP(amount: number): 'ok' | 'insufficient' {
   const state = getRPGState();
   if (state.total_xp < amount) return 'insufficient';
   db.runSync('UPDATE rpg_state SET total_xp = total_xp - ? WHERE id = 1', amount);
+  return 'ok';
+}
+
+export function purchaseStreakFreeze(): 'ok' | 'insufficient_coins' {
+  const COST = 50;
+  const state = getRPGState();
+  if ((state.coins ?? 0) < COST) return 'insufficient_coins';
+  db.runSync(
+    'UPDATE rpg_state SET coins = coins - ?, streak_freezes = streak_freezes + 1 WHERE id = 1',
+    COST,
+  );
   return 'ok';
 }

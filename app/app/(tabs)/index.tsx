@@ -6,8 +6,10 @@ import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
 import { XPBar } from '../../src/components/XPBar';
+import { TopRibbon } from '../../src/components/TopRibbon';
+import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { useAppStore } from '../../src/store/useAppStore';
-import { getLogs, getRecentLogs, type ActivityLog } from '../../src/db/logs';
+import { getLogs, getRecentLogs, getCategoryEffects, type ActivityLog, type CategoryEffect } from '../../src/db/logs';
 import { getRPGState } from '../../src/db/rpg';
 
 type Period = 'week' | 'month' | 'year';
@@ -143,17 +145,60 @@ function earnedBadges(logs: ActivityLog[], streak: number): Set<string> {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function ScoreRow({ label, vals, cellH }: { label: string; vals: (number | null)[]; cellH: number }) {
+const MONTHS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function ScoreRow({ label, vals, cellH, dates, period }: {
+  label: string; vals: (number | null)[]; cellH: number;
+  dates: string[]; period: Period;
+}) {
+  const [hovered, setHovered] = React.useState<number | null>(null);
+  const [rowW, setRowW] = React.useState(300);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pressIn(i: number) {
+    if (timer.current) clearTimeout(timer.current);
+    setHovered(i);
+  }
+  function pressOut() {
+    timer.current = setTimeout(() => setHovered(null), 1500);
+  }
+
+  function tooltipLabel(i: number) {
+    const d = dates[i]; if (!d) return '';
+    if (period === 'year') {
+      const dt = new Date(d + 'T12:00:00');
+      const firstJan = new Date(dt.getFullYear(), 0, 1);
+      const wk = Math.ceil(((dt.getTime() - firstJan.getTime()) / 86400000 + firstJan.getDay() + 1) / 7);
+      return `Wk ${wk}`;
+    }
+    const dt = new Date(d + 'T12:00:00');
+    return `${dt.getDate()} ${MONTHS_S[dt.getMonth()]}`;
+  }
+
+  const tooltipLeft = hovered !== null
+    ? Math.max(2, Math.min(rowW - 48, ((hovered + 0.5) / vals.length) * rowW - 24))
+    : 0;
+
   return (
     <View style={s.chartBlock}>
       <View style={s.chartHeader}>
         <Text style={s.chartLabel}>{label}</Text>
         <Text style={s.chartAvg}>avg {fmtAvg(vals)}</Text>
       </View>
-      <View style={[s.cellRow, { height: cellH }]}>
-        {vals.map((v, i) => (
-          <View key={i} style={[s.cell, { backgroundColor: scoreToColor(v) }]} />
-        ))}
+      {/* paddingTop creates space for the tooltip without overflow issues */}
+      <View style={{ paddingTop: 22 }}>
+        {hovered !== null && (
+          <View pointerEvents="none" style={[s.tooltip, { left: tooltipLeft }]}>
+            <Text style={s.tooltipTxt}>{tooltipLabel(hovered)}</Text>
+          </View>
+        )}
+        <View style={[s.cellRow, { height: cellH }]}
+          onLayout={e => setRowW(e.nativeEvent.layout.width)}>
+          {vals.map((v, i) => (
+            <Pressable key={i} style={[s.cell, { backgroundColor: scoreToColor(v) }]}
+              onPressIn={() => pressIn(i)} onPressOut={pressOut} />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -214,6 +259,7 @@ export default function ProgressScreen() {
   const [chartData, setChartData] = useState<DayData[]>([]);
   const [periodLogs, setPeriodLogs] = useState<ActivityLog[]>([]);
   const [allLogs, setAllLogs] = useState<ActivityLog[]>([]);
+  const [catEffects, setCatEffects] = useState<CategoryEffect[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -224,6 +270,7 @@ export default function ProgressScreen() {
       const recent = getRecentLogs(period === 'year' ? 365 : days);
       setPeriodLogs(recent);
       setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
+      setCatEffects(getCategoryEffects());
     }, [period]),
   );
 
@@ -241,18 +288,38 @@ export default function ProgressScreen() {
   const maxMood = allLogs.reduce((m, l) => l.mood_rating   ? Math.max(m, l.mood_rating)   : m, 0);
   const maxNrg  = allLogs.reduce((m, l) => l.energy_rating ? Math.max(m, l.energy_rating) : m, 0);
 
+  const dates = chartData.map(d => d.date);
+
   return (
+    <SwipeNavWrapper currentIndex={0}>
     <SafeAreaView style={s.safe}>
+      <TopRibbon title="Progress" />
       <ScrollView contentContainerStyle={s.content}>
 
         {rpgState && (
-          <XPBar
-            level={rpgState.current_level}
-            totalXP={rpgState.total_xp}
-            xpToNext={rpgState.xp_to_next_level}
-            title={rpgState.title}
-            streakDays={rpgState.streak_days}
-          />
+          <>
+            <XPBar
+              level={rpgState.current_level}
+              totalXP={rpgState.total_xp}
+              xpToNext={rpgState.xp_to_next_level}
+              title={rpgState.title}
+              streakDays={rpgState.streak_days}
+              frozen={(rpgState.streak_freezes ?? 0) > 0}
+            />
+            <View style={s.xpFooter}>
+              <Text style={s.buffsText}>Buffs: None</Text>
+              <Text style={s.xpToNext}>{rpgState.xp_to_next_level - rpgState.total_xp} XP to Level {rpgState.current_level + 1}</Text>
+            </View>
+            {/* Active effects row */}
+            {(rpgState.streak_freezes ?? 0) > 0 && (
+              <View style={s.effectsRow}>
+                <View style={s.effectChip}>
+                  <Text style={s.effectIcon}>❄</Text>
+                  <Text style={s.effectText}>Streak Freeze × {rpgState.streak_freezes}</Text>
+                </View>
+              </View>
+            )}
+          </>
         )}
 
         {/* Quick stats */}
@@ -285,11 +352,40 @@ export default function ProgressScreen() {
         </View>
 
         {/* Score charts */}
-        <ScoreRow label="Mood"         vals={moodVals}   cellH={cellH} />
-        <ScoreRow label="Energy"       vals={energyVals} cellH={cellH} />
-        <ScoreRow label="Productivity" vals={prodVals}   cellH={cellH} />
+        <ScoreRow label="Mood"         vals={moodVals}   cellH={cellH} dates={dates} period={period} />
+        <ScoreRow label="Energy"       vals={energyVals} cellH={cellH} dates={dates} period={period} />
+        <ScoreRow label="Productivity" vals={prodVals}   cellH={cellH} dates={dates} period={period} />
         <XPChart                       vals={xpVals}     cellH={Math.max(cellH, 40)} />
         <BreakdownChart data={breakdown} />
+
+        {/* Category effects — next-day mood/energy after each activity */}
+        {catEffects.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionHead}>Activity Effects</Text>
+            <Text style={s.sectionSub}>Avg mood & energy the day after logging each activity</Text>
+            {catEffects.map(e => {
+              const moodDiff = e.nextDayMood !== null && e.baselineMood !== null
+                ? (e.nextDayMood - e.baselineMood).toFixed(1)
+                : null;
+              const positive = moodDiff !== null && parseFloat(moodDiff) >= 0;
+              return (
+                <View key={e.category} style={s.effectRow}>
+                  <Text style={s.effectCat}>{e.category}</Text>
+                  <View style={s.effectStats}>
+                    <Text style={s.effectVal}>Mood {e.nextDayMood ?? '—'}</Text>
+                    <Text style={s.effectVal}>Energy {e.nextDayEnergy ?? '—'}</Text>
+                    {moodDiff !== null && (
+                      <Text style={[s.effectDiff, { color: positive ? colors.success : colors.danger }]}>
+                        {positive ? '+' : ''}{moodDiff} vs avg
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={s.effectSamples}>{e.sampleCount}d</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* Records */}
         <View style={s.section}>
@@ -332,12 +428,26 @@ export default function ProgressScreen() {
 
       </ScrollView>
     </SafeAreaView>
+    </SwipeNavWrapper>
   );
 }
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+  xpFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -spacing.sm },
+  buffsText: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  xpToNext: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  effectsRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  effectChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm, paddingVertical: 3,
+    backgroundColor: 'rgba(56,189,248,0.08)',
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 6,
+  },
+  effectIcon: { fontSize: 11, color: colors.primary },
+  effectText: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.primary },
 
   strip: {
     flexDirection: 'row', backgroundColor: colors.card,
@@ -372,6 +482,15 @@ const s = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
   emptyNote: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted },
+  tooltip: { position: 'absolute', top: 0, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.textPrimary, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  tooltipTxt: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textPrimary },
+  sectionSub: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: -spacing.sm },
+  effectRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  effectCat: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textPrimary, flex: 1 },
+  effectStats: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  effectVal: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  effectDiff: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs },
+  effectSamples: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, marginLeft: spacing.sm },
 
   section: { gap: spacing.md },
   sectionHead: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },

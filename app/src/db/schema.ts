@@ -181,6 +181,53 @@ function runMigrations() {
     db.execSync(`UPDATE activity_logs SET log_date = date(created_at) WHERE log_date IS NULL`);
     db.execSync('PRAGMA user_version = 5');
   }
+
+  if (version < 6) {
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN coins INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN gp INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN streak_freezes INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // Seed 50 test coins
+    db.execSync(`UPDATE rpg_state SET coins = 50 WHERE id = 1`);
+    db.execSync('PRAGMA user_version = 6');
+  }
+
+  if (version < 7) {
+    db.execSync(`CREATE TABLE IF NOT EXISTS inventory (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_name   TEXT NOT NULL,
+      item_type   TEXT NOT NULL DEFAULT 'consumable',
+      quantity    INTEGER NOT NULL DEFAULT 1,
+      description TEXT,
+      acquired_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )`);
+
+    db.execSync(`CREATE TABLE IF NOT EXISTS milestones (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      date       TEXT NOT NULL,
+      title      TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )`);
+
+    db.execSync('PRAGMA user_version = 7');
+  }
+
+  if (version < 8) {
+    try { db.execSync(`ALTER TABLE categories ADD COLUMN color TEXT NOT NULL DEFAULT '#38BDF8'`); } catch {}
+    // Assign distinct default colours to each built-in category
+    const defaults: [string, string][] = [
+      ['workout',  '#34D399'],
+      ['coding',   '#38BDF8'],
+      ['study',    '#A855F7'],
+      ['reading',  '#FBBF24'],
+      ['devotion', '#F97316'],
+      ['journal',  '#EC4899'],
+      ['admin',    '#64748B'],
+    ];
+    for (const [name, color] of defaults) {
+      db.runSync(`UPDATE categories SET color = ? WHERE lower(name) = ?`, color, name);
+    }
+    db.execSync('PRAGMA user_version = 8');
+  }
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
   View, Text, Pressable, StyleSheet, Modal, TextInput,
   ScrollView, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
@@ -17,6 +18,13 @@ type Props = {
 
 const ATTRIBUTES = ['strength', 'wisdom', 'focus', 'agility', 'resilience'] as const;
 
+const COLOR_PALETTE = [
+  '#38BDF8', '#34D399', '#A855F7', '#F97316',
+  '#FBBF24', '#EC4899', '#EF4444', '#3B82F6',
+  '#10B981', '#8B5CF6', '#F59E0B', '#06B6D4',
+  '#64748B', '#6366F1', '#14B8A6', '#F43F5E',
+];
+
 export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
@@ -24,6 +32,7 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
   const [newAttr, setNewAttr] = useState<typeof ATTRIBUTES[number]>('focus');
   const [isPhysical, setIsPhysical] = useState(false);
   const [isRecreational, setIsRecreational] = useState(false);
+  const [newColor, setNewColor] = useState('#38BDF8');
 
   function toggle(name: string) {
     onSelect(selected.includes(name) ? selected.filter(n => n !== name) : [...selected, name]);
@@ -31,11 +40,8 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
 
   function handleAdd() {
     if (!newName.trim()) return;
-    addCategory(newName.trim(), newWeight, newAttr, isPhysical, isRecreational);
-    setNewName('');
-    setNewWeight(3);
-    setIsPhysical(false);
-    setIsRecreational(false);
+    addCategory(newName.trim(), newWeight, newAttr, isPhysical, isRecreational, newColor);
+    setNewName(''); setNewWeight(3); setIsPhysical(false); setIsRecreational(false); setNewColor('#38BDF8');
     setModalVisible(false);
     onAdded();
   }
@@ -45,10 +51,17 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
       <View style={s.grid}>
         {categories.map((cat) => {
           const active = selected.includes(cat.name);
+          const catColor = cat.color || colors.primary;
           return (
             <Pressable key={cat.id} onPress={() => toggle(cat.name)}
-              style={[s.pill, active && s.pillActive]}>
-              <Text style={[s.pillText, active && s.pillTextActive]}>{cat.name}</Text>
+              style={[s.pill,
+                { borderColor: active ? catColor : colors.border },
+                active && { shadowColor: catColor, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+              ]}>
+              {active && <View style={[s.pillDot, { backgroundColor: catColor }]} />}
+              <Text style={[s.pillText, { color: active ? catColor : colors.textMuted }]}>
+                {cat.name}
+              </Text>
             </Pressable>
           );
         })}
@@ -63,21 +76,25 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
           <View style={s.sheet}>
             <Text style={s.sheetTitle}>New Activity Tag</Text>
 
-            <TextInput
-              style={s.input}
-              placeholder="Name"
-              placeholderTextColor={colors.textMuted}
-              value={newName}
-              onChangeText={setNewName}
-              autoFocus
-            />
+            <TextInput style={s.input} placeholder="Name" placeholderTextColor={colors.textMuted}
+              value={newName} onChangeText={setNewName} autoFocus />
+
+            <Text style={s.subLabel}>Colour</Text>
+            <View style={s.colorGrid}>
+              {COLOR_PALETTE.map(c => (
+                <Pressable key={c} onPress={() => setNewColor(c)}
+                  style={[s.swatch, { backgroundColor: c }, newColor === c && s.swatchSelected]}>
+                  {newColor === c && <Feather name="check" size={10} color={colors.bg} />}
+                </Pressable>
+              ))}
+            </View>
 
             <Text style={s.subLabel}>Weight (XP impact)</Text>
             <View style={s.weightRow}>
               {[1, 2, 3, 4, 5].map(w => (
                 <Pressable key={w} onPress={() => setNewWeight(w)}
-                  style={[s.weightBtn, newWeight === w && s.weightBtnActive]}>
-                  <Text style={[s.weightText, newWeight === w && s.weightTextActive]}>{w}</Text>
+                  style={[s.weightBtn, newWeight === w && { borderColor: newColor, backgroundColor: `${newColor}15` }]}>
+                  <Text style={[s.weightText, newWeight === w && { color: newColor }]}>{w}</Text>
                 </Pressable>
               ))}
             </View>
@@ -85,42 +102,33 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
             <View style={s.toggleRow}>
               <View>
                 <Text style={s.toggleLabel}>Physical Activity</Text>
-                <Text style={s.toggleHint}>Restores Physical health when logged</Text>
+                <Text style={s.toggleHint}>+5% Physical health when logged</Text>
               </View>
-              <Switch
-                value={isPhysical}
-                onValueChange={setIsPhysical}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={colors.textPrimary}
-              />
+              <Switch value={isPhysical} onValueChange={setIsPhysical}
+                trackColor={{ false: colors.border, true: colors.primary }} thumbColor={colors.textPrimary} />
             </View>
-
             <View style={s.toggleRow}>
               <View>
                 <Text style={s.toggleLabel}>Recreational</Text>
-                <Text style={s.toggleHint}>Restores Mental health when logged</Text>
+                <Text style={s.toggleHint}>+5% Mental health when logged</Text>
               </View>
-              <Switch
-                value={isRecreational}
-                onValueChange={setIsRecreational}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor={colors.textPrimary}
-              />
+              <Switch value={isRecreational} onValueChange={setIsRecreational}
+                trackColor={{ false: colors.border, true: colors.accent }} thumbColor={colors.textPrimary} />
             </View>
 
-            <Text style={s.subLabel}>Attribute</Text>
+            <Text style={s.subLabel}>Attribute (for Game)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={s.attrRow}>
                 {ATTRIBUTES.map(attr => (
                   <Pressable key={attr} onPress={() => setNewAttr(attr)}
-                    style={[s.attrPill, newAttr === attr && s.attrPillActive]}>
-                    <Text style={[s.attrText, newAttr === attr && s.attrTextActive]}>{attr}</Text>
+                    style={[s.attrPill, newAttr === attr && { borderColor: newColor }]}>
+                    <Text style={[s.attrText, newAttr === attr && { color: newColor }]}>{attr}</Text>
                   </Pressable>
                 ))}
               </View>
             </ScrollView>
 
-            <Pressable onPress={handleAdd} style={s.addBtn}>
+            <Pressable onPress={handleAdd} style={[s.addBtn, { backgroundColor: newColor }]}>
               <Text style={s.addBtnText}>Add</Text>
             </Pressable>
           </View>
@@ -133,16 +141,12 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
 const s = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   pill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     borderWidth: 1, borderColor: colors.border,
     borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  pillActive: {
-    borderColor: colors.primary,
-    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35, shadowRadius: 8,
-  },
-  pillText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
-  pillTextActive: { color: colors.primary },
+  pillDot: { width: 5, height: 5, borderRadius: 3 },
+  pillText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm },
   addPill: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill,
     borderStyle: 'dashed', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
@@ -160,18 +164,16 @@ const s = StyleSheet.create({
     color: colors.textPrimary, backgroundColor: colors.bg,
   },
   subLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  swatch: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  swatchSelected: { borderWidth: 2, borderColor: colors.textPrimary },
   weightRow: { flexDirection: 'row', gap: spacing.sm },
   weightBtn: {
     flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
     paddingVertical: spacing.sm, alignItems: 'center',
   },
-  weightBtnActive: { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.08)' },
   weightText: { fontFamily: fonts.mono.bold, fontSize: fontSize.base, color: colors.textMuted },
-  weightTextActive: { color: colors.primary },
-  toggleRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 4,
-  },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   toggleLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textPrimary },
   toggleHint: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 },
   attrRow: { flexDirection: 'row', gap: spacing.sm },
@@ -179,15 +181,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: 6,
   },
-  attrPillActive: { borderColor: colors.accent },
-  attrText: {
-    fontFamily: fonts.mono.regular, fontSize: fontSize.sm,
-    color: colors.textMuted, textTransform: 'capitalize',
-  },
-  attrTextActive: { color: colors.accent },
-  addBtn: {
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    padding: spacing.md, alignItems: 'center', marginTop: spacing.sm,
-  },
+  attrText: { fontFamily: fonts.mono.regular, fontSize: fontSize.sm, color: colors.textMuted, textTransform: 'capitalize' },
+  addBtn: { borderRadius: radius.md, padding: spacing.md, alignItems: 'center', marginTop: spacing.sm },
   addBtnText: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.bg },
 });
