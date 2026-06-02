@@ -31,7 +31,20 @@ export function titleForLevel(level: number): string {
   return t.find(([n]) => level >= n)?.[1] ?? 'Unranked';
 }
 
+// Maps activity category to the 7-stat it primarily raises (auto-increment layer)
+// str=Strength agi=Agility foc=Focus wis=Wisdom spr=Spirituality per=Perception sta=Stamina
+export const CATEGORY_TO_STAT: Record<string, string> = {
+  workout:  'str',
+  coding:   'foc',
+  reading:  'wis',
+  study:    'wis',
+  admin:    'agi',
+  journal:  'spr',
+  devotion: 'spr',
+};
+
+// Legacy — kept for any remaining references; maps to the DB column name
 export const CATEGORY_TO_ATTRIBUTE: Record<string, 'strength' | 'wisdom' | 'focus' | 'agility' | 'resilience'> = {
   workout: 'strength', coding: 'focus', reading: 'wisdom',
-  study: 'wisdom', admin: 'agility', journal: 'resilience', devotion: 'wisdom',
+  study: 'wisdom', admin: 'agility', journal: 'resilience', devotion: 'resilience',
 };

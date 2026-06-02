@@ -16,7 +16,12 @@ type Props = {
   onAdded: () => void;
 };
 
-const ATTRIBUTES = ['strength', 'wisdom', 'focus', 'agility', 'resilience'] as const;
+// Maps to the 7-stat DB columns; shown in the "New Activity" modal as "Attribute (for Game)"
+const ATTRIBUTES = ['strength', 'wisdom', 'focus', 'agility', 'resilience', 'per_stat', 'sta_stat'] as const;
+const ATTR_LABELS: Record<string, string> = {
+  strength: 'STR', wisdom: 'WIS', focus: 'FOC',
+  agility: 'AGI', resilience: 'SPR', per_stat: 'PER', sta_stat: 'STA',
+};
 
 const COLOR_PALETTE = [
   '#38BDF8', '#34D399', '#A855F7', '#F97316',
@@ -122,7 +127,7 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
                 {ATTRIBUTES.map(attr => (
                   <Pressable key={attr} onPress={() => setNewAttr(attr)}
                     style={[s.attrPill, newAttr === attr && { borderColor: newColor }]}>
-                    <Text style={[s.attrText, newAttr === attr && { color: newColor }]}>{attr}</Text>
+                    <Text style={[s.attrText, newAttr === attr && { color: newColor }]}>{ATTR_LABELS[attr] ?? attr}</Text>
                   </Pressable>
                 ))}
               </View>

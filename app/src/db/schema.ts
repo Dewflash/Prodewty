@@ -228,6 +228,93 @@ function runMigrations() {
     }
     db.execSync('PRAGMA user_version = 8');
   }
+
+  if (version < 9) {
+    // Rename gp → ap (can't rename in SQLite — add new column, copy value)
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN ap INTEGER NOT NULL DEFAULT 0`); } catch {}
+    db.execSync(`UPDATE rpg_state SET ap = COALESCE(gp, 0)`);
+
+    // New 7-stat columns (per, sta) — str/agi/foc/wis/resilience already exist
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN per_stat INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN sta_stat INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // Game vitals
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN hp INTEGER NOT NULL DEFAULT 100`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN hp_max INTEGER NOT NULL DEFAULT 100`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN mp INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN job TEXT NOT NULL DEFAULT '-'`); } catch {}
+
+    // Dungeon templates (E-rank seed)
+    db.execSync(`CREATE TABLE IF NOT EXISTS dungeons (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      name            TEXT NOT NULL,
+      rank            TEXT NOT NULL DEFAULT 'E',
+      flavor_text     TEXT,
+      primary_stat    TEXT NOT NULL,
+      secondary_stat  TEXT,
+      difficulty      INTEGER NOT NULL DEFAULT 5,
+      coin_reward     INTEGER NOT NULL DEFAULT 20,
+      item_drop_chance REAL NOT NULL DEFAULT 0.25,
+      item_name       TEXT,
+      item_description TEXT,
+      cooldown_hours  INTEGER NOT NULL DEFAULT 48
+    )`);
+
+    db.execSync(`CREATE TABLE IF NOT EXISTS dungeon_runs (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      dungeon_id   INTEGER NOT NULL,
+      completed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      result       TEXT NOT NULL DEFAULT 'win',
+      coins_earned INTEGER NOT NULL DEFAULT 0,
+      hp_change    INTEGER NOT NULL DEFAULT 0,
+      item_dropped TEXT
+    )`);
+
+    db.execSync(`CREATE TABLE IF NOT EXISTS quests (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      category     TEXT NOT NULL,
+      quest_type   TEXT NOT NULL DEFAULT 'weekly',
+      status       TEXT NOT NULL DEFAULT 'active',
+      generated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      coin_reward  INTEGER NOT NULL DEFAULT 30,
+      stat_hint    TEXT
+    )`);
+
+    db.execSync(`CREATE TABLE IF NOT EXISTS quest_completions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      quest_id    INTEGER NOT NULL,
+      completed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      coins_earned INTEGER NOT NULL DEFAULT 0
+    )`);
+
+    db.execSync(`CREATE TABLE IF NOT EXISTS game_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )`);
+
+    // Seed E-rank dungeons
+    const dungeonSeeds = [
+      ['Abandoned Mine',     'E', 'Stone golems roam these tunnels. Brute force is your ally.',                     'str', 'sta',  5, 20, 0.25, 'Golem Core',     '+2 STR when equipped.'],
+      ['Shadow Thicket',     'E', 'The forest shifts and deceives. Only the swift and perceptive survive.',          'agi', 'per',  5, 20, 0.25, 'Phantom Leaf',   '+2 AGI when equipped.'],
+      ['Mystic Archive',     'E', 'Ink spirits guard forbidden tomes. Knowledge defeats them.',                     'wis', 'foc',  5, 20, 0.25, 'Torn Grimoire',  '+2 WIS when equipped.'],
+      ['Spirit Sanctum',    'E', 'A hollow shrine pulsing with residual mana. Inner strength resonates here.',     'spr', 'wis',  5, 20, 0.25, 'Prayer Bead',    '+2 SPR when equipped.'],
+      ['Storm Ridge',       'E', 'Thin air and brutal winds. Endurance above all else.',                           'sta', 'str',  5, 20, 0.25, 'Iron Band',      '+2 STA when equipped.'],
+      ['Veil of Perception','E', 'A dungeon that exists between worlds. Only the perceptive find the exit.',       'per', 'spr',  5, 20, 0.25, 'Obsidian Shard', '+2 PER when equipped.'],
+    ];
+    for (const [nm, rk, fl, ps, ss, df, cr, dc, inm, idc] of dungeonSeeds) {
+      db.runSync(
+        `INSERT OR IGNORE INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, difficulty, coin_reward, item_drop_chance, item_name, item_description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        nm, rk, fl, ps, ss, df, cr, dc, inm, idc,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 9');
+  }
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────

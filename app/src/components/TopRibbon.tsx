@@ -59,6 +59,9 @@ export function TopRibbon({ title }: Props) {
           <Pressable style={s.iconBtn} onPress={() => router.push('/inventory')}>
             <Feather name="archive" size={20} color={colors.textPrimary} />
           </Pressable>
+          <Pressable style={s.iconBtn} onPress={() => router.push('/game-log')}>
+            <Feather name="activity" size={20} color={colors.textPrimary} />
+          </Pressable>
         </View>
 
         {/* Centre: page name */}
