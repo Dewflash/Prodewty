@@ -1,5 +1,5 @@
 import { db } from './schema';
-import { getRPGState } from './rpg';
+import { getRPGState, applyXP } from './rpg';
 import { getHealthState } from './health';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -17,16 +17,30 @@ export type Dungeon = {
   item_name: string | null;
   item_description: string | null;
   cooldown_hours: number;
+  objective_text: string | null;
+  duration_mins: number;
+  category: string;
 };
 
 export type DungeonRun = {
   id: number;
   dungeon_id: number;
   completed_at: string;
-  result: 'win' | 'fail';
+  result: string;
   coins_earned: number;
   hp_change: number;
   item_dropped: string | null;
+  started_at: string | null;
+  status: string;
+};
+
+export type ActiveDungeonRun = {
+  run_id: number;
+  dungeon_id: number;
+  started_at: string;
+  dungeon_name: string;
+  duration_mins: number;
+  objective_text: string | null;
 };
 
 export type Quest = {
@@ -39,6 +53,7 @@ export type Quest = {
   generated_at: string;
   coin_reward: number;
   stat_hint: string | null;
+  accepted_at: string | null;
 };
 
 export type GameLog = {
@@ -58,7 +73,22 @@ export type GameStats = {
   sta: number; sta_ap: number; sta_auto: number;
 };
 
-// ─── Stats computation ────────────────────────────────────────────────────────
+export type DungeonClearResult = {
+  xpEarned: number;
+  coinsEarned: number;
+  itemDropped: string | null;
+  itemDescription: string | null;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function sqlNow(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+}
+
+// ─── Computed stats ───────────────────────────────────────────────────────────
 
 function logCount(likePat: string): number {
   try {
@@ -79,20 +109,20 @@ function totalActivityCount(): number {
 
 export function getComputedStats(): GameStats {
   const rpg = getRPGState();
-  const workout  = logCount('%"Workout"%');
-  const coding   = logCount('%"Coding"%');
-  const studyEtc = (logCount('%"Study"%') + logCount('%"Reading"%') + logCount('%"Devotion"%'));
-  const admin    = logCount('%"Admin"%');
-  const journalEtc = (logCount('%"Journal"%') + logCount('%"Devotion"%'));
-  const total    = totalActivityCount();
+  const workout    = logCount('%"Workout"%');
+  const coding     = logCount('%"Coding"%');
+  const studyEtc   = logCount('%"Study"%') + logCount('%"Reading"%') + logCount('%"Devotion"%');
+  const admin      = logCount('%"Admin"%');
+  const journalEtc = logCount('%"Journal"%') + logCount('%"Devotion"%');
+  const total      = totalActivityCount();
 
-  const str_ap = rpg.strength ?? 0;  const str_auto = Math.floor(workout  / 5);
-  const agi_ap = rpg.agility  ?? 0;  const agi_auto = Math.floor(admin    / 7);
-  const foc_ap = rpg.focus    ?? 0;  const foc_auto = Math.floor(coding   / 5);
-  const wis_ap = rpg.wisdom   ?? 0;  const wis_auto = Math.floor(studyEtc / 5);
-  const spr_ap = rpg.resilience ?? 0; const spr_auto = Math.floor(journalEtc / 5);
-  const per_ap = rpg.per_stat ?? 0;  const per_auto = Math.floor(total    / 15);
-  const sta_ap = rpg.sta_stat ?? 0;  const sta_auto = Math.floor(workout  / 7);
+  const str_ap = rpg.strength    ?? 0; const str_auto = Math.floor(workout    / 5);
+  const agi_ap = rpg.agility     ?? 0; const agi_auto = Math.floor(admin      / 7);
+  const foc_ap = rpg.focus       ?? 0; const foc_auto = Math.floor(coding     / 5);
+  const wis_ap = rpg.wisdom      ?? 0; const wis_auto = Math.floor(studyEtc   / 5);
+  const spr_ap = rpg.resilience  ?? 0; const spr_auto = Math.floor(journalEtc / 5);
+  const per_ap = rpg.per_stat    ?? 0; const per_auto = Math.floor(total      / 15);
+  const sta_ap = rpg.sta_stat    ?? 0; const sta_auto = Math.floor(workout    / 7);
 
   return {
     str: str_ap + str_auto, str_ap, str_auto,
@@ -111,12 +141,11 @@ export function getFatigue(): boolean {
       "SELECT energy_rating FROM activity_logs WHERE entry_type = 'mood' AND energy_rating > 0 ORDER BY log_date DESC LIMIT 7",
     );
     if (rows.length < 3) return false;
-    const avg = rows.reduce((s, r) => s + r.energy_rating, 0) / rows.length;
-    return avg <= 4;
+    return rows.reduce((s, r) => s + r.energy_rating, 0) / rows.length <= 4;
   } catch { return false; }
 }
 
-// ─── Stat allocation (AP → stat) ─────────────────────────────────────────────
+// ─── Stat allocation ──────────────────────────────────────────────────────────
 
 const STAT_COLUMN: Record<string, string> = {
   str: 'strength', agi: 'agility', foc: 'focus',
@@ -132,7 +161,7 @@ export function allocateStat(statKey: string): 'ok' | 'no_ap' | 'invalid_stat' {
   return 'ok';
 }
 
-// ─── Death check ──────────────────────────────────────────────────────────────
+// ─── Death ────────────────────────────────────────────────────────────────────
 
 export type DeathCause = 'hp' | 'emotional' | 'physical' | 'mental' | null;
 
@@ -140,23 +169,74 @@ export function getDeathCause(): DeathCause {
   try {
     const rpg    = getRPGState();
     const health = getHealthState();
-    if ((rpg.hp ?? 100) <= 0) return 'hp';
-    if (health.emotional <= 0) return 'emotional';
-    if (health.physical  <= 0) return 'physical';
-    if (health.mental    <= 0) return 'mental';
+    if ((rpg.hp ?? 100) <= 0)    return 'hp';
+    if (health.emotional <= 0)   return 'emotional';
+    if (health.physical  <= 0)   return 'physical';
+    if (health.mental    <= 0)   return 'mental';
     return null;
   } catch { return null; }
 }
 
 export function handleDeath(cause: DeathCause): void {
   const msg = cause === 'hp'
-    ? 'HP reached zero during a quest.'
+    ? 'HP reached zero.'
     : `${cause?.charAt(0).toUpperCase()}${cause?.slice(1)} health reached zero.`;
   addGameLog('death', msg);
-  // Penalty TBD — reset HP to 50 for now
-  db.runSync('UPDATE rpg_state SET hp = 50 WHERE id = 1');
-  // Clear health_critical flag
+  // HP set to 0 — only revival quest can restore it
+  db.runSync('UPDATE rpg_state SET hp = 0, death_acknowledged = 0 WHERE id = 1');
   try { db.runSync('UPDATE health_state SET health_critical = 0 WHERE id = 1'); } catch {}
+}
+
+export function acknowledgeDeathIgnore(): void {
+  db.runSync('UPDATE rpg_state SET death_acknowledged = 1 WHERE id = 1');
+}
+export function resetDeathIgnore(): void {
+  db.runSync('UPDATE rpg_state SET death_acknowledged = 0 WHERE id = 1');
+}
+
+// ─── Revival quests ───────────────────────────────────────────────────────────
+
+export type RevivalQuest = {
+  id: number;
+  title: string;
+  description: string | null;
+  category: string;
+  hp_restore: number;
+};
+
+export function getRevivalQuests(): RevivalQuest[] {
+  return db.getAllSync<RevivalQuest>('SELECT * FROM revival_quests WHERE is_active = 1 ORDER BY hp_restore DESC');
+}
+
+export function completeRevivalQuest(quest: RevivalQuest): void {
+  // Restore HP and any zeroed health bars
+  db.runSync(
+    `UPDATE rpg_state SET hp = MIN(hp_max, hp + ?), death_acknowledged = 0 WHERE id = 1`,
+    quest.hp_restore,
+  );
+  try {
+    db.runSync(
+      `UPDATE health_state SET
+         emotional = MAX(20, emotional),
+         physical  = MAX(20, physical),
+         mental    = MAX(20, mental)
+       WHERE id = 1`,
+    );
+  } catch {}
+  // Log the revival activity
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const ts    = `${today} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  try {
+    db.runSync(
+      `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
+       VALUES (?, ?, 'daily', 'quest', ?, ?, ?, 15, 0)`,
+      quest.category, `Revival: ${quest.title}`, today, ts,
+      JSON.stringify([quest.category]),
+    );
+  } catch {}
+  addGameLog('quest_complete', `Revival quest completed: ${quest.title}. HP restored.`);
 }
 
 // ─── Dungeons ─────────────────────────────────────────────────────────────────
@@ -165,67 +245,58 @@ export function getDungeons(): Dungeon[] {
   return db.getAllSync<Dungeon>('SELECT * FROM dungeons ORDER BY id ASC');
 }
 
-export function getLastRun(dungeonId: number): DungeonRun | null {
+function getLastCompletedRun(dungeonId: number): DungeonRun | null {
   return db.getFirstSync<DungeonRun>(
-    'SELECT * FROM dungeon_runs WHERE dungeon_id = ? ORDER BY completed_at DESC LIMIT 1',
+    "SELECT * FROM dungeon_runs WHERE dungeon_id = ? AND status IN ('completed','failed') ORDER BY completed_at DESC LIMIT 1",
     dungeonId,
   ) ?? null;
 }
 
 export function isDungeonOnCooldown(dungeonId: number, cooldownHours: number): boolean {
-  const last = getLastRun(dungeonId);
+  const last = getLastCompletedRun(dungeonId);
   if (!last) return false;
   const hoursAgo = (Date.now() - new Date(last.completed_at).getTime()) / 3600000;
   return hoursAgo < cooldownHours;
 }
 
-function applyHealthDebuffs(stats: GameStats): GameStats {
-  const h = getHealthState();
-  const debuff = (pct: number, threshold = 60) => pct < threshold ? 0.8 : 1.0;
-  const em = debuff(h.emotional);
-  const ph = debuff(h.physical);
-  const mn = debuff(h.mental);
-  return {
-    ...stats,
-    str: Math.floor(stats.str * ph), str_ap: stats.str_ap, str_auto: stats.str_auto,
-    agi: Math.floor(stats.agi * ph), agi_ap: stats.agi_ap, agi_auto: stats.agi_auto,
-    foc: Math.floor(stats.foc * Math.min(em, mn)), foc_ap: stats.foc_ap, foc_auto: stats.foc_auto,
-    wis: Math.floor(stats.wis * em), wis_ap: stats.wis_ap, wis_auto: stats.wis_auto,
-    spr: Math.floor(stats.spr * mn), spr_ap: stats.spr_ap, spr_auto: stats.spr_auto,
-    per: Math.floor(stats.per * Math.min(em, mn)), per_ap: stats.per_ap, per_auto: stats.per_auto,
-    sta: Math.floor(stats.sta * ph), sta_ap: stats.sta_ap, sta_auto: stats.sta_auto,
-  };
+export function getDungeonCooldownRemaining(dungeonId: number, cooldownHours: number): string | null {
+  const last = getLastCompletedRun(dungeonId);
+  if (!last) return null;
+  const elapsed  = (Date.now() - new Date(last.completed_at).getTime()) / 3600000;
+  const remaining = cooldownHours - elapsed;
+  if (remaining <= 0) return null;
+  if (remaining >= 24) return `${Math.ceil(remaining / 24)}d`;
+  return `${Math.ceil(remaining)}h`;
 }
 
-export type DungeonResult = {
-  win: boolean;
-  playerPower: number;
-  dungeonPower: number;
-  hpChange: number;
-  coinsEarned: number;
-  itemDropped: string | null;
-  itemDescription: string | null;
-};
+export function startDungeon(dungeonId: number): number {
+  const now = sqlNow();
+  db.runSync(
+    `INSERT INTO dungeon_runs (dungeon_id, started_at, status, result, coins_earned, hp_change, completed_at)
+     VALUES (?, ?, 'active', 'active', 0, 0, ?)`,
+    dungeonId, now, now,
+  );
+  return db.getFirstSync<{ id: number }>('SELECT last_insert_rowid() as id')?.id ?? 0;
+}
 
-export function runDungeon(dungeon: Dungeon): DungeonResult {
-  const raw   = getComputedStats();
-  const stats = applyHealthDebuffs(raw);
+export function getActiveDungeonRun(): ActiveDungeonRun | null {
+  return db.getFirstSync<ActiveDungeonRun>(
+    `SELECT dr.id as run_id, dr.dungeon_id, dr.started_at,
+            d.name as dungeon_name, d.duration_mins, d.objective_text
+     FROM dungeon_runs dr
+     JOIN dungeons d ON d.id = dr.dungeon_id
+     WHERE dr.status = 'active'
+     ORDER BY dr.id DESC LIMIT 1`,
+  ) ?? null;
+}
 
-  const primaryVal   = stats[dungeon.primary_stat   as keyof GameStats] as number ?? 0;
-  const secondaryVal = dungeon.secondary_stat ? (stats[dungeon.secondary_stat as keyof GameStats] as number ?? 0) : 0;
-
-  const playerPower  = primaryVal * 2 + secondaryVal + Math.floor(Math.random() * 6);
-  const dungeonPower = dungeon.difficulty * 3 + Math.floor(Math.random() * 4);
-  const win          = playerPower >= dungeonPower;
-
-  const hpChange    = win ? 0 : -20;
-  const coinsEarned = win ? dungeon.coin_reward : Math.floor(dungeon.coin_reward * 0.2);
-
+export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClearResult {
+  const xpEarned    = 45;
+  const coinsEarned = dungeon.coin_reward;
   let itemDropped: string | null = null;
-  let itemDescription: string | null = null;
-  if (win && dungeon.item_name && Math.random() < dungeon.item_drop_chance) {
-    itemDropped    = dungeon.item_name;
-    itemDescription = dungeon.item_description;
+
+  if (dungeon.item_name && Math.random() < dungeon.item_drop_chance) {
+    itemDropped = dungeon.item_name;
     try {
       db.runSync(
         `INSERT INTO inventory (item_name, item_type, description) VALUES (?, 'equipment', ?)`,
@@ -234,41 +305,68 @@ export function runDungeon(dungeon: Dungeon): DungeonResult {
     } catch {}
   }
 
-  // Save run
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const now = new Date();
-  const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  const now = sqlNow();
   db.runSync(
-    `INSERT INTO dungeon_runs (dungeon_id, completed_at, result, coins_earned, hp_change, item_dropped)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    dungeon.id, ts, win ? 'win' : 'fail', coinsEarned, hpChange, itemDropped,
+    `UPDATE dungeon_runs SET status = 'completed', result = 'win', completed_at = ?, coins_earned = ?, item_dropped = ? WHERE id = ?`,
+    now, coinsEarned, itemDropped, runId,
   );
-
-  // Apply HP change
-  db.runSync('UPDATE rpg_state SET hp = MAX(0, MIN(hp_max, hp + ?)) WHERE id = 1', hpChange);
-
-  // Apply coins
   db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', coinsEarned);
 
-  // Log event
+  try {
+    db.runSync(
+      `INSERT INTO activity_logs (entry_type, categories, category, description, duration_mins, xp_awarded, mood_rating, log_date)
+       VALUES ('dungeon', ?, ?, ?, ?, ?, 0, date('now','localtime'))`,
+      JSON.stringify([dungeon.category]),
+      dungeon.category,
+      `${dungeon.rank}-Rank Gate: ${dungeon.name}`,
+      dungeon.duration_mins,
+      xpEarned,
+    );
+  } catch {}
+
+  try { applyXP(xpEarned, dungeon.category); } catch {}
+
   addGameLog(
-    win ? 'dungeon_win' : 'dungeon_fail',
-    `${win ? 'Cleared' : 'Failed'} ${dungeon.name}. +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}`,
+    'dungeon_win',
+    `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}`,
   );
 
-  return { win, playerPower, dungeonPower, hpChange, coinsEarned, itemDropped, itemDescription };
+  return { xpEarned, coinsEarned, itemDropped, itemDescription: dungeon.item_description };
 }
 
-// ─── Quest board ──────────────────────────────────────────────────────────────
+export function failDungeon(runId: number, dungeon: Dungeon): void {
+  const now = sqlNow();
+  db.runSync(
+    `UPDATE dungeon_runs SET status = 'failed', result = 'fail', completed_at = ?, hp_change = -20 WHERE id = ?`,
+    now, runId,
+  );
+  db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - 20) WHERE id = 1');
+  addGameLog('dungeon_fail', `Gate Failed: ${dungeon.name}. HP -20.`);
+}
 
-export function getActiveQuests(): Quest[] {
+export function abandonDungeon(runId: number): void {
+  const now = sqlNow();
+  db.runSync(
+    `UPDATE dungeon_runs SET status = 'abandoned', result = 'abandoned', completed_at = ? WHERE id = ?`,
+    now, runId,
+  );
+}
+
+// ─── Quests ───────────────────────────────────────────────────────────────────
+
+export function getPendingQuests(): Quest[] {
   return db.getAllSync<Quest>(
-    "SELECT * FROM quests WHERE status = 'active' ORDER BY generated_at DESC",
+    "SELECT * FROM quests WHERE status = 'pending' ORDER BY generated_at DESC",
+  );
+}
+
+export function getAcceptedQuests(): Quest[] {
+  return db.getAllSync<Quest>(
+    "SELECT * FROM quests WHERE status = 'accepted' ORDER BY accepted_at DESC",
   );
 }
 
 export function generateQuests(): void {
-  // Find categories logged ≥2 times in last 28 days but not in last 7 days
   try {
     const candidates = db.getAllSync<{ category: string; times: number }>(
       `SELECT json_extract(categories, '$[0]') as category, count(*) as times
@@ -288,33 +386,30 @@ export function generateQuests(): void {
        LIMIT 3`,
     );
 
-    const existing = getActiveQuests().map(q => q.category);
+    const existing = db.getAllSync<{ category: string }>(
+      "SELECT category FROM quests WHERE status IN ('pending','accepted')",
+    ).map(r => r.category);
 
     for (const { category } of candidates) {
       if (existing.includes(category)) continue;
-      const reward = 30;
       db.runSync(
-        `INSERT INTO quests (title, description, category, quest_type, coin_reward, stat_hint)
-         VALUES (?, ?, ?, 'weekly', ?, ?)`,
+        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status)
+         VALUES (?, ?, ?, 'weekly', 30, 'pending')`,
         `Log: ${category}`,
-        `You haven't logged ${category} this week. Complete a ${category} session.`,
+        `You haven't logged ${category} recently. Complete a ${category} session.`,
         category,
-        reward,
-        null,
       );
     }
 
-    // Onboarding quests if no logs at all
     const total = db.getFirstSync<{ n: number }>('SELECT count(*) as n FROM activity_logs')?.n ?? 0;
     if (total === 0 && existing.length === 0) {
-      const starters = [
-        ['First Activity', 'Log any activity to begin your journey.', 'Any', 20],
-        ['Record Your Mood', 'Fill in today\'s mood, energy, and productivity.', 'Mood', 15],
-      ] as const;
-      for (const [t, d, c, r] of starters) {
+      for (const [t, d, c, r] of [
+        ['First Activity',  'Log any activity to begin your journey.',           'Any',  20],
+        ['Record Your Mood', "Fill in today's mood, energy, and productivity.", 'Mood', 15],
+      ] as const) {
         if (!existing.includes(c)) {
           db.runSync(
-            `INSERT INTO quests (title, description, category, quest_type, coin_reward) VALUES (?, ?, ?, 'daily', ?)`,
+            `INSERT INTO quests (title, description, category, quest_type, coin_reward, status) VALUES (?, ?, ?, 'daily', ?, 'pending')`,
             t, d, c, r,
           );
         }
@@ -323,42 +418,69 @@ export function generateQuests(): void {
   } catch {}
 }
 
-export function completeQuest(questId: number): void {
+export function acceptQuest(questId: number): void {
+  db.runSync(`UPDATE quests SET status = 'accepted', accepted_at = ? WHERE id = ?`, sqlNow(), questId);
+}
+
+export function completeQuest(questId: number, notes?: string): void {
   const quest = db.getFirstSync<Quest>('SELECT * FROM quests WHERE id = ?', questId);
   if (!quest) return;
+
+  const xpEarned = 30;
   db.runSync(`UPDATE quests SET status = 'completed' WHERE id = ?`, questId);
   db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?, ?)`, questId, quest.coin_reward);
   db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', quest.coin_reward);
-  addGameLog('quest_complete', `Quest completed: ${quest.title}. +${quest.coin_reward} coins.`);
+
+  const desc = notes?.trim() ? `${quest.title} — ${notes.trim()}` : quest.title;
+  try {
+    db.runSync(
+      `INSERT INTO activity_logs (entry_type, categories, category, description, xp_awarded, mood_rating, log_date)
+       VALUES ('quest', ?, ?, ?, ?, 0, date('now','localtime'))`,
+      JSON.stringify([quest.category]), quest.category, desc, xpEarned,
+    );
+  } catch {}
+
+  try { applyXP(xpEarned, quest.category); } catch {}
+
+  addGameLog('quest_complete', `Quest completed: ${quest.title}. +${xpEarned} XP · +${quest.coin_reward} coins.`);
+}
+
+export function skipQuest(questId: number): void {
+  db.runSync(`UPDATE quests SET status = 'skipped' WHERE id = ?`, questId);
 }
 
 export function deleteQuest(questId: number): void {
   db.runSync(`UPDATE quests SET status = 'deleted' WHERE id = ?`, questId);
 }
 
-export function skipQuest(questId: number): void {
-  // Skip: remove for today. The generator will re-create it tomorrow if still relevant.
-  db.runSync(`UPDATE quests SET status = 'skipped' WHERE id = ?`, questId);
-}
-
 // ─── Game log ─────────────────────────────────────────────────────────────────
 
 export function getGameLogs(): GameLog[] {
-  return db.getAllSync<GameLog>(
-    'SELECT * FROM game_logs ORDER BY created_at DESC LIMIT 100',
-  );
+  return db.getAllSync<GameLog>('SELECT * FROM game_logs ORDER BY created_at DESC LIMIT 100');
 }
 
 export function addGameLog(event_type: string, description: string): void {
   try { db.runSync(`INSERT INTO game_logs (event_type, description) VALUES (?, ?)`, event_type, description); } catch {}
 }
 
-// ─── Quest count ──────────────────────────────────────────────────────────────
+// ─── Counts ───────────────────────────────────────────────────────────────────
+
 export function getQuestCompletedCount(): number {
   return db.getFirstSync<{ n: number }>('SELECT count(*) as n FROM quest_completions')?.n ?? 0;
 }
+
 export function getDeathCount(): number {
   return db.getFirstSync<{ n: number }>(
-    "SELECT count(*) as n FROM game_logs WHERE event_type = 'death'"
+    "SELECT count(*) as n FROM game_logs WHERE event_type = 'death'",
   )?.n ?? 0;
+}
+export function getAbandonedCount(): number {
+  return db.getFirstSync<{ n: number }>(
+    "SELECT count(*) as n FROM dungeon_runs WHERE status = 'abandoned'",
+  )?.n ?? 0;
+}
+export function getSkippedQuests(): Quest[] {
+  return db.getAllSync<Quest>(
+    "SELECT * FROM quests WHERE status = 'skipped' ORDER BY generated_at DESC LIMIT 10",
+  );
 }

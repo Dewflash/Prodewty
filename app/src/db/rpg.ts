@@ -5,26 +5,31 @@ export type RPGState = {
   current_level: number;
   total_xp: number;
   xp_to_next_level: number;
-  unallocated_points: number; // legacy — kept for DB compat, use `ap` instead
-  // 7-stat AP portions (auto-increment added dynamically in getComputedStats)
-  strength: number;   // STR AP portion
-  wisdom: number;     // WIS AP portion
-  focus: number;      // FOC AP portion
-  agility: number;    // AGI AP portion
-  resilience: number; // SPR AP portion
-  per_stat: number;   // PER AP portion
-  sta_stat: number;   // STA AP portion
+  unallocated_points: number;
+  strength: number;
+  wisdom: number;
+  focus: number;
+  agility: number;
+  resilience: number;
+  per_stat: number;
+  sta_stat: number;
   title: string;
   streak_days: number;
   last_active_date: string | null;
   highest_xp_attained: number;
   coins: number;
-  ap: number;         // Ability Points — earned on level-up, spent on 7 stats
+  ap: number;
   streak_freezes: number;
   hp: number;
   hp_max: number;
   mp: number;
   job: string;
+  // v11
+  self_destruct_count: number;
+  last_self_destruct: string | null;
+  current_mood: string;
+  level_up_pending: number;
+  death_acknowledged: number;
 };
 
 export function getRPGState(): RPGState {
@@ -50,8 +55,51 @@ export function checkStreakFreeze(): void {
   } catch {}
 }
 
+export function isInDeathState(): boolean {
+  try {
+    const rpg = getRPGState();
+    if ((rpg.hp ?? 100) <= 0) return true;
+    const h = db.getFirstSync<{ e: number; p: number; m: number }>(
+      'SELECT emotional as e, physical as p, mental as m FROM health_state WHERE id = 1',
+    );
+    if (!h) return false;
+    return h.e <= 0 || h.p <= 0 || h.m <= 0;
+  } catch { return false; }
+}
+
+export function selfDestruct(): { count: number; date: string } {
+  const today = new Date().toISOString().split('T')[0];
+  db.runSync(
+    `UPDATE rpg_state SET self_destruct_count = self_destruct_count + 1, last_self_destruct = ? WHERE id = 1`,
+    today,
+  );
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+  const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  try {
+    db.runSync(
+      `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
+       VALUES ('', '', 'daily', 'self_destruct', ?, ?, '[]', 0, 0)`,
+      today, ts,
+    );
+  } catch {}
+  const state = getRPGState();
+  return { count: state.self_destruct_count, date: today };
+}
+
+export function setCurrentMood(mood: string): void {
+  db.runSync(`UPDATE rpg_state SET current_mood = ? WHERE id = 1`, mood);
+}
+
+export function clearLevelUpPending(): void {
+  db.runSync(`UPDATE rpg_state SET level_up_pending = 0 WHERE id = 1`);
+}
+
 export function applyXP(xp: number, _categoryName: string): { levelUp: boolean; newLevel?: number; state: RPGState } {
   const state = getRPGState();
+
+  // Block XP gain when in death state (HP=0 or any health bar=0)
+  if (isInDeathState()) return { levelUp: false, state };
   let { current_level, total_xp, xp_to_next_level } = state;
 
   total_xp += xp;
@@ -94,11 +142,13 @@ export function applyXP(xp: number, _categoryName: string): { levelUp: boolean; 
        title = ?, streak_days = ?, last_active_date = ?,
        ap = COALESCE(ap, 0) + ?,
        coins = COALESCE(coins, 0) + ?,
-       hp = MIN(COALESCE(hp_max, 100), COALESCE(hp, 100) + ?)
+       hp = MIN(COALESCE(hp_max, 100), COALESCE(hp, 100) + ?),
+       level_up_pending = CASE WHEN ? > 0 THEN ? ELSE level_up_pending END
      WHERE id = 1`,
     current_level, total_xp, xp_to_next_level,
     title, streak_days, today,
     apGained, coinsGained, hpRegen,
+    levelsGained, levelUp ? current_level : 0,
   );
   try {
     db.runSync(

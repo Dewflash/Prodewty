@@ -158,6 +158,28 @@ export function getHealthXPMultiplier(): number {
   return 1.0;
 }
 
+// Called on each mood log submission — mood/energy/productivity shift the health bars
+export function applyMoodHealthEffects(mood: number, energy: number, productivity: number): void {
+  try {
+    // Emotional: driven by mood
+    const emotionalDelta = mood < 5 ? -5 : mood >= 8 ? 4 : 2;
+    // Physical: driven by energy
+    const physicalDelta  = energy < 5 ? -5 : energy >= 8 ? 4 : 2;
+    // Mental: mood + productivity (overworking above 7 hurts mental)
+    const mentalFromMood = mood < 5 ? -2 : 2;
+    const mentalFromProd = productivity > 7 ? -3 : productivity >= 5 ? 3 : -4;
+    const mentalDelta    = mentalFromMood + mentalFromProd;
+    db.runSync(
+      `UPDATE health_state SET
+         emotional = MAX(0, MIN(100, emotional + ?)),
+         physical  = MAX(0, MIN(100, physical  + ?)),
+         mental    = MAX(0, MIN(100, mental    + ?))
+       WHERE id = 1`,
+      emotionalDelta, physicalDelta, mentalDelta,
+    );
+  } catch {}
+}
+
 export function getHealthWarning(): string | null {
   const h = getHealthState();
   const min = Math.min(h.emotional, h.physical, h.mental);

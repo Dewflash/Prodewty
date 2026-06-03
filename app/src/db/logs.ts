@@ -1,7 +1,7 @@
 import { db } from './schema';
 import { calculateXP } from '../services/xpEngine';
 import { applyXP } from './rpg';
-import { applyHealthDecay, applyLoggingHealthBoost, getHealthXPMultiplier, getHealthWarning } from './health';
+import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier, getHealthWarning } from './health';
 
 const MOOD_XP    = 20;
 const JOURNAL_XP = 15;
@@ -223,6 +223,7 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
       journalXP, existing.id,
     );
 
+    applyMoodHealthEffects(input.mood_rating, input.energy_rating, input.productivity_rating);
     if (journalXP > 0) applyXP(journalXP, 'journal');
     return { xp_awarded: journalXP, level_up: false, health_warning: getHealthWarning() };
   }
@@ -245,6 +246,7 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
     xp,
   );
 
+  applyMoodHealthEffects(input.mood_rating, input.energy_rating, input.productivity_rating);
   const { levelUp } = applyXP(xp, 'journal');
   return { xp_awarded: xp, level_up: levelUp, health_warning: getHealthWarning() };
 }
@@ -295,40 +297,101 @@ export type CategoryEffect = {
 
 export function getCategoryEffects(): CategoryEffect[] {
   try {
-    const baseline = db.getFirstSync<{ m: number; e: number }>(
-      "SELECT avg(mood_rating) as m, avg(energy_rating) as e FROM activity_logs WHERE entry_type = 'mood' AND mood_rating > 0",
+    // All mood logs indexed by date for O(1) lookup
+    const allMoods = db.getAllSync<{ log_date: string; mood_rating: number; energy_rating: number }>(
+      "SELECT log_date, mood_rating, energy_rating FROM activity_logs WHERE entry_type = 'mood' AND mood_rating > 0 ORDER BY log_date ASC",
     );
+    if (allMoods.length < 3) return [];
+
+    const moodByDate: Record<string, { mood: number; energy: number }> = {};
+    const sortedDates: string[] = [];
+    for (const m of allMoods) {
+      moodByDate[m.log_date] = { mood: m.mood_rating, energy: m.energy_rating };
+      sortedDates.push(m.log_date);
+    }
 
     const cats = db.getAllSync<{ name: string }>(
-      "SELECT DISTINCT json_extract(categories, '$[0]') as name FROM activity_logs WHERE entry_type = 'activity' AND categories != '[]' AND categories IS NOT NULL",
+      `SELECT DISTINCT json_extract(categories, '$[0]') as name
+       FROM activity_logs
+       WHERE entry_type IN ('activity','dungeon','quest')
+         AND categories != '[]' AND categories IS NOT NULL`,
     ).map(r => r.name).filter(Boolean);
 
     const results: CategoryEffect[] = [];
+
     for (const cat of cats) {
-      const row = db.getFirstSync<{ nextMood: number; nextEnergy: number; cnt: number }>(
-        `SELECT avg(m.mood_rating) as nextMood, avg(m.energy_rating) as nextEnergy, count(*) as cnt
-         FROM activity_logs a
-         JOIN activity_logs m
-           ON date(m.log_date) = date(a.log_date, '+1 day')
-           AND m.entry_type = 'mood'
-           AND m.mood_rating > 0
-         WHERE a.entry_type = 'activity'
-           AND a.categories LIKE ?`,
+      const actDates = db.getAllSync<{ log_date: string }>(
+        `SELECT log_date FROM activity_logs
+         WHERE entry_type IN ('activity','dungeon','quest')
+           AND categories LIKE ? AND log_date IS NOT NULL
+         ORDER BY log_date ASC`,
         `%"${cat}"%`,
-      );
-      if (row && row.cnt >= 3) {
-        results.push({
-          category: cat,
-          sampleCount: row.cnt,
-          nextDayMood:    row.nextMood    ? Math.round(row.nextMood    * 10) / 10 : null,
-          nextDayEnergy:  row.nextEnergy  ? Math.round(row.nextEnergy  * 10) / 10 : null,
-          baselineMood:   baseline?.m     ? Math.round(baseline.m      * 10) / 10 : null,
-          baselineEnergy: baseline?.e     ? Math.round(baseline.e      * 10) / 10 : null,
-        });
+      ).map(r => r.log_date);
+
+      if (actDates.length < 2) continue;
+
+      const preMoods: number[] = [];
+      const preEnergies: number[] = [];
+
+      for (const date of actDates) {
+        // Closest mood log strictly before this activity date
+        const prior = sortedDates.filter(d => d < date).pop();
+        if (prior && moodByDate[prior]) {
+          preMoods.push(moodByDate[prior].mood);
+          if (moodByDate[prior].energy) preEnergies.push(moodByDate[prior].energy);
+        }
       }
+
+      if (preMoods.length === 0) continue;
+
+      // Post: average of all mood logs after the earliest activity date
+      const earliest = actDates[0];
+      const postMoods = allMoods.filter(m => m.log_date > earliest);
+      if (postMoods.length === 0) continue;
+
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const r10 = (v: number | null) => v !== null ? Math.round(v * 10) / 10 : null;
+
+      results.push({
+        category: cat,
+        sampleCount: actDates.length,
+        baselineMood:   r10(avg(preMoods)),
+        baselineEnergy: r10(avg(preEnergies)),
+        nextDayMood:    r10(avg(postMoods.map(m => m.mood_rating))),
+        nextDayEnergy:  r10(avg(postMoods.map(m => m.energy_rating).filter(v => v > 0))),
+      });
     }
-    return results.sort((a, b) => (b.nextDayMood ?? 0) - (a.nextDayMood ?? 0));
+    return results.sort((a, b) => b.sampleCount - a.sampleCount);
   } catch { return []; }
+}
+
+export type ActivityTimeStat = {
+  category: string;
+  total_mins: number;
+  count: number;
+};
+
+export function getActivityTimeStats(period: 'week' | 'month' | 'year'): ActivityTimeStat[] {
+  const days = period === 'week' ? 7 : period === 'month' ? 30 : 365;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  return db.getAllSync<ActivityTimeStat>(
+    `SELECT json_extract(categories, '$[0]') as category,
+            SUM(COALESCE(duration_mins, 0)) as total_mins,
+            COUNT(*) as count
+     FROM activity_logs
+     WHERE entry_type IN ('activity','dungeon','quest')
+       AND log_date >= ?
+       AND json_extract(categories, '$[0]') IS NOT NULL
+     GROUP BY category
+     ORDER BY total_mins DESC`,
+    cutoffStr,
+  );
+}
+
+export function updateSelfDestructNotes(id: number, notes: string): void {
+  db.runSync(`UPDATE activity_logs SET self_destruct_notes = ? WHERE id = ?`, notes.trim() || null, id);
 }
 
 // ─── Revelations (formerly Insights) ─────────────────────────────────────────

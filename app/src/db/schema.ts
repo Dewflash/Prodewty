@@ -315,6 +315,270 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 9');
   }
+
+  if (version < 10) {
+    // New dungeon columns
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN objective_text TEXT`); } catch {}
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN duration_mins INTEGER NOT NULL DEFAULT 30`); } catch {}
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN category TEXT NOT NULL DEFAULT 'Workout'`); } catch {}
+
+    // New dungeon_runs columns
+    try { db.execSync(`ALTER TABLE dungeon_runs ADD COLUMN started_at TEXT`); } catch {}
+    try { db.execSync(`ALTER TABLE dungeon_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'`); } catch {}
+
+    // Quests: add accepted_at, rename 'active' → 'pending'
+    try { db.execSync(`ALTER TABLE quests ADD COLUMN accepted_at TEXT`); } catch {}
+    db.execSync(`UPDATE quests SET status = 'pending' WHERE status = 'active'`);
+
+    // Replace all dungeon seeds (abstract → specific real-world activities)
+    db.execSync(`DELETE FROM dungeon_runs`);
+    db.execSync(`DELETE FROM dungeons`);
+
+    const v10Dungeons: [string, string, string, string, string, number, number, number, string, string, string, number, string][] = [
+      ["Hunter's Run",    'E', "2.4km sprint. Your time starts now.",                          'sta', 'agi', 5, 25, 0.25, "Runner's Band",   '+2 STA when equipped.', 'Complete a 2.4 km run before the gate closes.',                                                    30, 'Workout' ],
+      ['Iron Will',       'E', 'HIIT until failure. Push to the plank hold.',                  'str', 'sta', 5, 25, 0.25, 'Iron Gauntlet',   '+2 STR when equipped.', 'Complete a full HIIT session. Push to the plank hold.',                                            30, 'Workout' ],
+      ['Intel Report',    'E', '30 mins on global news. Generate that daily report.',          'wis', 'foc', 5, 20, 0.20, "Analyst's Lens",  '+2 WIS when equipped.', "Read the day's global news and generate a macro summary report.",                                  30, 'Study'   ],
+      ['Sacred Grounds',  'E', 'Bible journaling. Zone out and recollect.',                   'spr', 'wis', 5, 20, 0.20, 'Prayer Bead',     '+2 SPR when equipped.', 'Complete one Bible journal entry. Zone out and recollect.',                                        30, 'Devotion'],
+      ['Mirror Protocol', 'E', "Reflect. Pieces of wisdom. Little improvements.",             'per', 'wis', 5, 20, 0.20, 'Obsidian Shard',  '+2 PER when equipped.', "Reflect and capture pieces of wisdom. Refine your language — don't use 'thing', use 'concept'.",  30, 'Journal' ],
+    ];
+    for (const [nm, rk, fl, ps, ss, df, cr, dc, inm, idc, obj, dur, cat] of v10Dungeons) {
+      db.runSync(
+        `INSERT INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, difficulty, coin_reward, item_drop_chance, item_name, item_description, objective_text, duration_mins, category, cooldown_hours)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 48)`,
+        nm, rk, fl, ps, ss, df, cr, dc, inm, idc, obj, dur, cat,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 10');
+  }
+
+  if (version < 11) {
+    // rpg_state new columns
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN self_destruct_count INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN last_self_destruct TEXT`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN current_mood TEXT NOT NULL DEFAULT 'driven'`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN level_up_pending INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN death_acknowledged INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // activity_logs: notes field for self-destruct banners
+    try { db.execSync(`ALTER TABLE activity_logs ADD COLUMN self_destruct_notes TEXT`); } catch {}
+
+    // Revival quests table
+    db.execSync(`CREATE TABLE IF NOT EXISTS revival_quests (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      category     TEXT NOT NULL DEFAULT 'Workout',
+      hp_restore   INTEGER NOT NULL DEFAULT 20,
+      is_active    INTEGER NOT NULL DEFAULT 1
+    )`);
+
+    // Seed demo revival quests
+    const rqs = [
+      ['Morning Sprint',  'A quick 10-minute run. Get your blood moving.', 'Workout', 25],
+      ['Cold Shower',     '3 minutes of cold water. Shock your system back online.', 'Workout', 20],
+      ['Breathwork',      '5 minutes of deep diaphragmatic breathing. Reset.', 'Devotion', 15],
+    ];
+    for (const [t, d, c, h] of rqs) {
+      db.runSync(`INSERT INTO revival_quests (title, description, category, hp_restore) VALUES (?, ?, ?, ?)`, t, d, c, h);
+    }
+
+    // Reseed: clear existing log data and insert 30 days of realistic data
+    db.execSync(`DELETE FROM activity_logs`);
+    db.execSync(`DELETE FROM dungeon_runs`);
+    db.execSync(`DELETE FROM quests`);
+    db.execSync(`DELETE FROM quest_completions`);
+
+    try { seedRealisticData(); } catch {}
+
+    db.execSync('PRAGMA user_version = 11');
+  }
+}
+
+function seedRealisticData() {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+
+  function dateFor(daysAgo: number): string {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function tsFor(daysAgo: number, hour = 8): string {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, hour, 0, 0);
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:00:00`;
+  }
+
+  type Entry = {
+    daysAgo: number; hour?: number;
+    type: 'mood' | 'activity' | 'dungeon' | 'quest';
+    category?: string; cats?: string[];
+    desc?: string; duration?: number;
+    mood?: number; energy?: number; prod?: number;
+    xp: number; well?: string; revelation?: string;
+  };
+
+  const schedule: Entry[] = [
+    // 30 days ago
+    { daysAgo:30, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
+    { daysAgo:30, type:'activity', category:'Workout', cats:['Workout'], desc:'Morning run — 5km', duration:45, xp:52 },
+    // 29
+    { daysAgo:29, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:29, type:'activity', category:'Coding', cats:['Coding'], desc:'Personal project', duration:90, xp:65 },
+    // 28
+    { daysAgo:28, type:'mood',     mood:6, energy:6, prod:7, xp:20 },
+    { daysAgo:28, type:'activity', category:'Study', cats:['Study'], desc:'Clean Code — ch 3', duration:60, xp:48,
+      well:'Got through 3 chapters', revelation:'Single responsibility matters more than I thought' },
+    // 27 — no log
+    // 26
+    { daysAgo:26, type:'mood',     mood:7, energy:8, prod:8, xp:20 },
+    { daysAgo:26, type:'activity', category:'Workout', cats:['Workout'], desc:'HIIT session', duration:30, xp:38 },
+    { daysAgo:26, type:'activity', hour:10, category:'Devotion', cats:['Devotion'], desc:'Morning devotion', duration:20, xp:28 },
+    // 25
+    { daysAgo:25, type:'mood',     mood:8, energy:8, prod:8, xp:35, well:'Really productive day', revelation:'Start with the hardest task first' },
+    { daysAgo:25, type:'activity', category:'Coding', cats:['Coding'], desc:'Built new feature', duration:120, xp:78 },
+    // 24
+    { daysAgo:24, type:'mood',     mood:6, energy:5, prod:6, xp:20 },
+    { daysAgo:24, type:'activity', category:'Reading', cats:['Reading'], desc:'Atomic Habits — ch 7-9', duration:45, xp:42 },
+    // 23
+    { daysAgo:23, type:'mood',     mood:5, energy:5, prod:5, xp:20 },
+    { daysAgo:23, type:'activity', category:'Admin', cats:['Admin'], desc:'Finances and emails', duration:30, xp:25 },
+    // 22
+    { daysAgo:22, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:22, type:'activity', category:'Journal', cats:['Journal'], desc:'Weekly reflection', duration:25, xp:32,
+      well:'Recognised a bad habit', revelation:"Stop saying 'just' — it undermines what you are doing" },
+    // 21 — no log
+    // 20
+    { daysAgo:20, type:'mood',     mood:8, energy:8, prod:9, xp:20 },
+    { daysAgo:20, type:'activity', category:'Workout', cats:['Workout'], desc:'5km run + stretching', duration:50, xp:55 },
+    // 19
+    { daysAgo:19, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:19, type:'activity', category:'Coding', cats:['Coding'], desc:'Refactored database layer', duration:80, xp:60 },
+    // 18 — with dungeon completion
+    { daysAgo:18, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
+    { daysAgo:18, type:'activity', category:'Study', cats:['Study'], desc:'CS fundamentals', duration:60, xp:48 },
+    { daysAgo:18, hour:14, type:'dungeon', category:'Workout', cats:['Workout'], desc:"E-Rank Gate: Hunter's Run", duration:30, xp:45 },
+    // 17
+    { daysAgo:17, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
+    { daysAgo:17, type:'activity', category:'Devotion', cats:['Devotion'], desc:'Bible study — Proverbs 3', duration:25, xp:30,
+      revelation:'Trust in the Lord with all your heart' },
+    // 16
+    { daysAgo:16, type:'mood',     mood:8, energy:8, prod:8, xp:35 },
+    { daysAgo:16, type:'activity', category:'Workout', cats:['Workout'], desc:'Strength training — full body', duration:60, xp:62 },
+    // 15 — quest completion
+    { daysAgo:15, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:15, hour:11, type:'quest', category:'Journal', cats:['Journal'], desc:'Log: Journal', xp:30 },
+    // 14 — no log
+    // 13
+    { daysAgo:13, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
+    { daysAgo:13, type:'activity', category:'Reading', cats:['Reading'], desc:'The Power of Habit — finish', duration:45, xp:42 },
+    // 12
+    { daysAgo:12, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
+    { daysAgo:12, type:'activity', category:'Workout', cats:['Workout'], desc:'10km run', duration:60, xp:62, well:'New personal record' },
+    // 11
+    { daysAgo:11, type:'mood',     mood:7, energy:6, prod:7, xp:20 },
+    { daysAgo:11, type:'activity', category:'Study', cats:['Study'], desc:'Data structures review', duration:90, xp:68 },
+    // 10
+    { daysAgo:10, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
+    { daysAgo:10, type:'activity', category:'Journal', cats:['Journal'], desc:'Reflection on last 2 weeks', duration:30, xp:38,
+      revelation:"I lose focus when I don't set clear goals the night before" },
+    { daysAgo:10, hour:10, type:'activity', category:'Devotion', cats:['Devotion'], desc:'Morning prayer', duration:15, xp:22 },
+    // 9 — dungeon completion
+    { daysAgo:9, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:9, type:'activity', category:'Coding', cats:['Coding'], desc:'Game tab implementation', duration:120, xp:78 },
+    { daysAgo:9, hour:14, type:'dungeon', category:'Study', cats:['Study'], desc:'E-Rank Gate: Intel Report', duration:30, xp:45 },
+    // 8
+    { daysAgo:8, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
+    { daysAgo:8, type:'activity', category:'Workout', cats:['Workout'], desc:'Sprint intervals', duration:35, xp:40 },
+    // --- LAST 7 DAYS (Journal and Devotion absent → triggers quests) ---
+    // 7
+    { daysAgo:7, type:'mood',     mood:6, energy:6, prod:7, xp:20 },
+    { daysAgo:7, type:'activity', category:'Coding', cats:['Coding'], desc:'Bug fixes and testing', duration:90, xp:65 },
+    // 6
+    { daysAgo:6, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
+    { daysAgo:6, type:'activity', category:'Study', cats:['Study'], desc:'Algorithm prep', duration:60, xp:48 },
+    // 5
+    { daysAgo:5, type:'mood',     mood:7, energy:8, prod:8, xp:20 },
+    { daysAgo:5, type:'activity', category:'Workout', cats:['Workout'], desc:'Gym — chest and back', duration:50, xp:55 },
+    // 4
+    { daysAgo:4, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
+    { daysAgo:4, type:'activity', category:'Reading', cats:['Reading'], desc:"Man's Search for Meaning — ch 1-3", duration:40, xp:40 },
+    // 3 — no log
+    // 2
+    { daysAgo:2, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
+    { daysAgo:2, type:'activity', category:'Coding', cats:['Coding'], desc:'New feature shipped', duration:120, xp:78, well:'Feature deployed cleanly' },
+    // 1
+    { daysAgo:1, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
+    { daysAgo:1, type:'activity', category:'Admin', cats:['Admin'], desc:'Weekly planning session', duration:30, xp:28 },
+    // today
+    { daysAgo:0, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
+    { daysAgo:0, type:'activity', category:'Workout', cats:['Workout'], desc:'Morning run', duration:40, xp:45 },
+  ];
+
+  for (const e of schedule) {
+    const date = dateFor(e.daysAgo);
+    const ts   = tsFor(e.daysAgo, e.hour ?? (e.type === 'mood' ? 8 : 9));
+    const cats = JSON.stringify(e.cats ?? (e.category ? [e.category] : []));
+
+    if (e.type === 'mood') {
+      db.runSync(
+        `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at,
+           mood_rating, energy_rating, productivity_rating, categories, xp_awarded, what_went_well, what_to_improve)
+         VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
+        date, ts, e.mood ?? 7, e.energy ?? 7, e.prod ?? 7, e.xp, e.well ?? null, e.revelation ?? null,
+      );
+    } else {
+      db.runSync(
+        `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at,
+           categories, duration_mins, xp_awarded, mood_rating, what_went_well, what_to_improve)
+         VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
+        e.category ?? '', e.desc ?? '', e.type, date, ts,
+        cats, e.duration ?? null, e.xp, e.well ?? null, e.revelation ?? null,
+      );
+    }
+  }
+
+  // Dungeon runs for the dungeon activity log entries
+  const d1 = db.getFirstSync<{ id: number }>('SELECT id FROM dungeons WHERE name = "Hunter\'s Run" LIMIT 1')?.id
+           ?? db.getFirstSync<{ id: number }>('SELECT id FROM dungeons LIMIT 1')?.id;
+  const d2 = db.getFirstSync<{ id: number }>('SELECT id FROM dungeons WHERE name = "Intel Report" LIMIT 1')?.id
+           ?? db.getFirstSync<{ id: number }>('SELECT id FROM dungeons LIMIT 1 OFFSET 2')?.id;
+  if (d1) db.runSync(
+    `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
+     VALUES (?,?,?,'completed','win',25,0)`, d1, tsFor(18,14), tsFor(18,14),
+  );
+  if (d2) db.runSync(
+    `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
+     VALUES (?,?,?,'completed','win',20,0)`, d2, tsFor(9,14), tsFor(9,14),
+  );
+
+  // Quest completion entry
+  db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',30,'completed')`,
+    'Log: Journal', 'Complete a journal session.', 'Journal');
+  const completedQId = db.getFirstSync<{id:number}>(`SELECT id FROM quests WHERE status='completed' AND title='Log: Journal' LIMIT 1`)?.id;
+  if (completedQId) {
+    db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?,30)`, completedQId);
+  }
+
+  // Pending quests for testing (Journal/Devotion absent in last 7 days → realistic triggers)
+  const pendingQs = [
+    ['Log: Journal',   'You haven\'t journaled in a while. Complete a journal session.',   'Journal',  30],
+    ['Log: Devotion',  'You haven\'t done devotion recently. Complete a devotion session.', 'Devotion', 30],
+    ['Log: Reading',   'Keep the reading habit alive. Log a reading session.',              'Reading',  25],
+  ];
+  for (const [t, d, c, r] of pendingQs) {
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',?,'pending')`, t, d, c, r);
+  }
+
+  // Recalculate rpg_state from seeded logs
+  const total = db.getFirstSync<{t:number}>('SELECT sum(xp_awarded) as t FROM activity_logs')?.t ?? 0;
+  let lvl = 1; let xpLeft = total;
+  while (xpLeft >= 500 + (lvl - 1) * 250) { xpLeft -= 500 + (lvl - 1) * 250; lvl++; }
+  db.runSync(
+    `UPDATE rpg_state SET total_xp=?,current_level=?,xp_to_next_level=?,
+     streak_days=12, last_active_date=date('now','localtime'),
+     coins=75, ap=?, hp=80, hp_max=100, mp=0 WHERE id=1`,
+    xpLeft, lvl, 500 + (lvl-1)*250, lvl * 10,
+  );
 }
 
 // ─── Seed ─────────────────────────────────────────────────────────────────────
