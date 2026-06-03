@@ -1,7 +1,10 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import { db } from '../../src/db/schema';
+import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
@@ -14,9 +17,10 @@ import {
   type ActivityLog, type CategoryEffect, type ActivityTimeStat,
 } from '../../src/db/logs';
 import { getRPGState, isInDeathState, selfDestruct, setCurrentMood } from '../../src/db/rpg';
-import { resetDeathIgnore } from '../../src/db/game';
+import { resetDeathIgnore, getDeathCount } from '../../src/db/game';
 import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
-import { getHealthState, type HealthState } from '../../src/db/health';
+import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
+import { getHealthState, getHealthTier, type HealthState } from '../../src/db/health';
 
 type Period = 'week' | 'month' | 'year';
 
@@ -29,6 +33,37 @@ const MOOD_STATE_COLORS: Record<MoodState, string> = {
   lonely:       '#64748B',
   overstimulated: '#F97316',
   relapsed:     '#EF4444',
+};
+
+// Soul Record permanent colors
+const BLIGHT_COLOR = '#94A3B8'; // light grey
+const VIGOR_COLOR  = '#15803D'; // dark green
+const ANIMA_COLOR  = '#60A5FA'; // cool silvery blue (permanent)
+
+const TIER_COLOR: Record<string, string> = {
+  Depleted: '#EF4444', Critical: '#F87171', Danger: '#F97316',
+  Weakened: '#FBBF24', Worn: '#A3E635', Stable: colors.success,
+  Strong: '#34D399', Peak: '#38BDF8',
+};
+
+const ALL_HEALTH_TIERS = [
+  { label: 'Peak',      range: '>90%',   xp: 'None',  hp: '+5/day' },
+  { label: 'Strong',    range: '70–90%', xp: 'None',  hp: '+5/day' },
+  { label: 'Stable',    range: '50–70%', xp: 'None',  hp: '+2/day' },
+  { label: 'Worn',      range: '30–50%', xp: '−5%',   hp: 'Neutral' },
+  { label: 'Weakened',  range: '20–50%', xp: '−15%',  hp: '−2/day' },
+  { label: 'Danger',    range: '10–20%', xp: '−25%',  hp: '−5/day' },
+  { label: 'Critical',  range: '<10%',   xp: '−35%',  hp: '−10/day'},
+  { label: 'Depleted',  range: '0%',     xp: '−50%',  hp: '−20/day'},
+];
+
+const PASSIVE_EFFECTS: Record<MoodState, string[]> = {
+  driven:        ['+10% XP gain', '+5% coin drops'],
+  burnout:       ['−20% XP gain', '−10% coins earned'],
+  reminiscing:   ['+5% XP gain', 'neutral coin rate'],
+  lonely:        ['−5% XP gain', 'neutral coin rate'],
+  overstimulated:['−10% XP gain', '−5% mental recovery'],
+  relapsed:      ['−30% XP gain', '−15% coins earned'],
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -140,31 +175,51 @@ function ScoreRow({ label, vals, cellH, dates, period }: { label: string; vals: 
         <Text style={s.chartLabel}>{label}</Text>
         <Text style={s.chartAvg}>avg {fmtAvg(vals)}</Text>
       </View>
-      <View style={{ paddingTop: hovered !== null ? 22 : 0 }}>
-        {hovered !== null && (
-          <View pointerEvents="none" style={[s.tooltip, { left: tooltipLeft }]}>
-            <Text style={s.tooltipTxt}>{tooltipLabel(hovered)}</Text>
-          </View>
-        )}
+      <View style={{ position: 'relative' }}>
         <View style={[s.cellRow, { height: cellH }]} onLayout={e => setRowW(e.nativeEvent.layout.width)}>
           {vals.map((v,i) => (
             <Pressable key={i} style={[s.cell, { backgroundColor: scoreToColor(v) }]} onPressIn={() => pressIn(i)} onPressOut={pressOut} />
           ))}
         </View>
+        {hovered !== null && (
+          <View pointerEvents="none" style={[s.floatTooltip, { left: Math.max(0, Math.min(rowW - 72, tooltipLeft - 30)) }]}>
+            <Text style={s.floatTooltipDate}>{tooltipLabel(hovered)}</Text>
+            <Text style={s.floatTooltipVal}>{vals[hovered] !== null ? vals[hovered]?.toFixed(1) : '—'}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
-function XPChart({ vals, cellH }: { vals: number[]; cellH: number }) {
+function XPChart({ vals, cellH, period, dates }: { vals: number[]; cellH: number; period: Period; dates: string[] }) {
   const max = Math.max(...vals, 1);
+  const [hoveredXP, setHoveredXP] = React.useState<{ i: number; v: number } | null>(null);
+  const [rowW, setRowW] = React.useState(300);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  function pressIn(i: number, v: number) { if (timer.current) clearTimeout(timer.current); setHoveredXP({ i, v }); }
+  function pressOut() { timer.current = setTimeout(() => setHoveredXP(null), 1500); }
+  const tooltipLeft = hoveredXP !== null ? Math.max(2, Math.min(rowW - 48, ((hoveredXP.i + 0.5) / vals.length) * rowW - 24)) : 0;
+  const label = period === 'year' ? 'XP per week' : 'XP per day';
   return (
     <View style={s.chartBlock}>
-      <Text style={s.chartLabel}>XP per day</Text>
-      <View style={[s.cellRow, { height: cellH, alignItems: 'flex-end' }]}>
-        {vals.map((v,i) => (
-          <View key={i} style={[s.cell, { height: v ? Math.max((v/max)*cellH, 2) : 2, backgroundColor: v ? colors.success : colors.border, borderRadius: 2 }]} />
-        ))}
+      <View style={s.chartHeader}>
+        <Text style={s.chartLabel}>{label}</Text>
+        {hoveredXP && <Text style={[s.chartAvg, { color: colors.success }]}>{hoveredXP.v} XP</Text>}
+      </View>
+      <View style={{ position: 'relative' }}>
+        <View style={[s.cellRow, { height: Math.max(cellH, 40), alignItems: 'flex-end' }]} onLayout={e => setRowW(e.nativeEvent.layout.width)}>
+          {vals.map((v, i) => (
+            <Pressable key={i} onPressIn={() => pressIn(i, v)} onPressOut={pressOut}
+              style={[s.cell, { height: v ? Math.max((v / max) * Math.max(cellH, 40), 2) : 2, backgroundColor: v ? colors.success : colors.border, borderRadius: 2 }]}
+            />
+          ))}
+        </View>
+        {hoveredXP !== null && (
+          <View pointerEvents="none" style={[s.floatTooltip, { left: Math.max(0, Math.min(rowW - 52, tooltipLeft - 26)), bottom: '100%' }]}>
+            <Text style={s.floatTooltipVal}>{hoveredXP.v}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -191,15 +246,15 @@ function BreakdownChart({ data }: { data: { name: string; count: number }[] }) {
   );
 }
 
-function ActivityStatsSection({ stats }: { stats: ActivityTimeStat[] }) {
+function ActivityStatsSection({ stats, period }: { stats: ActivityTimeStat[]; period: Period }) {
   if (stats.length === 0) return <Text style={s.emptyNote}>No activity data yet.</Text>;
   const maxMins = Math.max(...stats.map(s => s.total_mins), 1);
   return (
     <View style={s.chartBlock}>
-      <Text style={s.chartLabel}>Activity Stats</Text>
+      <Text style={s.chartLabel}>Activity Stats <Text style={{ color: colors.border, fontSize: 10 }}>({period})</Text></Text>
       {stats.map((item, i) => (
         <View key={item.category} style={s.actStatRow}>
-          <Text style={s.actStatCat}>{item.category}</Text>
+          <Text style={s.actStatCat} numberOfLines={1}>{item.category}</Text>
           <View style={s.actStatBarWrap}>
             <View style={[s.actStatBar, { width: `${(item.total_mins / maxMins) * 100}%` as any, backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }]} />
           </View>
@@ -210,6 +265,8 @@ function ActivityStatsSection({ stats }: { stats: ActivityTimeStat[] }) {
     </View>
   );
 }
+
+// ─── Mood settings sheet ──────────────────────────────────────────────────────
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -225,6 +282,15 @@ export default function ProgressScreen() {
   const [health, setHealth] = useState<HealthState | null>(null);
   const [todaySdCount, setTodaySdCount] = useState(0);
   const [showRevival, setShowRevival] = useState(false);
+  const [effectsInfoVisible, setEffectsInfoVisible] = useState(false);
+  const [moodInfoVisible, setMoodInfoVisible] = useState(false);
+  const [soulRecordInfoVisible, setSoulRecordInfoVisible] = useState(false);
+  const [moodSettingsVisible, setMoodSettingsVisible] = useState(false);
+  const [deathCount, setDeathCount] = useState(0);
+  const [revivalCount, setRevivalCount] = useState(0);
+  const [vigorCount, setVigorCount] = useState(0);
+  const [healthTierLabel, setHealthTierLabel] = useState('');
+  const [effectsDialogVisible, setEffectsDialogVisible] = useState(false);
 
   // Shake + flash
   const shakeAnim   = useRef(new Animated.Value(0)).current;
@@ -251,6 +317,14 @@ export default function ProgressScreen() {
       setActStats(getActivityTimeStats(period));
       try { setHealth(getHealthState()); } catch {}
       setShowRevival(isInDeathState() && (rpg.death_acknowledged ?? 0) === 1);
+      setDeathCount(getDeathCount());
+      setRevivalCount((rpg as any).revival_count ?? 0);
+      setVigorCount(rpg.vigor ?? 0);
+      try {
+        const h = getHealthState();
+        const minH = Math.min(h.emotional, h.physical, h.mental);
+        setHealthTierLabel(getHealthTier(minH).label);
+      } catch {}
     }, [period]),
   );
 
@@ -276,6 +350,8 @@ export default function ProgressScreen() {
 
     const result = selfDestruct();
     setSdCount(result.count);
+    triggerDeathCheck();
+    triggerCurrencyRefresh();
   }
 
   function handleMoodSelect(mood: MoodState) {
@@ -283,7 +359,7 @@ export default function ProgressScreen() {
     setCurrentMoodState(mood);
   }
 
-  const cellH = period === 'week' ? 28 : period === 'month' ? 16 : CELL_H_COMPACT;
+  const cellH = period === 'week' ? 10 : period === 'month' ? 6 : 4;
   const moodVals   = chartData.map(d => d.mood);
   const energyVals = chartData.map(d => d.energy);
   const prodVals   = chartData.map(d => d.prod);
@@ -310,6 +386,7 @@ export default function ProgressScreen() {
 
         {rpgState && (
           <>
+            <View style={s.xpGroup}>
             <XPBar
               level={rpgState.current_level}
               totalXP={rpgState.total_xp}
@@ -318,26 +395,56 @@ export default function ProgressScreen() {
               streakDays={rpgState.streak_days}
               frozen={(rpgState.streak_freezes ?? 0) > 0}
             />
-            <View style={s.xpFooter}>
-              <Text style={s.buffsText}>Buffs: None</Text>
-              <Text style={s.xpToNext}>{rpgState.xp_to_next_level - rpgState.total_xp} XP to Level {rpgState.current_level + 1}</Text>
-            </View>
-
-            {/* Streak freeze chip + Self-destruct button */}
-            <View style={s.actionRow}>
-              <View style={s.chipsLeft}>
-                {(rpgState.streak_freezes ?? 0) > 0 && (
-                  <View style={s.effectChip}>
-                    <Text style={s.effectIcon}>❄</Text>
-                    <Text style={s.effectText}>Streak Freeze × {rpgState.streak_freezes}</Text>
+            {/* Effects + XP to next — same line */}
+            <View style={s.xpEffectsRow}>
+              {/* "Effects [i]" label on left */}
+              <View style={s.effectsLabel}>
+                <Text style={s.effectsTitle}>Effects</Text>
+                <TouchableOpacity onPress={() => setEffectsDialogVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="info" size={12} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              {/* Tags with clear separation from label */}
+              <View style={s.effectsTags}>
+                {healthTierLabel ? (
+                  <View style={[s.effectTag, { borderColor: TIER_COLOR[healthTierLabel] ?? colors.border }]}>
+                    <Text style={[s.effectTagTxt, { color: TIER_COLOR[healthTierLabel] ?? colors.textMuted }]}>{healthTierLabel}</Text>
+                  </View>
+                ) : null}
+                <View style={[s.effectTag, { borderColor: MOOD_STATE_COLORS[currentMoodState] }]}>
+                  <Text style={[s.effectTagTxt, { color: MOOD_STATE_COLORS[currentMoodState] }]}>{currentMoodState}</Text>
+                </View>
+                {(vigorCount - sdCount) < -10 && (
+                  <View style={[s.effectTag, { borderColor: colors.danger }]}>
+                    <Text style={[s.effectTagTxt, { color: colors.danger }]}>−20% coins</Text>
+                  </View>
+                )}
+                {(vigorCount - sdCount) > 0 && (
+                  <View style={[s.effectTag, { borderColor: '#FF2400' }]}>
+                    <Text style={[s.effectTagTxt, { color: '#FF2400' }]}>+gem</Text>
                   </View>
                 )}
               </View>
-                      <Pressable onPress={handleSelfDestruct} style={s.sdBtn}>
-                <Text style={s.sdBtnTxt}>
-                  {todaySdCount > 0 ? `SELF DESTRUCT :${todaySdCount}` : 'SELF DESTRUCT'}
-                </Text>
-              </Pressable>
+              <Text style={s.xpToNext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
+                {rpgState.xp_to_next_level - rpgState.total_xp} XP to Level {rpgState.current_level + 1}
+              </Text>
+            </View>
+
+            {/* Bonus row (streak freeze) */}
+            <View style={s.bonusRow}>
+              <Text style={s.bonusTitle}>Bonus</Text>
+              <TouchableOpacity onPress={() => setEffectsDialogVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="info" size={12} color={colors.textMuted} />
+              </TouchableOpacity>
+              {(rpgState.streak_freezes ?? 0) > 0 ? (
+                <View style={s.effectChip}>
+                  <Text style={s.effectIcon}>❄</Text>
+                  <Text style={s.effectText}>Streak Freeze × {rpgState.streak_freezes}</Text>
+                </View>
+              ) : (
+                <Text style={s.bonusNone}>None active</Text>
+              )}
+            </View>
             </View>
           </>
         )}
@@ -352,13 +459,52 @@ export default function ProgressScreen() {
           </Pressable>
         )}
 
-        {/* Current Mood */}
-        <View style={s.section}>
-          <View style={s.sectionHeaderRow}>
-            <Text style={s.sectionHead}>Current Mood</Text>
-            <View style={[s.moodStateBadge, { borderColor: moodColor }]}>
-              <Text style={[s.moodStateBadgeTxt, { color: moodColor }]}>{currentMoodState}</Text>
+        {/* Soul Record: Blight / Vigor / Anima */}
+        <View style={s.tollCard}>
+          <View style={s.tollHeader}>
+            <Text style={s.tollTitle}>SOUL RECORD</Text>
+            <TouchableOpacity onPress={() => setSoulRecordInfoVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: spacing.sm }}>
+              <Feather name="info" size={13} color={colors.textMuted} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={handleSelfDestruct} style={s.sdBtn}>
+              <Text style={s.sdBtnTxt}>SELF DESTRUCT</Text>
+            </Pressable>
+          </View>
+          <View style={s.tollRow}>
+            <View style={s.tollItem}>
+              <Feather name="frown" size={16} color={BLIGHT_COLOR} />
+              <Text style={[s.tollVal, { color: BLIGHT_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{sdCount}</Text>
+              <Text style={[s.tollLabel, { color: BLIGHT_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Blight</Text>
             </View>
+            <View style={s.tollSep} />
+            <View style={s.tollItem}>
+              <Feather name="heart" size={16} color={VIGOR_COLOR} />
+              <Text style={[s.tollVal, { color: VIGOR_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{vigorCount}</Text>
+              <Text style={[s.tollLabel, { color: VIGOR_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Vigor</Text>
+            </View>
+            <View style={s.tollSep} />
+            <View style={s.tollItem}>
+              <Feather name="aperture" size={16} color={ANIMA_COLOR} />
+              <Text style={[s.tollVal, { color: ANIMA_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+                {vigorCount - sdCount >= 0 ? `+${vigorCount - sdCount}` : vigorCount - sdCount}
+              </Text>
+              <Text style={[s.tollLabel, { color: ANIMA_COLOR }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Anima</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Mood */}
+        <View style={s.moodCard}>
+          <View style={s.moodCardHeader}>
+            <Text style={s.sectionHead}>Mood</Text>
+            <TouchableOpacity onPress={() => setMoodInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Feather name="info" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Feather name="settings" size={13} color={colors.textMuted} />
+            </TouchableOpacity>
           </View>
           <View style={s.moodStateRow}>
             {MOOD_STATES.map(m => {
@@ -382,7 +528,7 @@ export default function ProgressScreen() {
           ].map((item, i, arr) => (
             <React.Fragment key={item.label}>
               <View style={s.stripItem}>
-                <Text style={s.stripVal}>{item.val}</Text>
+                <Text style={s.stripVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{item.val}</Text>
                 <Text style={s.stripLabel}>{item.label}</Text>
               </View>
               {i < arr.length - 1 && <View style={s.stripDiv} />}
@@ -403,10 +549,10 @@ export default function ProgressScreen() {
         <ScoreRow label="Mood"         vals={moodVals}   cellH={cellH} dates={dates} period={period} />
         <ScoreRow label="Energy"       vals={energyVals} cellH={cellH} dates={dates} period={period} />
         <ScoreRow label="Productivity" vals={prodVals}   cellH={cellH} dates={dates} period={period} />
-        <XPChart                       vals={xpVals}     cellH={Math.max(cellH, 40)} />
+        <XPChart vals={xpVals} cellH={cellH} period={period} dates={dates} />
 
         {/* Activity Stats */}
-        <ActivityStatsSection stats={actStats} />
+        <ActivityStatsSection stats={actStats} period={period} />
 
         {/* Breakdown */}
         <BreakdownChart data={breakdown} />
@@ -414,17 +560,26 @@ export default function ProgressScreen() {
         {/* Activity Effects */}
         {catEffects.length > 0 && (
           <View style={s.section}>
-            <Text style={s.sectionHead}>Activity Effects</Text>
-            <Text style={s.sectionSub}>Before vs after logging each activity type</Text>
+            <View style={s.sectionHeadRow}>
+              <Text style={s.sectionHead}>Activity Effects</Text>
+              <TouchableOpacity onPress={() => setEffectsInfoVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
             {catEffects.map(e => {
-              const diff = e.nextDayMood !== null && e.baselineMood !== null ? (e.nextDayMood - e.baselineMood).toFixed(1) : null;
+              const pre  = e.baselineMood != null ? String(e.baselineMood) : '—';
+              const post = e.nextDayMood  != null ? String(e.nextDayMood)  : '—';
+              const diff = e.nextDayMood != null && e.baselineMood != null
+                ? (e.nextDayMood - e.baselineMood).toFixed(1) : null;
               const positive = diff !== null && parseFloat(diff) >= 0;
               return (
                 <View key={e.category} style={s.effectRow}>
-                  <Text style={s.effectCat}>{e.category}</Text>
+                  <Text style={s.effectCat} numberOfLines={1}>{e.category}</Text>
                   <View style={s.effectStats}>
-                    <Text style={s.effectVal}>Pre {e.baselineMood ?? '—'}</Text>
-                    <Text style={s.effectVal}>Post {e.nextDayMood ?? '—'}</Text>
+                    <Text style={s.effectLabel}>Pre</Text>
+                    <Text style={s.effectNum}>{pre}</Text>
+                    <Text style={s.effectLabel}>Post</Text>
+                    <Text style={s.effectNum}>{post}</Text>
                     {diff !== null && (
                       <Text style={[s.effectDiff, { color: positive ? colors.success : colors.danger }]}>
                         {positive ? '+' : ''}{diff}
@@ -448,6 +603,7 @@ export default function ProgressScreen() {
               { label: 'Best energy',         value: maxNrg  || '—' },
               { label: 'Current streak',      value: `${streak}d`   },
               { label: 'Self-destruct count', value: sdCount, red: true },
+            { label: 'Total deaths',        value: deathCount || '—', red: deathCount > 0 },
             ].map(r => (
               <View key={r.label} style={[s.recordCard, (r as any).red && sdCount > 0 && s.recordCardRed]}>
                 <Text style={[s.recordVal, (r as any).red && sdCount > 0 && { color: colors.danger }]}>{r.value}</Text>
@@ -478,6 +634,99 @@ export default function ProgressScreen() {
 
       </Animated.ScrollView>
 
+      {/* Effects Dialogue */}
+      <Modal visible={effectsDialogVisible} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setEffectsDialogVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoSheetTitle}>Active Effects</Text>
+            <View style={s.infoSheetDiv} />
+
+            <Text style={[s.effectDialogSection, { marginTop: spacing.sm }]}>HEALTH (lowest bar)</Text>
+            {ALL_HEALTH_TIERS.map(t => {
+              const isActive = t.label === healthTierLabel;
+              return (
+                <View key={t.label} style={[s.effectDialogRow, isActive && { backgroundColor: `${TIER_COLOR[t.label]}15`, borderRadius: 6 }]}>
+                  <View style={[s.effectDialogDot, { backgroundColor: TIER_COLOR[t.label] }]} />
+                  <Text style={[s.effectDialogLabel, { color: TIER_COLOR[t.label] }]}>{t.label}</Text>
+                  <Text style={s.effectDialogRange}>{t.range}</Text>
+                  <Text style={s.effectDialogStat}>XP {t.xp}</Text>
+                  <Text style={s.effectDialogStat}>HP {t.hp}</Text>
+                  {isActive && <Text style={s.effectDialogActive}>● NOW</Text>}
+                </View>
+              );
+            })}
+
+            <View style={s.infoSheetDiv} />
+            <Text style={s.effectDialogSection}>MOOD</Text>
+            {(Object.entries(PASSIVE_EFFECTS) as [MoodState, string[]][]).map(([mood, effects]) => {
+              const isActive = mood === currentMoodState;
+              const col = MOOD_STATE_COLORS[mood];
+              return (
+                <View key={mood} style={[s.effectDialogRow, isActive && { backgroundColor: `${col}15`, borderRadius: 6 }]}>
+                  <View style={[s.effectDialogDot, { backgroundColor: col }]} />
+                  <Text style={[s.effectDialogLabel, { color: col }]}>{mood}</Text>
+                  <Text style={s.effectDialogEffects}>{effects.join(' · ')}</Text>
+                  {isActive && <Text style={s.effectDialogActive}>● NOW</Text>}
+                </View>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Current Mood info modal */}
+      <Modal visible={moodInfoVisible} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setMoodInfoVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoSheetTitle}>Current Mood</Text>
+            <View style={s.infoSheetDiv} />
+            <Text style={s.infoSheetText}>Your active mood sets Passive Effects — modifiers on XP and coin gains for every activity while this mood is active.</Text>
+            <Text style={s.infoSheetText}>Tap the gear icon to customise name, colour, passive effect, and MP regeneration rate.</Text>
+            <Text style={s.infoSheetText}>Changing mood here syncs to the Log page, and vice versa.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Soul Record info modal */}
+      <Modal visible={soulRecordInfoVisible} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setSoulRecordInfoVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoSheetTitle}>Soul Record</Text>
+            <View style={s.infoSheetDiv} />
+            <Text style={s.infoSheetText}><Text style={{ color: '#64748B', fontFamily: fonts.ui.semibold }}>Blight</Text> — increments each Self Destruct press. Represents corruption.</Text>
+            <Text style={s.infoSheetText}><Text style={{ color: colors.success, fontFamily: fonts.ui.semibold }}>Vigor</Text> — +1 every clean day (no self-destruct). Represents resilience built over time.</Text>
+            <Text style={s.infoSheetText}><Text style={{ color: colors.primary, fontFamily: fonts.ui.semibold }}>Anima</Text> — Vigor − Blight. Positive = recovering. Negative = corrupted.</Text>
+            <Text style={s.infoSheetText}>Anima &lt; −10: coin drops across all activities reduced by 20%.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Mood settings modal */}
+      <MoodSettingsSheet
+        visible={moodSettingsVisible}
+        currentMood={currentMoodState}
+        onClose={() => setMoodSettingsVisible(false)}
+      />
+
+      {/* Activity effects info modal */}
+      <Modal visible={effectsInfoVisible} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setEffectsInfoVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoSheetTitle}>Activity Effects — How it works</Text>
+            <View style={s.infoSheetDiv} />
+            <Text style={s.infoSheetText}>Pre: average mood score from the closest recorded mood log before each session of that activity type.</Text>
+            <Text style={s.infoSheetText}>Post: average mood score across all logs recorded after the earliest session of that activity.</Text>
+            <Text style={s.infoSheetText}>The change (±) shows the mood shift associated with doing this activity.</Text>
+            <Text style={s.infoSheetText}>× count = total all-time sessions logged for that category (not period-filtered).</Text>
+            <Text style={s.infoSheetText}>Category weights (1–5) are XP multipliers when you submit a log — separate from these stats.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Self-destruct flash overlay */}
       {sdFlashVisible && (
         <Animated.View style={[s.sdFlash, { opacity: flashOpacity }]} pointerEvents="none">
@@ -494,11 +743,17 @@ export default function ProgressScreen() {
 
 const s = StyleSheet.create({
   safe:    { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl * 2 },
+  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
 
-  xpFooter:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: -spacing.sm },
-  buffsText: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
-  xpToNext:  { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  xpGroup:      { gap: 4 },
+  xpEffectsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  effectsLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  effectsTags:  { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, flexWrap: 'wrap' },
+  xpToNext:     { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, flexShrink: 0 },
+
+  bonusRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  bonusTitle: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
+  bonusNone:  { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.border },
 
   actionRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   chipsLeft:  { flexDirection: 'row', gap: spacing.sm, flex: 1 },
@@ -518,8 +773,48 @@ const s = StyleSheet.create({
   },
   revivalUrgentTxt: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.danger, letterSpacing: 2 },
 
-  sdBtn:    { backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 6 },
-  sdBtnTxt: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.danger, letterSpacing: 1 },
+  sdBtn:    { backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 3 },
+  sdBtnTxt: { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.danger, letterSpacing: 1 },
+
+  sectionHeadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'nowrap' },
+
+  // Effects row (below XP bar)
+  effectsRow:   { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  effectsTitle: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
+  effectTag:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  effectTagTxt: { fontFamily: fonts.mono.bold, fontSize: 10, letterSpacing: 1 },
+
+  // Effects dialogue
+  effectDialogSection: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2, marginBottom: 2 },
+  effectDialogRow:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4, paddingHorizontal: 4 },
+  effectDialogDot:     { width: 6, height: 6, borderRadius: 3 },
+  effectDialogLabel:   { fontFamily: fonts.ui.semibold, fontSize: fontSize.xs, width: 70 },
+  effectDialogRange:   { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, width: 50 },
+  effectDialogStat:    { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, width: 64 },
+  effectDialogEffects: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, flex: 1 },
+  effectDialogActive:  { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.primary, marginLeft: 'auto' },
+
+  tollCard:    { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  animaDebuffNote: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.danger },
+  tollHeader:  { flexDirection: 'row', alignItems: 'center' },
+  tollTitle:   { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.textMuted, letterSpacing: 2 },
+  tollRow:     { flexDirection: 'row', alignItems: 'center' },
+  tollItem:    { flex: 1, alignItems: 'center', gap: 3, paddingVertical: spacing.xs, minWidth: 0 },
+  tollSep:     { width: 1, height: 56, backgroundColor: colors.border, alignSelf: 'center', flexShrink: 0 },
+  tollVal:     { fontFamily: fonts.mono.bold, fontSize: fontSize.xl, width: '100%', textAlign: 'center' },
+  tollLabel:   { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, letterSpacing: 1, width: '100%', textAlign: 'center' },
+  tollEffect:  { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.danger, textAlign: 'center' },
+
+  moodCard:        { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  moodCardHeader:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  moodSettingsBtn: { alignSelf: 'flex-end', marginTop: spacing.xs },
+
+  sheetOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  infoSheet:      { backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, paddingBottom: 40, gap: spacing.md },
+  infoHandle:     { width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.sm },
+  infoSheetTitle: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
+  infoSheetDiv:   { height: 1, backgroundColor: colors.border },
+  infoSheetText:  { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20 },
 
   // Current mood
   section:           { gap: spacing.md },
@@ -545,18 +840,18 @@ const s = StyleSheet.create({
   periodTxtOn: { color: colors.bg },
 
   chartBlock:  { gap: spacing.xs },
-  chartHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  chartLabel:  { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted, letterSpacing: 0.5 },
-  chartAvg:    { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  chartLabel:  { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted, letterSpacing: 0.5, flex: 1 },
+  chartAvg:    { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, flexShrink: 0 },
   cellRow:     { flexDirection: 'row', gap: 2 },
   cell:        { flex: 1, borderRadius: 2 },
 
   actStatRow:    { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 3 },
-  actStatCat:    { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted, width: 72 },
+  actStatCat:    { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted, width: 68 },
   actStatBarWrap:{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: radius.pill, overflow: 'hidden' },
   actStatBar:    { height: '100%', borderRadius: radius.pill },
-  actStatTime:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textPrimary, width: 40, textAlign: 'right' },
-  actStatCount:  { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, width: 28, textAlign: 'right' },
+  actStatTime:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textPrimary, width: 48, textAlign: 'right' },
+  actStatCount:  { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, width: 30, textAlign: 'right' },
 
   breakBar:   { flexDirection: 'row', height: 16, borderRadius: radius.sm, overflow: 'hidden', gap: 1 },
   legendRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4 },
@@ -564,15 +859,17 @@ const s = StyleSheet.create({
   legendDot:  { width: 8, height: 8, borderRadius: 4 },
   legendText: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
   emptyNote:  { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted },
-  tooltip:    { position: 'absolute', top: 0, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.textPrimary, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
-  tooltipTxt: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textPrimary },
+  floatTooltip:     { position: 'absolute', bottom: '100%', marginBottom: 4, backgroundColor: 'rgba(0,0,0,0.92)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  floatTooltipDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.textMuted },
+  floatTooltipVal:  { fontFamily: fonts.mono.bold, fontSize: 13, color: colors.textPrimary },
 
   effectRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-  effectCat:     { fontFamily: fonts.ui.medium,    fontSize: fontSize.sm, color: colors.textPrimary, flex: 1 },
-  effectStats:   { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
-  effectVal:     { fontFamily: fonts.mono.regular,  fontSize: fontSize.xs, color: colors.textMuted },
-  effectDiff:    { fontFamily: fonts.mono.bold,     fontSize: fontSize.xs },
-  effectSamples: { fontFamily: fonts.mono.regular,  fontSize: fontSize.xs, color: colors.textMuted, marginLeft: spacing.sm },
+  effectCat:     { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textPrimary, width: 68 },
+  effectStats:   { flex: 1, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'flex-end' },
+  effectLabel:   { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted },
+  effectNum:     { fontFamily: fonts.mono.bold, fontSize: 10, color: colors.textPrimary, minWidth: 22, textAlign: 'right' },
+  effectDiff:    { fontFamily: fonts.mono.bold, fontSize: 10, minWidth: 32, textAlign: 'right' },
+  effectSamples: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, minWidth: 24, textAlign: 'right' },
 
   recordGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   recordCard:    { flex: 1, minWidth: '45%', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, gap: 4 },

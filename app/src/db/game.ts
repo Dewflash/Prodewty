@@ -1,5 +1,5 @@
 import { db } from './schema';
-import { getRPGState, applyXP } from './rpg';
+import { getRPGState, applyXP, getCoinMultiplier } from './rpg';
 import { getHealthState } from './health';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -77,8 +77,80 @@ export type DungeonClearResult = {
   xpEarned: number;
   coinsEarned: number;
   itemDropped: string | null;
-  itemDescription: string | null;
+  itemRarity: string | null;
+  itemSlotType: string | null;
 };
+
+// ─── Rarity drop system ───────────────────────────────────────────────────────
+
+type RarityTier = 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'Chromatic';
+
+const DROP_TABLE: Record<string, { rarity: RarityTier; chance: number }[]> = {
+  E: [
+    { rarity: 'E',  chance: 0.30 },
+    { rarity: 'D',  chance: 0.12 },
+    { rarity: 'C',  chance: 0.03 },
+  ],
+  D: [{ rarity: 'D', chance: 0.40 }, { rarity: 'C', chance: 0.20 }, { rarity: 'B', chance: 0.08 }, { rarity: 'A', chance: 0.02 }],
+  C: [{ rarity: 'C', chance: 0.40 }, { rarity: 'B', chance: 0.25 }, { rarity: 'A', chance: 0.10 }, { rarity: 'S', chance: 0.03 }],
+  B: [{ rarity: 'B', chance: 0.40 }, { rarity: 'A', chance: 0.25 }, { rarity: 'S', chance: 0.15 }, { rarity: 'SS', chance: 0.05 }],
+  A: [{ rarity: 'A', chance: 0.35 }, { rarity: 'S', chance: 0.25 }, { rarity: 'SS', chance: 0.10 }, { rarity: 'SSS', chance: 0.03 }],
+  S: [{ rarity: 'S', chance: 0.30 }, { rarity: 'SS', chance: 0.20 }, { rarity: 'SSS', chance: 0.08 }, { rarity: 'Chromatic', chance: 0.02 }],
+};
+
+// Equipment slot pool per dungeon category
+const CATEGORY_SLOTS: Record<string, string[]> = {
+  Workout:  ['top', 'pants', 'coat', 'gloves', 'shoes', 'sword'],
+  Study:    ['ring', 'necklace', 'grimoire', 'scepter'],
+  Devotion: ['goblet', 'bracelet', 'necklace', 'scepter'],
+  Journal:  ['ring', 'necklace', 'dagger', 'bracelet'],
+  default:  ['top', 'ring', 'necklace', 'dagger', 'sword', 'shield'],
+};
+
+function rollDrop(rank: string): { rarity: RarityTier; slotType: string } | null {
+  const table = DROP_TABLE[rank] ?? DROP_TABLE['E'];
+  const roll = Math.random();
+  let cum = 0;
+  for (const entry of table) {
+    cum += entry.chance;
+    if (roll < cum) return { rarity: entry.rarity, slotType: '' }; // slot filled below
+  }
+  return null;
+}
+
+function pickSlot(category: string): string {
+  const pool = CATEGORY_SLOTS[category] ?? CATEGORY_SLOTS['default'];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+export function getDropRates(rank: string): { rarity: string; chance: number }[] {
+  return DROP_TABLE[rank] ?? DROP_TABLE['E'];
+}
+
+const RARITY_ORDER: Record<string, number> = {
+  Chromatic: 0, SSS: 1, SS: 2, S: 3, A: 4, B: 5, C: 6, D: 7, E: 8,
+};
+
+export type InventoryItem = {
+  id: number; item_name: string; rarity: string;
+  slot_type: string | null; description: string | null; quantity: number;
+};
+
+export function getInventoryBySlot(slotType: string): InventoryItem[] {
+  try {
+    const rows = db.getAllSync<InventoryItem>(
+      `SELECT id, item_name, COALESCE(rarity,'E') as rarity, slot_type, description, quantity
+       FROM inventory WHERE slot_type = ? AND category = 'game' ORDER BY id DESC`,
+      slotType,
+    );
+    return rows.sort((a, b) => (RARITY_ORDER[a.rarity] ?? 9) - (RARITY_ORDER[b.rarity] ?? 9));
+  } catch { return []; }
+}
+
+export function getInventoryByStat(statKey: string, itemCategory: 'consumable' | 'catalyst'): InventoryItem[] {
+  const slotType = `${itemCategory}_${statKey}`;
+  return getInventoryBySlot(slotType);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,8 +254,13 @@ export function handleDeath(cause: DeathCause): void {
     ? 'HP reached zero.'
     : `${cause?.charAt(0).toUpperCase()}${cause?.slice(1)} health reached zero.`;
   addGameLog('death', msg);
-  // HP set to 0 — only revival quest can restore it
-  db.runSync('UPDATE rpg_state SET hp = 0, death_acknowledged = 0 WHERE id = 1');
+  // Only reset HP to 0 when the cause is HP depletion.
+  // For health stat deaths, HP stays intact — revival restores the stat instead.
+  if (cause === 'hp') {
+    db.runSync('UPDATE rpg_state SET hp = 0, death_acknowledged = 0 WHERE id = 1');
+  } else {
+    db.runSync('UPDATE rpg_state SET death_acknowledged = 0 WHERE id = 1');
+  }
   try { db.runSync('UPDATE health_state SET health_critical = 0 WHERE id = 1'); } catch {}
 }
 
@@ -202,6 +279,7 @@ export type RevivalQuest = {
   description: string | null;
   category: string;
   hp_restore: number;
+  duration_mins: number;
 };
 
 export function getRevivalQuests(): RevivalQuest[] {
@@ -209,20 +287,26 @@ export function getRevivalQuests(): RevivalQuest[] {
 }
 
 export function completeRevivalQuest(quest: RevivalQuest): void {
-  // Restore HP and any zeroed health bars
-  db.runSync(
-    `UPDATE rpg_state SET hp = MIN(hp_max, hp + ?), death_acknowledged = 0 WHERE id = 1`,
-    quest.hp_restore,
-  );
-  try {
-    db.runSync(
-      `UPDATE health_state SET
-         emotional = MAX(20, emotional),
-         physical  = MAX(20, physical),
-         mental    = MAX(20, mental)
-       WHERE id = 1`,
-    );
-  } catch {}
+  const rpg    = getRPGState();
+  const health = getHealthState();
+  const restore = quest.hp_restore;
+  const isHPDeath = (rpg.hp ?? 100) <= 0;
+
+  db.runSync(`UPDATE rpg_state SET death_acknowledged = 0, revival_count = revival_count + 1 WHERE id = 1`);
+
+  if (isHPDeath) {
+    db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, restore);
+  } else {
+    // Only restore health bars that are actually at 0 — leave non-zero bars untouched
+    const parts: string[] = [];
+    if (health.emotional <= 0) parts.push(`emotional = ${restore}`);
+    if (health.physical  <= 0) parts.push(`physical  = ${restore}`);
+    if (health.mental    <= 0) parts.push(`mental    = ${restore}`);
+    if (parts.length > 0) {
+      try { db.runSync(`UPDATE health_state SET ${parts.join(', ')} WHERE id = 1`); } catch {}
+    }
+  }
+
   // Log the revival activity
   const pad = (n: number) => String(n).padStart(2, '0');
   const now = new Date();
@@ -292,15 +376,23 @@ export function getActiveDungeonRun(): ActiveDungeonRun | null {
 
 export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClearResult {
   const xpEarned    = 45;
-  const coinsEarned = dungeon.coin_reward;
+  const coinsEarned = Math.floor(dungeon.coin_reward * getCoinMultiplier());
   let itemDropped: string | null = null;
+  let itemRarity: string | null = null;
+  let itemSlotType: string | null = null;
 
-  if (dungeon.item_name && Math.random() < dungeon.item_drop_chance) {
-    itemDropped = dungeon.item_name;
+  const drop = rollDrop(dungeon.rank);
+  if (drop) {
+    const slot = pickSlot(dungeon.category ?? 'default');
+    itemRarity   = drop.rarity;
+    itemSlotType = slot;
+    itemDropped  = `${drop.rarity}-rank ${slot.replace('_', ' ')}`;
     try {
       db.runSync(
-        `INSERT INTO inventory (item_name, item_type, description) VALUES (?, 'equipment', ?)`,
-        dungeon.item_name, dungeon.item_description ?? '',
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description)
+         VALUES (?, 'equipment', 'game', ?, ?, ?)`,
+        itemDropped, slot, drop.rarity,
+        `Dropped from ${dungeon.name} (${dungeon.rank}-rank gate).`,
       );
     } catch {}
   }
@@ -331,7 +423,7 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
     `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}`,
   );
 
-  return { xpEarned, coinsEarned, itemDropped, itemDescription: dungeon.item_description };
+  return { xpEarned, coinsEarned, itemDropped, itemRarity, itemSlotType };
 }
 
 export function failDungeon(runId: number, dungeon: Dungeon): void {
@@ -429,7 +521,8 @@ export function completeQuest(questId: number, notes?: string): void {
   const xpEarned = 30;
   db.runSync(`UPDATE quests SET status = 'completed' WHERE id = ?`, questId);
   db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?, ?)`, questId, quest.coin_reward);
-  db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', quest.coin_reward);
+  const questCoins = Math.floor(quest.coin_reward * getCoinMultiplier());
+  db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', questCoins);
 
   const desc = notes?.trim() ? `${quest.title} — ${notes.trim()}` : quest.title;
   try {
@@ -483,4 +576,22 @@ export function getSkippedQuests(): Quest[] {
   return db.getAllSync<Quest>(
     "SELECT * FROM quests WHERE status = 'skipped' ORDER BY generated_at DESC LIMIT 10",
   );
+}
+
+export function getCompletedQuests(): Quest[] {
+  return db.getAllSync<Quest>(
+    "SELECT * FROM quests WHERE status = 'completed' ORDER BY generated_at DESC LIMIT 20",
+  );
+}
+
+export function reinstateQuest(questId: number): void {
+  db.runSync(`UPDATE quests SET status = 'pending', accepted_at = NULL WHERE id = ?`, questId);
+}
+
+export function purchaseHPBoost(): 'ok' | 'insufficient_coins' | 'hp_not_critical' {
+  const rpg = getRPGState();
+  if ((rpg.hp ?? 100) > 30) return 'hp_not_critical';
+  if ((rpg.coins ?? 0) < 100) return 'insufficient_coins';
+  db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + 30), coins = coins - 100 WHERE id = 1`);
+  return 'ok';
 }

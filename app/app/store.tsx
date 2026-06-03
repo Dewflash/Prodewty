@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -7,39 +7,86 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg';
+import { purchaseHPBoost } from '../src/db/game';
+import { db } from '../src/db/schema';
+
+function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
+  try {
+    const rpg = db.getFirstSync<{ coins: number; mp: number; hp_max: number }>('SELECT coins, mp, hp_max FROM rpg_state WHERE id=1')!;
+    if ((rpg.coins ?? 0) < 75) return 'insufficient_coins';
+    db.runSync(`UPDATE rpg_state SET mp = MIN(100, mp + 25), coins = coins - 75 WHERE id = 1`);
+    return 'ok';
+  } catch { return 'insufficient_coins'; }
+}
+
+function purchaseRevivalPotion(): 'ok' | 'insufficient_coins' {
+  try {
+    const rpg = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id=1')!;
+    if ((rpg.coins ?? 0) < 150) return 'insufficient_coins';
+    db.runSync(`UPDATE rpg_state SET coins = coins - 150, revival_count = revival_count + 1 WHERE id = 1`);
+    db.runSync(`INSERT OR IGNORE INTO inventory (item_name, category, item_type, description) VALUES ('Revival Potion','global','consumable','Consumed on purchase — revival counted.')`) ;
+    return 'ok';
+  } catch { return 'insufficient_coins'; }
+}
+
+type StoreSection = 'non-game' | 'game';
 
 export default function StoreScreen() {
   const [rpg, setRpg] = useState<RPGState | null>(null);
+  const [section, setSection] = useState<StoreSection>('non-game');
 
   useFocusEffect(useCallback(() => { setRpg(getRPGState()); }, []));
 
   const coins = rpg?.coins ?? 0;
-  const freezes = rpg?.streak_freezes ?? 0;
-  const FREEZE_COST = 50;
+  const hp    = rpg?.hp ?? 100;
 
-  function handleBuyFreeze() {
-    if (coins < FREEZE_COST) {
-      Alert.alert('Not enough coins', 'Coins are earned in the Game. Come back once you\'ve played.');
-      return;
-    }
-    Alert.alert(
-      'Buy Streak Freeze',
-      `Spend ${FREEZE_COST} coins to protect your streak for one missed day?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Buy',
-          onPress: () => {
-            const result = purchaseStreakFreeze();
-            if (result === 'ok') {
-              setRpg(getRPGState());
-              Alert.alert('Purchased', `Streak Freeze added. You now have ${freezes + 1} freeze(s).`);
-            }
-          },
-        },
-      ],
-    );
+  function reload() { setRpg(getRPGState()); }
+
+  function buy(cost: number, action: () => 'ok' | 'insufficient_coins' | 'hp_not_critical', label: string) {
+    if (coins < cost) { Alert.alert('Not enough coins', `Need ${cost} coins.`); return; }
+    Alert.alert(`Buy ${label}?`, `Spend ${cost} coins.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Buy', onPress: () => {
+        const r = action();
+        if (r === 'hp_not_critical') { Alert.alert('HP not critical', 'Only usable when HP ≤ 30.'); return; }
+        if (r === 'insufficient_coins') { Alert.alert('Not enough coins'); return; }
+        reload();
+        Alert.alert('Purchased', `${label} applied.`);
+      }},
+    ]);
   }
+
+  type Item = { key: string; icon: React.ComponentProps<typeof Feather>['name']; name: string; desc: string; cost: number; owned?: string; dimmed?: boolean; onBuy: () => void };
+
+  const nonGameItems: Item[] = [
+    {
+      key: 'freeze', icon: 'shield', name: 'Streak Freeze', cost: 50,
+      desc: 'Protect your streak for one missed day. Auto-activates.',
+      owned: (rpg?.streak_freezes ?? 0) > 0 ? `${rpg!.streak_freezes} owned` : undefined,
+      onBuy: () => buy(50, purchaseStreakFreeze, 'Streak Freeze'),
+    },
+    {
+      key: 'mp', icon: 'zap', name: 'MP Boost', cost: 75,
+      desc: 'Instantly restores +25 MP.',
+      onBuy: () => buy(75, purchaseMPBoost, 'MP Boost'),
+    },
+  ];
+
+  const gameItems: Item[] = [
+    {
+      key: 'hp', icon: 'heart', name: 'Critical HP Boost', cost: 100,
+      desc: 'Restore +30 HP. Only usable when HP ≤ 30.',
+      dimmed: hp > 30,
+      onBuy: () => buy(100, purchaseHPBoost, 'Critical HP Boost'),
+    },
+    {
+      key: 'revival', icon: 'refresh-cw', name: 'Revival Potion', cost: 150,
+      desc: 'Counts as one revival — increases your Toll without requiring a revival quest.',
+      onBuy: () => buy(150, purchaseRevivalPotion, 'Revival Potion'),
+    },
+  ];
+
+  const items = section === 'non-game' ? nonGameItems : gameItems;
 
   return (
     <SafeAreaView style={s.safe}>
@@ -51,42 +98,37 @@ export default function StoreScreen() {
         <View style={{ width: 30 }} />
       </View>
 
-      {/* Coin balance */}
-      <View style={s.balanceCard}>
-        <Feather name="dollar-sign" size={20} color={colors.success} />
-        <View>
-          <Text style={s.balanceVal}>{coins}</Text>
-          <Text style={s.balanceLabel}>Coins · earned in Game</Text>
-        </View>
-      </View>
-
-      <Text style={s.sectionHead}>Available</Text>
-
-      {/* Streak Freeze */}
-      <View style={s.itemCard}>
-        <View style={s.itemIcon}>
-          <Feather name="shield" size={22} color={colors.primary} />
-        </View>
-        <View style={s.itemInfo}>
-          <Text style={s.itemName}>Streak Freeze</Text>
-          <Text style={s.itemDesc}>Protect your streak for one missed day. Auto-activates.</Text>
-          {freezes > 0 && (
-            <Text style={s.ownedBadge}>You have {freezes} freeze{freezes > 1 ? 's' : ''}</Text>
-          )}
-        </View>
-        <View style={s.itemRight}>
-          <Text style={s.itemCost}>{FREEZE_COST}</Text>
-          <Text style={s.itemCostLabel}>coins</Text>
-          <Pressable
-            onPress={handleBuyFreeze}
-            style={[s.buyBtn, coins < FREEZE_COST && s.buyBtnDisabled]}
-          >
-            <Text style={s.buyBtnText}>Buy</Text>
+      {/* Section tabs */}
+      <View style={s.tabs}>
+        {(['non-game', 'game'] as StoreSection[]).map(t => (
+          <Pressable key={t} onPress={() => setSection(t)} style={[s.tabBtn, section === t && s.tabBtnActive]}>
+            <Text style={[s.tabTxt, section === t && s.tabTxtActive]}>{t === 'non-game' ? 'GLOBAL' : 'GAME'}</Text>
           </Pressable>
-        </View>
+        ))}
       </View>
 
-      <Text style={s.moreText}>More items coming once the Game is built.</Text>
+      <ScrollView contentContainerStyle={s.content}>
+        {items.map(item => (
+          <View key={item.key} style={[s.itemCard, item.dimmed && s.itemCardDim]}>
+            <View style={s.itemIcon}>
+              <Feather name={item.icon} size={22} color={colors.primary} />
+            </View>
+            <View style={s.itemInfo}>
+              <Text style={s.itemName}>{item.name}</Text>
+              <Text style={s.itemDesc}>{item.desc}</Text>
+              {item.owned && <Text style={s.ownedBadge}>{item.owned}</Text>}
+            </View>
+            <View style={s.itemRight}>
+              <Text style={[s.itemCost, coins < item.cost && s.itemCostDim]}>{item.cost}</Text>
+              <Text style={s.itemCostLabel}>coins</Text>
+              <Pressable onPress={item.onBuy} style={[s.buyBtn, (coins < item.cost || item.dimmed) && s.buyBtnDisabled]}>
+                <Text style={s.buyBtnText}>Buy</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+        <Text style={s.moreText}>More items coming once the Game is built.</Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -100,41 +142,29 @@ const s = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   title: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
-  balanceCard: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    margin: spacing.lg, backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md,
-  },
-  balanceVal: { fontFamily: fonts.mono.bold, fontSize: fontSize.xl, color: colors.success },
-  balanceLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
-  sectionHead: {
-    fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textMuted,
-    paddingHorizontal: spacing.lg, letterSpacing: 0.5, marginBottom: spacing.sm,
-  },
+  tabs:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabBtn:      { flex: 1, paddingVertical: spacing.sm + 2, alignItems: 'center' },
+  tabBtnActive:{ borderBottomWidth: 2, borderBottomColor: colors.primary },
+  tabTxt:      { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2 },
+  tabTxtActive:{ color: colors.primary },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   itemCard: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    marginHorizontal: spacing.lg, backgroundColor: colors.card,
-    borderRadius: radius.md, padding: spacing.md,
+    backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md,
+    borderWidth: 1, borderColor: colors.border,
   },
-  itemIcon: {
-    width: 44, height: 44, borderRadius: radius.md,
-    backgroundColor: 'rgba(56,189,248,0.08)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  itemInfo: { flex: 1, gap: 3 },
-  itemName: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary },
-  itemDesc: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
-  ownedBadge: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.success },
-  itemRight: { alignItems: 'center', gap: 2 },
-  itemCost: { fontFamily: fonts.mono.bold, fontSize: fontSize.md, color: colors.success },
-  itemCostLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
-  buyBtn: {
-    backgroundColor: colors.primary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: 6, marginTop: 4,
-  },
-  buyBtnDisabled: { backgroundColor: colors.border },
-  buyBtnText: { fontFamily: fonts.ui.semibold, fontSize: fontSize.xs, color: colors.bg },
-  moreText: {
-    fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted,
-    textAlign: 'center', marginTop: spacing.xl, padding: spacing.lg,
-  },
+  itemCardDim:  { opacity: 0.5 },
+  itemIcon:     { width: 44, height: 44, borderRadius: radius.md, backgroundColor: 'rgba(56,189,248,0.08)', alignItems: 'center', justifyContent: 'center' },
+  itemInfo:     { flex: 1, gap: 3 },
+  itemName:     { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary },
+  itemDesc:     { fontFamily: fonts.ui.regular,  fontSize: fontSize.xs,   color: colors.textMuted },
+  ownedBadge:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.success },
+  itemRight:    { alignItems: 'center', gap: 2 },
+  itemCost:     { fontFamily: fonts.mono.bold, fontSize: fontSize.md, color: colors.success },
+  itemCostDim:  { color: colors.textMuted },
+  itemCostLabel:{ fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  buyBtn:       { backgroundColor: colors.primary, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 6, marginTop: 4 },
+  buyBtnDisabled:{ backgroundColor: colors.border },
+  buyBtnText:   { fontFamily: fonts.ui.semibold, fontSize: fontSize.xs, color: colors.bg },
+  moreText:     { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center', paddingTop: spacing.md },
 });

@@ -393,6 +393,122 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 11');
   }
+
+  if (version < 12) {
+    // Revival quests: add duration for timer-based flow
+    try { db.execSync(`ALTER TABLE revival_quests ADD COLUMN duration_mins INTEGER NOT NULL DEFAULT 10`); } catch {}
+    db.execSync(`UPDATE revival_quests SET duration_mins = 10 WHERE duration_mins = 0 OR duration_mins IS NULL`);
+
+    // Inventory: add category (game | global) and source
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN category TEXT NOT NULL DEFAULT 'game'`); } catch {}
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN source TEXT`); } catch {}
+
+    // Clear old inventory items and reseed
+    db.execSync(`DELETE FROM inventory`);
+
+    // Global items
+    const globalItems: [string, string, string, string][] = [
+      ['Streak Freeze', 'global', 'consumable',  'Protects your streak for one missed day. Auto-activates.'],
+      ['Energy Treat',  'global', 'consumable',  'A small financial reward to yourself. Activates when financial module is built.'],
+      ['Morning Brew',  'global', 'consumable',  'A productivity ritual item. Effect TBD.'],
+    ];
+    for (const [nm, cat, tp, desc] of globalItems) {
+      db.runSync(`INSERT INTO inventory (item_name, category, item_type, description) VALUES (?,?,?,?)`, nm, cat, tp, desc);
+    }
+
+    // Game items (from dungeon drop simulations)
+    const gameItems: [string, string, string, string][] = [
+      ["Runner's Band",  'game', 'equipment', '+2 STA when equipped. Dropped from Hunter\'s Run.'],
+      ['Prayer Bead',    'game', 'equipment', '+2 SPR when equipped. Dropped from Sacred Grounds.'],
+      ['Obsidian Shard', 'game', 'equipment', '+2 PER when equipped. Dropped from Mirror Protocol.'],
+      ["Analyst's Lens", 'game', 'equipment', '+2 WIS when equipped. Dropped from Intel Report.'],
+      ['Iron Gauntlet',  'game', 'equipment', '+2 STR when equipped. Dropped from Iron Will.'],
+    ];
+    for (const [nm, cat, tp, desc] of gameItems) {
+      db.runSync(`INSERT INTO inventory (item_name, category, item_type, description) VALUES (?,?,?,?)`, nm, cat, tp, desc);
+    }
+
+    // Seed an accepted quest and a completed quest for full testing coverage
+    // (only if no accepted/completed quests already exist)
+    const hasAccepted = (db.getFirstSync<{ n: number }>(`SELECT count(*) as n FROM quests WHERE status='accepted'`)?.n ?? 0) > 0;
+    if (!hasAccepted) {
+      db.runSync(
+        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status, accepted_at)
+         VALUES (?, ?, ?, 'weekly', 30, 'accepted', datetime('now','localtime'))`,
+        'Log: Workout', 'Keep the workout habit alive. Complete a workout session.', 'Workout',
+      );
+    }
+    const hasCompleted = (db.getFirstSync<{ n: number }>(`SELECT count(*) as n FROM quests WHERE status='completed'`)?.n ?? 0) > 0;
+    if (!hasCompleted) {
+      db.runSync(
+        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status)
+         VALUES (?, ?, ?, 'weekly', 30, 'completed')`,
+        'Log: Coding', 'Keep the coding habit going.', 'Coding',
+      );
+      const cqid = db.getFirstSync<{ id: number }>(`SELECT id FROM quests WHERE status='completed' ORDER BY id DESC LIMIT 1`)?.id;
+      if (cqid) db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?,30)`, cqid);
+    }
+
+    db.execSync('PRAGMA user_version = 12');
+  }
+
+  if (version < 13) {
+    // Clear dungeon runs so all dungeons are available for testing
+    db.execSync(`DELETE FROM dungeon_runs`);
+    db.execSync('PRAGMA user_version = 13');
+  }
+
+  if (version < 14) {
+    // rpg_state: gems currency + revival counter
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN gems INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN revival_count INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // Custom moods table — seeded with the 6 defaults
+    db.execSync(`CREATE TABLE IF NOT EXISTS custom_moods (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL UNIQUE,
+      color         TEXT NOT NULL DEFAULT '#34D399',
+      passive_effect TEXT,
+      mp_rate       INTEGER NOT NULL DEFAULT 0,
+      is_default    INTEGER NOT NULL DEFAULT 1,
+      is_active     INTEGER NOT NULL DEFAULT 1
+    )`);
+    const defaultMoods: [string, string, string, number][] = [
+      ['driven',        '#34D399', '+10% XP gain',                  10],
+      ['burnout',       '#EF4444', '−20% XP · −10% coins earned',  -20],
+      ['reminiscing',   '#A855F7', '+5% XP gain',                    5],
+      ['lonely',        '#64748B', '−5% XP gain',                   -5],
+      ['overstimulated','#F97316', '−10% XP · restlessness penalty',-8],
+      ['relapsed',      '#EF4444', '−30% XP · −15% coins earned',  -30],
+    ];
+    for (const [name, color, effect, mp] of defaultMoods) {
+      db.runSync(
+        `INSERT OR IGNORE INTO custom_moods (name, color, passive_effect, mp_rate) VALUES (?,?,?,?)`,
+        name, color, effect, mp,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 14');
+  }
+
+  if (version < 15) {
+    // Vigor: clean-day counter (increments each day without self-destruct)
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN vigor INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN last_vigor_date TEXT`); } catch {}
+    db.execSync('PRAGMA user_version = 15');
+  }
+
+  if (version < 16) {
+    // inventory: add slot_type and rarity for the new equipment system
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN slot_type TEXT`); } catch {}
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN rarity TEXT NOT NULL DEFAULT 'E'`); } catch {}
+
+    // Remove old seeded game items (Runner's Band, Iron Gauntlet, etc.) and dungeon drops
+    // Only keep global items (streak freeze, treats, etc.)
+    db.execSync(`DELETE FROM inventory WHERE category = 'game'`);
+
+    db.execSync('PRAGMA user_version = 16');
+  }
 }
 
 function seedRealisticData() {

@@ -11,8 +11,9 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import { db, initDB } from '../src/db/schema';
-import { checkStreakFreeze, getRPGState, clearLevelUpPending } from '../src/db/rpg';
+import { checkStreakFreeze, checkVigor, getRPGState, clearLevelUpPending } from '../src/db/rpg';
 import { registerDeathCheck } from '../src/db/deathCheckSignal';
+import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { getDeathCause, type DeathCause } from '../src/db/game';
 import { applyHealthDecay } from '../src/db/health';
 import { DeathScreen } from '../src/components/DeathScreen';
@@ -22,6 +23,7 @@ import { spacing, radius } from '../src/theme/spacing';
 
 initDB();
 checkStreakFreeze();
+checkVigor();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -76,9 +78,10 @@ export default function RootLayout() {
         <Stack.Screen name="inventory" />
         <Stack.Screen name="milestones" />
         <Stack.Screen name="game-log" />
+        <Stack.Screen name="suitup" />
       </Stack>
 
-      <DeathScreen cause={deathCause} onResolve={() => { setDeathCause(null); checkState(); }} />
+      <DeathScreen cause={deathCause} onResolve={() => { setDeathCause(null); checkState(); triggerCurrencyRefresh(); }} />
 
       {/* Level-up celebration modal */}
       <Modal visible={levelUpLevel !== null} transparent animationType="fade">

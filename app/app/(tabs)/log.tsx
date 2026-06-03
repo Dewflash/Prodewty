@@ -12,11 +12,25 @@ import { spacing, radius } from '../../src/theme/spacing';
 import { CategoryGrid } from '../../src/components/CategoryGrid';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { MoodSelector } from '../../src/components/MoodSelector';
+import { TopRibbon } from '../../src/components/TopRibbon';
+import { TouchableOpacity } from 'react-native';
 import { useAppStore } from '../../src/store/useAppStore';
 import { getCategories } from '../../src/db/categories';
 import { getHabits, addHabit } from '../../src/db/habits';
 import { createActivityLog, upsertMoodLog, getMoodLogForDate } from '../../src/db/logs';
-import { getRPGState } from '../../src/db/rpg';
+import { getRPGState, setCurrentMood, isInDeathState } from '../../src/db/rpg';
+import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
+
+const LOG_MOOD_STATES = ['driven', 'burnout', 'reminiscing', 'lonely', 'overstimulated', 'relapsed'] as const;
+type LogMoodState = typeof LOG_MOOD_STATES[number];
+const LOG_MOOD_COLORS: Record<LogMoodState, string> = {
+  driven:        '#34D399',
+  burnout:       '#EF4444',
+  reminiscing:   '#A855F7',
+  lonely:        '#64748B',
+  overstimulated:'#F97316',
+  relapsed:      '#EF4444',
+};
 
 type LogMode = 'daily' | 'weekly' | 'other';
 
@@ -59,6 +73,8 @@ export default function LogScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const [originalMood, setOriginalMood] = useState<{ m: number; e: number; p: number } | null>(null);
+  const [currentMoodState, setCurrentMoodState] = useState<LogMoodState>('driven');
+  const [moodSettingsVisible, setMoodSettingsVisible] = useState(false);
 
   const [habitModal, setHabitModal] = useState(false);
   const [newHabitName, setNewHabitName] = useState('');
@@ -67,6 +83,7 @@ export default function LogScreen() {
   const xpOpacity = useRef(new Animated.Value(0)).current;
   const xpY = useRef(new Animated.Value(0)).current;
   const [lastXP, setLastXP] = useState(0);
+  const [lastLogWasDead, setLastLogWasDead] = useState(false);
 
   function loadMoodForDate(date: string) {
     try {
@@ -88,6 +105,10 @@ export default function LogScreen() {
       setCategories(getCategories());
       setHabits(getHabits());
       if (logMode !== 'weekly') loadMoodForDate(selectedDate);
+      try {
+        const rpg = getRPGState();
+        if (rpg.current_mood) setCurrentMoodState(rpg.current_mood as LogMoodState);
+      } catch {}
     }, []),
   );
 
@@ -186,7 +207,9 @@ export default function LogScreen() {
         }
       }
 
-      showXPPopup(totalXP); // show even on 0 so user knows the log was saved
+      const dead = isInDeathState();
+      setLastLogWasDead(dead);
+      showXPPopup(dead ? 0 : totalXP);
       setRPGState(getRPGState());
       resetForm();
       loadMoodForDate(todayStr());
@@ -215,6 +238,7 @@ export default function LogScreen() {
     <>
     <SwipeNavWrapper currentIndex={2}>
     <SafeAreaView style={s.safe}>
+      <TopRibbon title="Log" />
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
 
@@ -238,6 +262,32 @@ export default function LogScreen() {
               <Feather name="chevron-down" size={14} color={colors.textMuted} />
             </Pressable>
           )}
+
+          {/* Mood */}
+          <View style={s.moodCard}>
+            <View style={s.rowBetween}>
+              <Text style={s.sectionLabel}>Mood</Text>
+            </View>
+            <View style={s.moodStateGrid}>
+              {LOG_MOOD_STATES.map(m => {
+                const active = currentMoodState === m;
+                const col = LOG_MOOD_COLORS[m];
+                return (
+                  <Pressable
+                    key={m}
+                    style={[s.moodStateBtn, { borderColor: active ? col : colors.border }, active && { backgroundColor: `${col}18` }]}
+                    onPress={() => { setCurrentMoodState(m); setCurrentMood(m); }}
+                  >
+                    <Text style={[s.moodStateBtnTxt, { color: active ? col : colors.textMuted }]}>{m}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {/* Settings gear — bottom right */}
+            <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} style={s.moodSettingsBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="settings" size={13} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
 
           {/* Activity */}
           <View style={s.section}>
@@ -326,9 +376,10 @@ export default function LogScreen() {
 
           {/* Submit */}
           <View style={s.submitWrapper}>
-            <Animated.Text style={[s.xpPopup, { opacity: xpOpacity, transform: [{ translateY: xpY }] }]}>
-              +{lastXP} XP
-            </Animated.Text>
+            <Animated.View pointerEvents="none" style={[s.xpPopupRow, { opacity: xpOpacity, transform: [{ translateY: xpY }] }]}>
+              <Animated.Text style={s.xpPopup}>+{lastXP} XP</Animated.Text>
+              {lastLogWasDead && <Animated.Text style={s.deadTag}>DEAD</Animated.Text>}
+            </Animated.View>
             <Pressable onPress={handleSubmit} disabled={!canSubmit}
               style={[s.submitBtn, !canSubmit && s.submitBtnDisabled]}>
               <Text style={s.submitText}>
@@ -386,6 +437,12 @@ export default function LogScreen() {
 
     </SafeAreaView>
     </SwipeNavWrapper>
+
+      <MoodSettingsSheet
+        visible={moodSettingsVisible}
+        currentMood={currentMoodState}
+        onClose={() => setMoodSettingsVisible(false)}
+      />
 
       {/* ─── Modals live outside SwipeNavWrapper so they aren't clipped ─── */}
       <Modal visible={habitModal} transparent animationType="slide">
@@ -455,10 +512,15 @@ const s = StyleSheet.create({
   habitWeight: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
 
   submitWrapper: { alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  xpPopupRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, position: 'absolute', top: -spacing.lg },
   xpPopup: {
     fontFamily: fonts.mono.bold, fontSize: fontSize.lg, color: colors.success,
-    position: 'absolute', top: -spacing.lg,
     shadowColor: colors.success, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8,
+  },
+  deadTag: {
+    fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.danger,
+    letterSpacing: 1, borderWidth: 1, borderColor: colors.danger, borderRadius: 3,
+    paddingHorizontal: 4, paddingVertical: 1,
   },
   submitBtn: {
     width: '100%', backgroundColor: colors.primary, borderRadius: radius.md,
@@ -485,6 +547,15 @@ const s = StyleSheet.create({
   calCellNum: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textPrimary },
   calCellNumSelected: { color: colors.bg, fontFamily: fonts.ui.medium },
   calCellNumDisabled: { color: colors.textMuted },
+
+  // Mood card
+  moodCard:         { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: 'rgba(56,189,248,0.03)' },
+  moodSettingsBtn:  { alignSelf: 'flex-end', marginTop: spacing.xs },
+  moodStatePill:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  moodStatePillTxt: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, letterSpacing: 1 },
+  moodStateGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  moodStateBtn:     { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5 },
+  moodStateBtnTxt:  { fontFamily: fonts.ui.medium, fontSize: fontSize.xs },
 
   // Habit modal
   kbAvoid: { flex: 1, justifyContent: 'flex-end' },

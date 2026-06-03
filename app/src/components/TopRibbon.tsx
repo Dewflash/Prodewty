@@ -6,7 +6,6 @@ import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { getWeeklySummary, type WeeklySummary } from '../db/logs';
-import { getRPGState } from '../db/rpg';
 
 type Props = { title: string };
 
@@ -33,34 +32,33 @@ const sh = StyleSheet.create({
 });
 
 export function TopRibbon({ title }: Props) {
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [summaryVisible, setSummaryVisible] = useState(false);
+  const [menuVisible,    setMenuVisible]    = useState(false);
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
 
   function openSummary() {
     setSummary(getWeeklySummary());
-    setSheetVisible(true);
+    setSummaryVisible(true);
   }
 
-  const rpg = (() => { try { return getRPGState(); } catch { return null; } })();
-  const coins = rpg?.coins ?? 0;
+  const MENU_ITEMS: { icon: React.ComponentProps<typeof Feather>['name']; label: string; hint: string; onPress: () => void }[] = [
+    { icon: 'book',         label: 'Bible',    hint: 'Coming soon — devotion & Bible journaling module', onPress: () => {} },
+    { icon: 'dollar-sign',  label: 'Finance',  hint: 'Coming soon — financial rewards & budgeting',      onPress: () => {} },
+  ];
 
   return (
     <>
       <View style={s.ribbon}>
-
-        {/* Left: Store + Inventory */}
+        {/* Left: Hamburger + Store + Inventory */}
         <View style={s.group}>
+          <Pressable style={s.iconBtn} onPress={() => setMenuVisible(true)}>
+            <Feather name="menu" size={20} color={colors.textPrimary} />
+          </Pressable>
           <Pressable style={s.iconBtn} onPress={() => router.push('/store')}>
-            <Feather name="dollar-sign" size={20} color={colors.textPrimary} />
-            {coins > 0 && (
-              <View style={s.badge}><Text style={s.badgeText}>{coins}</Text></View>
-            )}
+            <Feather name="shopping-bag" size={20} color={colors.textPrimary} />
           </Pressable>
           <Pressable style={s.iconBtn} onPress={() => router.push('/inventory')}>
             <Feather name="archive" size={20} color={colors.textPrimary} />
-          </Pressable>
-          <Pressable style={s.iconBtn} onPress={() => router.push('/game-log')}>
-            <Feather name="activity" size={20} color={colors.textPrimary} />
           </Pressable>
         </View>
 
@@ -82,9 +80,37 @@ export function TopRibbon({ title }: Props) {
 
       </View>
 
-      {/* Weekly summary sheet */}
-      <Modal visible={sheetVisible} transparent animationType="slide">
-        <Pressable style={s.overlay} onPress={() => setSheetVisible(false)}>
+      {/* ── Side Menu Drawer ── */}
+      <Modal visible={menuVisible} transparent animationType="none">
+        <Pressable style={s.drawerOverlay} onPress={() => setMenuVisible(false)}>
+          <Pressable style={s.drawer} onPress={() => {}}>
+            <Text style={s.drawerTitle}>Menu</Text>
+            <View style={s.drawerDivider} />
+
+            {MENU_ITEMS.map(item => (
+              <Pressable
+                key={item.label}
+                style={s.drawerItem}
+                onPress={() => { setMenuVisible(false); item.onPress(); }}
+              >
+                <View style={s.drawerItemIcon}>
+                  <Feather name={item.icon} size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.drawerItemLabel}>{item.label}</Text>
+                  <Text style={s.drawerItemHint}>{item.hint}</Text>
+                </View>
+                <Feather name="lock" size={13} color={colors.border} />
+              </Pressable>
+            ))}
+
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── Weekly summary sheet ── */}
+      <Modal visible={summaryVisible} transparent animationType="slide">
+        <Pressable style={s.overlay} onPress={() => setSummaryVisible(false)}>
           <Pressable style={s.sheet} onPress={() => {}}>
             <View style={s.handle} />
             <Text style={s.sheetTitle}>This Week</Text>
@@ -118,17 +144,27 @@ const s = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   group: { flexDirection: 'row', gap: 4 },
-  iconBtn: { padding: 6, position: 'relative' },
-  badge: {
-    position: 'absolute', top: 0, right: 0,
-    backgroundColor: colors.success, borderRadius: 8,
-    paddingHorizontal: 3, minWidth: 15, alignItems: 'center',
-  },
-  badgeText: { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.bg },
+  iconBtn: { padding: 6 },
   title: {
     flex: 1, textAlign: 'center',
     fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary,
   },
+
+  // Drawer
+  drawerOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.6)' },
+  drawer: {
+    width: 260, height: '100%', backgroundColor: colors.card,
+    paddingTop: 60, paddingHorizontal: spacing.lg, gap: spacing.md,
+    borderRightWidth: 1, borderRightColor: colors.border,
+  },
+  drawerTitle:   { fontFamily: fonts.ui.semibold, fontSize: fontSize.lg, color: colors.textPrimary },
+  drawerDivider: { height: 1, backgroundColor: colors.border },
+  drawerItem:    { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm },
+  drawerItemIcon:{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: 'rgba(56,189,248,0.08)', alignItems: 'center', justifyContent: 'center' },
+  drawerItemLabel: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary },
+  drawerItemHint:  { fontFamily: fonts.ui.regular,  fontSize: fontSize.xs,   color: colors.textMuted, marginTop: 1 },
+
+  // Summary sheet
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card,

@@ -75,7 +75,7 @@ export function getLogs(): ActivityLog[] {
 
 export function getLogsForDate(date: string): ActivityLog[] {
   return db.getAllSync<ActivityLog>(
-    "SELECT * FROM activity_logs WHERE log_date = ? ORDER BY entry_type DESC, created_at ASC",
+    "SELECT * FROM activity_logs WHERE log_date = ? ORDER BY created_at DESC",
     date,
   );
 }

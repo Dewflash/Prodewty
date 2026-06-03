@@ -9,6 +9,11 @@ export const colors = {
   textPrimary: '#F8FAFC',
   textMuted: '#64748B',
 
+  // Health-bar stat colors
+  statEmotional: '#F87171',  // brighter red (easier to read)
+  statPhysical:  '#2563EB',  // dark blue
+  statMental:    '#D97706',  // rich dark yellow/amber
+
   // Mood 1–10: dark muted base, selected square glows to full color
   mood: [
     '#7F1D1D', // 1 - deep muted red

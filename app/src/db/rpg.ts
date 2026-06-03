@@ -30,10 +30,41 @@ export type RPGState = {
   current_mood: string;
   level_up_pending: number;
   death_acknowledged: number;
+  // v14
+  gems: number;
+  revival_count: number;
+  // v15
+  vigor: number;
+  last_vigor_date: string | null;
 };
 
 export function getRPGState(): RPGState {
   return db.getFirstSync<RPGState>('SELECT * FROM rpg_state WHERE id = 1')!;
+}
+
+// Called on app open — increments vigor if no self-destruct today
+export function checkVigor(): void {
+  try {
+    const state = getRPGState();
+    const today = new Date().toISOString().split('T')[0];
+    const lastVigor = (state as any).last_vigor_date as string | null;
+    if (lastVigor === today) return; // already incremented today
+    const lastSD = state.last_self_destruct ?? '';
+    if (lastSD === today) return; // self-destructed today — no vigor gain
+    db.runSync(`UPDATE rpg_state SET vigor = vigor + 1, last_vigor_date = ? WHERE id = 1`, today);
+  } catch {}
+}
+
+export function getAnima(): number {
+  try {
+    const state = getRPGState();
+    return ((state as any).vigor ?? 0) - (state.self_destruct_count ?? 0);
+  } catch { return 0; }
+}
+
+// Coin multiplier: debuff when anima < -10 (blight far exceeds vigor)
+export function getCoinMultiplier(): number {
+  return getAnima() < -10 ? 0.8 : 1.0;
 }
 
 // Called on app open — auto-applies streak freeze if exactly one day was missed
@@ -73,6 +104,16 @@ export function selfDestruct(): { count: number; date: string } {
     `UPDATE rpg_state SET self_destruct_count = self_destruct_count + 1, last_self_destruct = ? WHERE id = 1`,
     today,
   );
+  // Health penalties: physical -45, emotional -20, mental -10
+  try {
+    db.runSync(
+      `UPDATE health_state SET
+         physical  = MAX(0, physical  - 45),
+         emotional = MAX(0, emotional - 20),
+         mental    = MAX(0, mental    - 10)
+       WHERE id = 1`,
+    );
+  } catch {}
   const pad = (n: number) => String(n).padStart(2, '0');
   const now = new Date();
   const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;

@@ -1,9 +1,11 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Pressable, StyleSheet } from 'react-native';
+import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
+import { GlobalCurrencyBar } from '../../src/components/GlobalCurrencyBar';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -11,9 +13,19 @@ function TabIcon({ name, focused }: { name: FeatherName; focused: boolean }) {
   return <Feather name={name} size={20} color={focused ? colors.primary : colors.textMuted} />;
 }
 
+function CustomTabBar(props: BottomTabBarProps) {
+  return (
+    <View>
+      <GlobalCurrencyBar />
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
+
 export default function TabsLayout() {
   return (
     <Tabs
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
@@ -64,7 +76,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="shield" focused={focused} />,
         }}
       />
-      {/* Legacy screens — hidden from tab bar */}
       <Tabs.Screen name="stats"           options={{ href: null }} />
       <Tabs.Screen name="journal"         options={{ href: null }} />
       <Tabs.Screen name="recommendations" options={{ href: null }} />
@@ -77,8 +88,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    height: 80,
-    paddingBottom: 16,
+    height: 72,
+    paddingBottom: 14,
     paddingTop: 8,
   },
   label: {
