@@ -112,16 +112,12 @@ export function isInDeathState(): boolean {
 
 export function selfDestruct(): { count: number; date: string } {
   const today = new Date().toISOString().split('T')[0];
-  const state = getRPGState();
-  // If vigor was already incremented today, undo it — self-destruct nullifies the day's vigor gain
-  const vigorUndo = (state.last_vigor_date === today) ? -1 : 0;
   db.runSync(
     `UPDATE rpg_state SET
        self_destruct_count = self_destruct_count + 1,
-       last_self_destruct = ?,
-       vigor = vigor + ?
+       last_self_destruct = ?
      WHERE id = 1`,
-    today, vigorUndo,
+    today,
   );
   // Health penalties: physical -45, emotional -20, mental -10
   try {

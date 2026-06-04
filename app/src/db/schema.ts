@@ -872,6 +872,145 @@ function runMigrations() {
     );
     db.execSync('PRAGMA user_version = 24');
   }
+
+  if (version < 25) {
+    const z   = (n: number) => String(n).padStart(2, '0');
+    const ts  = (d: Date)   => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:00`;
+    const dDate = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
+    const dTs   = (n: number, h = 9) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(h, 0, 0, 0); return ts(d); };
+    const yesterday = dDate(1);
+
+    // ── 1. All gates open ────────────────────────────────────────────────────
+    db.execSync(`DELETE FROM dungeon_runs`);
+
+    // ── 2. Fresh activity logs — 14 days ─────────────────────────────────────
+    db.execSync(`DELETE FROM activity_logs`);
+    type E25 = { d: number; h?: number; t: 'mood'|'act'|'dungeon'|'quest';
+                 cat?: string; desc?: string; dur?: number;
+                 mood?: number; nrg?: number; prod?: number;
+                 xp: number; well?: string; rev?: string };
+    const entries25: E25[] = [
+      { d:14, t:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:14, t:'act',  cat:'Workout',  desc:'Morning run 5km',                   dur:45,  xp:52 },
+      { d:13, t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:13, t:'act',  cat:'Coding',   desc:'Personal project sprint',            dur:90,  xp:65, rev:'Break large features into small commits' },
+      { d:12, t:'mood', mood:6, nrg:6, prod:7, xp:20 },
+      { d:12, t:'act',  cat:'Study',    desc:'System design — caching tradeoffs',  dur:60,  xp:48, well:'Understood cache invalidation' },
+      { d:11, t:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:11, t:'act',  cat:'Workout',  desc:'HIIT session',                       dur:30,  xp:38 },
+      { d:11, h:10, t:'act', cat:'Devotion', desc:'Morning devotion',              dur:20,  xp:28 },
+      { d:10, t:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:10, t:'act',  cat:'Coding',   desc:'Refactored db layer',                dur:80,  xp:60 },
+      { d:10, h:14, t:'dungeon', cat:'Workout', desc:"E-Rank Gate: Hunter's Run",  dur:30,  xp:45 },
+      { d:9,  t:'mood', mood:8, nrg:8, prod:8, xp:20 },
+      { d:9,  t:'act',  cat:'Reading',  desc:'Atomic Habits ch 9–12',              dur:45,  xp:42 },
+      { d:8,  t:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:8,  t:'act',  cat:'Workout',  desc:'Gym — full body',                    dur:60,  xp:62, well:'New PB on bench press' },
+      { d:7,  t:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:7,  t:'act',  cat:'Journal',  desc:'Weekly reflection',                  dur:25,  xp:32, rev:"Stop saying 'I'll try' — say 'I will'" },
+      { d:6,  t:'mood', mood:8, nrg:8, prod:9, xp:20 },
+      { d:6,  t:'act',  cat:'Coding',   desc:'New feature shipped',                dur:120, xp:78, well:'Deployed cleanly first attempt' },
+      { d:5,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:5,  t:'act',  cat:'Study',    desc:'Algorithm prep — trees and graphs',  dur:60,  xp:48 },
+      // day 4: gap for streak-break testing
+      { d:3,  t:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:3,  t:'act',  cat:'Workout',  desc:'Sprint intervals',                   dur:35,  xp:40 },
+      { d:3,  h:11, t:'quest', cat:'Coding', desc:'Log: Coding',                   xp:30   },
+      { d:2,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:2,  t:'act',  cat:'Devotion', desc:'Bible study — Proverbs 3',           dur:25,  xp:30, rev:'Trust in the Lord with all your heart' },
+      { d:1,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:1,  t:'act',  cat:'Admin',    desc:'Weekly planning session',            dur:30,  xp:28 },
+    ];
+    for (const e of entries25) {
+      const date = dDate(e.d);
+      const tstr = dTs(e.d, e.h ?? (e.t === 'mood' ? 8 : 9));
+      if (e.t === 'mood') {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             mood_rating,energy_rating,productivity_rating,categories,xp_awarded,what_went_well,what_to_improve)
+           VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
+          date, tstr, e.mood??7, e.nrg??7, e.prod??7, e.xp, e.well??null, e.rev??null,
+        );
+      } else {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             categories,duration_mins,xp_awarded,mood_rating,what_went_well,what_to_improve)
+           VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
+          e.cat??'', e.desc??'', e.t, date, tstr,
+          JSON.stringify([e.cat??'']), e.dur??null, e.xp, e.well??null, e.rev??null,
+        );
+      }
+    }
+
+    // ── 3. Hunter's Run on 12h cooldown, all other gates open ────────────────
+    const huntersId = db.getFirstSync<{id:number}>(`SELECT id FROM dungeons WHERE name="Hunter's Run" LIMIT 1`)?.id;
+    if (huntersId) {
+      const t12h = ts(new Date(Date.now() - 43200000));
+      db.runSync(
+        `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
+         VALUES (?, ?, ?, 'completed', 'win', 25, 0)`,
+        huntersId, t12h, t12h,
+      );
+    }
+
+    // ── 4. Quests: all four statuses covered ─────────────────────────────────
+    db.execSync(`DELETE FROM quests`);
+    db.execSync(`DELETE FROM quest_completions`);
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',30,'pending')`,
+      'Log: Workout', "You haven't worked out recently. Complete a workout session.", 'Workout');
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status,accepted_at) VALUES (?,?,?,'weekly',30,'accepted',?)`,
+      'Log: Reading', 'Keep the reading habit alive. Log a reading session.', 'Reading', yesterday + ' 08:00:00');
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',25,'completed')`,
+      'Log: Coding', 'Keep the coding habit going.', 'Coding');
+    const cqId25 = db.getFirstSync<{id:number}>(`SELECT id FROM quests WHERE status='completed' LIMIT 1`)?.id;
+    if (cqId25) db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?,25)`, cqId25);
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',25,'skipped')`,
+      'Log: Journal', 'Complete a journal session.', 'Journal');
+
+    // ── 5. Active buff expires in 2 hours ────────────────────────────────────
+    db.execSync(`DELETE FROM active_buffs`);
+    db.runSync(
+      `INSERT INTO active_buffs (item_id, stat_key, stat_value, expires_at, item_name) VALUES (0, 'foc', 5, ?, 'Focus Draught')`,
+      ts(new Date(Date.now() + 7200000)),
+    );
+
+    // ── 6. RPG state ──────────────────────────────────────────────────────────
+    //   Level 3, 490/500 XP  → one log away from level-up
+    //   coins=250  gems=5  ap=5
+    //   HP=35/100  → near-death zone
+    //   blight=3  vigor=8  → anima=+5  (gem reward active)
+    db.runSync(
+      `UPDATE rpg_state SET
+         current_level=3, total_xp=490, xp_to_next_level=500,
+         streak_days=7, last_active_date=?,
+         coins=250, gems=5, ap=5,
+         hp=35, hp_max=100, mp=40,
+         self_destruct_count=3, vigor=8,
+         current_mood='driven', death_acknowledged=0,
+         spendable_xp=490, total_xp_earned=1800
+       WHERE id=1`,
+      yesterday,
+    );
+
+    // ── 7. Health bars: three different tiers ─────────────────────────────────
+    //   Emotional=45 (Worn), Physical=12 (Critical), Mental=68 (Stable)
+    db.runSync(
+      `UPDATE health_state SET
+         emotional=45, physical=12, mental=68,
+         last_updated=?, last_any_log=?, health_critical=0
+       WHERE id=1`,
+      ts(new Date()), yesterday,
+    );
+
+    db.execSync('PRAGMA user_version = 25');
+  }
+
+  if (version < 26) {
+    db.runSync(
+      `UPDATE rpg_state SET coins=99999, gems=999, self_destruct_count=250, vigor=29 WHERE id=1`,
+    );
+    db.execSync('PRAGMA user_version = 26');
+  }
 }
 
 function seedRealisticData() {

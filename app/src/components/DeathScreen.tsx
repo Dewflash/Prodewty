@@ -26,7 +26,8 @@ const CAUSE_TEXT: Record<NonNullable<DeathCause>, string> = {
 };
 
 export function DeathScreen({ cause, onResolve }: Props) {
-  const opacity = useRef(new Animated.Value(0)).current;
+  const opacity   = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const [phase,         setPhase]         = useState<Phase>('main');
   const [quests,        setQuests]        = useState<RevivalQuest[]>([]);
@@ -60,7 +61,18 @@ export function DeathScreen({ cause, onResolve }: Props) {
       if (health.mental    <= 0) bars.push('mental');
       setZeroHealthBars(bars);
     } catch {}
-    Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 14, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -14, duration: 55, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6, duration: 45, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6, duration: 45, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 35, useNativeDriver: true }),
+    ]).start(() =>
+      Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }).start(),
+    );
   }, [cause]);
 
   // Countdown
