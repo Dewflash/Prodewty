@@ -106,6 +106,7 @@ function _applyHealthDecay(): void {
     db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, Math.floor(restore * daysPassed));
   }
 
+  triggerCurrencyRefresh();
   // Trigger death check only when a bar first reaches 0 (wasn't already critical)
   if (critical && !wasCritical) {
     try { triggerDeathCheck(); } catch {}
@@ -135,6 +136,7 @@ function _applyLoggingHealthBoost(
     isPhysical ? 1 : 0, today,
     isRecreational ? 1 : 0, today,
   );
+  triggerCurrencyRefresh();
 }
 
 export function purchaseRestoration(

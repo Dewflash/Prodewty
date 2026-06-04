@@ -3,6 +3,7 @@ import { getRPGState, applyXP, getCoinMultiplier } from './rpg';
 import { getHealthState } from './health';
 import { sqlNow, pad } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
+import { triggerDeathCheck } from './deathCheckSignal';
 import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -416,6 +417,7 @@ export function getDungeonCooldownRemaining(dungeonId: number, cooldownHours: nu
   const remaining = cooldownHours - elapsed;
   if (remaining <= 0) return null;
   if (remaining >= 24) return `${Math.ceil(remaining / 24)}d`;
+  if (remaining < 1)   return `${Math.ceil(remaining * 60)}m`;
   return `${Math.ceil(remaining)}h`;
 }
 
@@ -499,6 +501,7 @@ export function failDungeon(runId: number, dungeon: Dungeon): void {
   );
   db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - 20) WHERE id = 1');
   addGameLog('dungeon_fail', `Gate Failed: ${dungeon.name}. HP -20.`);
+  triggerDeathCheck();
 }
 
 export function abandonDungeon(runId: number): void {

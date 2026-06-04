@@ -143,7 +143,7 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  group: { flexDirection: 'row', gap: 4 },
+  group: { flexDirection: 'row', gap: 10 },
   iconBtn: { padding: 6 },
   title: {
     flex: 1, textAlign: 'center',

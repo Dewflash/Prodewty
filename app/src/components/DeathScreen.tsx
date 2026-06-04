@@ -139,7 +139,7 @@ export function DeathScreen({ cause, onResolve }: Props) {
 
   return (
     <Modal visible transparent animationType="none">
-      <Animated.View style={[s.overlay, { opacity }]}>
+      <Animated.View style={[s.overlay, { opacity, transform: [{ translateX: shakeAnim }] }]}>
 
         {/* ── MAIN ── */}
         {phase === 'main' && (

@@ -431,7 +431,7 @@ export default function HistoryScreen() {
 
       {tab === 'daily' ? (
         <ScrollView contentContainerStyle={s.content}>
-          <View style={s.searchRow}>
+          <View style={[s.searchRow, { marginBottom: spacing.md }]}>
             <Feather name="search" size={15} color={colors.textMuted} />
             <TextInput style={s.searchInput} placeholder="Search notes & journal..." placeholderTextColor={colors.textMuted} value={searchQuery} onChangeText={handleSearch} />
             {searchQuery.length > 0 && <Pressable onPress={() => handleSearch('')}><Feather name="x" size={15} color={colors.textMuted} /></Pressable>}
@@ -447,7 +447,7 @@ export default function HistoryScreen() {
             </View>
           </View>
 
-          <View style={s.calendar}>
+          <View style={[s.calendar, { marginBottom: spacing.md }]}>
             <View style={s.calRow}>{DAY_LABELS.map(d => <Text key={d} style={s.dayLabel}>{d}</Text>)}</View>
             {Array.from({ length: cells.length / 7 }, (_, row) => (
               <View key={row} style={s.calRow}>

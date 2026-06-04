@@ -570,8 +570,8 @@ export default function GameScreen() {
 
       {/* ── ITEM BROWSER ── */}
       <Modal visible={itemBrowserSlot !== null} transparent animationType="slide">
-        <View style={bm.overlay}>
-          <View style={bm.sheet}>
+        <Pressable style={bm.overlay} onPress={() => setItemBrowserSlot(null)}>
+          <Pressable style={bm.sheet} onPress={() => {}}>
             <View style={bm.header}>
               <Text style={bm.title}>{itemBrowserTitle}</Text>
               <Pressable onPress={() => setItemBrowserSlot(null)} style={bm.closeBtn}>
@@ -594,23 +594,21 @@ export default function GameScreen() {
                   const isConsumable = item.slot_type?.startsWith('consumable_');
                   const isCatalyst   = item.slot_type?.startsWith('catalyst_');
                   const buffStr     = item.stat_buff ? fmtBuff(item.stat_buff) : null;
-                  const goldShadow = isLegendary ? {
-                    textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
-                  } : undefined;
+                  const goldShadow = undefined;
                   return (
-                    <View key={item.id} style={[bm.itemCard, { borderColor: isLegendary ? GOLD : col, backgroundColor: RARITY_BG[rarity] }]}>
+                    <View key={item.id} style={[bm.itemCard, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
                       <View style={bm.itemRow}>
-                        <View style={[bm.rarityBadge, { borderColor: isLegendary ? GOLD : col }]}>
-                          <Text style={[bm.rarityTxt, { color: isLegendary ? GOLD : col }, goldShadow]}>{rarityLabel(rarity)}</Text>
+                        <View style={[bm.rarityBadge, { borderColor: col }]}>
+                          <Text style={[bm.rarityTxt, { color: isLegendary ? GOLD : col }]}>{rarityLabel(rarity)}</Text>
                         </View>
-                        <Text style={[bm.itemName, { color: isLegendary ? GOLD : col, fontFamily: isLegendary ? fonts.ui.semibold : fonts.ui.regular }, goldShadow]}>
+                        <Text style={[bm.itemName, { color: isLegendary ? GOLD : col, fontFamily: isLegendary ? fonts.ui.semibold : fonts.ui.regular }]}>
                           {item.item_name}
                         </Text>
-                        {buffStr && <Text style={[bm.qty, { color: isLegendary ? GOLD : col }, goldShadow]}>{buffStr}</Text>}
+                        {buffStr && <Text style={[bm.qty, { color: isLegendary ? GOLD : col }]}>{buffStr}</Text>}
                         {(item.quantity ?? 1) > 1 && <Text style={bm.qty}>×{item.quantity}</Text>}
                       </View>
                       {item.description ? (
-                        <Text style={[bm.itemDesc, { color: isLegendary ? GOLD : undefined, opacity: isLegendary ? 1 : undefined }, goldShadow]}>{item.description}</Text>
+                        <Text style={[bm.itemDesc, { color: isLegendary ? GOLD : undefined, opacity: isLegendary ? 1 : undefined }]}>{item.description}</Text>
                       ) : null}
                       <View style={bm.itemActions}>
                         {isConsumable && (
@@ -618,7 +616,7 @@ export default function GameScreen() {
                             <Text style={[bm.actionBtnTxt, { color: colors.success }]}>USE</Text>
                           </Pressable>
                         )}
-                        {!isConsumable && !isCatalyst && (
+                        {!isConsumable && (
                           isEquipped ? (
                             <Pressable onPress={() => handleUnequipItem(item)} style={[bm.actionBtn, { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.12)' }]}>
                               <Text style={[bm.actionBtnTxt, { color: colors.primary }]}>EQUIPPED ✓ — tap to unequip</Text>
@@ -635,8 +633,8 @@ export default function GameScreen() {
                 })
               )}
             </ScrollView>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ── RARITY DROP INFO ── */}
@@ -674,7 +672,7 @@ export default function GameScreen() {
               <Text style={gi.section}>RARITY TIER LIST</Text>
               {(Object.entries(RARITY_COLOR) as [Rarity, string][]).map(([rarity, color]) => (
                 <View key={rarity} style={gi.rarityRow}>
-                  <View style={[gi.rarityDot, { backgroundColor: rarity === 'Chromatic' ? '#FFFFFF' : color }]} />
+                  <View style={[gi.rarityDot, { backgroundColor: color }]} />
                   <Text style={[gi.rarityLabel, { color }]}>{rarity}</Text>
                   <Text style={gi.rarityNote}>{rarityLabel(rarity)}</Text>
                 </View>
@@ -759,8 +757,8 @@ const s = StyleSheet.create({
   safe:  { flex: 1, backgroundColor: colors.bg },
 
   ribbon:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-  ribbonGroupLeft: { flexDirection: 'row', minWidth: 64, justifyContent: 'flex-start', alignItems: 'center' },
-  ribbonGroup:     { flexDirection: 'row', minWidth: 64, justifyContent: 'flex-end' },
+  ribbonGroupLeft: { flexDirection: 'row', minWidth: 64, justifyContent: 'flex-start', alignItems: 'center', gap: 10 },
+  ribbonGroup:     { flexDirection: 'row', minWidth: 64, justifyContent: 'flex-end', gap: 10 },
   ribbonIcon:      { padding: 6 },
   ribbonTitle:     { flex: 1, textAlign: 'center', fontFamily: fonts.mono.bold, fontSize: fontSize.base, color: colors.primary, letterSpacing: 3 },
 

@@ -8,6 +8,7 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg';
 import { purchaseHPBoost } from '../src/db/game';
+import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { db } from '../src/db/schema';
 
 function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
@@ -51,6 +52,7 @@ export default function StoreScreen() {
         if (r === 'hp_not_critical') { Alert.alert('HP not critical', 'Only usable when HP ≤ 30.'); return; }
         if (r === 'insufficient_coins') { Alert.alert('Not enough coins'); return; }
         reload();
+        triggerCurrencyRefresh();
         Alert.alert('Purchased', `${label} applied.`);
       }},
     ]);

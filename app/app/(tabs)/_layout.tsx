@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: fonts.ui.medium,
-    fontSize: fontSize.xs,
+    fontSize: 10,
     marginTop: 2,
   },
   plusTabBtn: {
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 0,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,

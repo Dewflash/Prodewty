@@ -129,6 +129,8 @@ export function selfDestruct(): { count: number; date: string } {
        WHERE id = 1`,
     );
   } catch {}
+  triggerCurrencyRefresh();
+  triggerDeathCheck();
   try {
     db.runSync(
       `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)

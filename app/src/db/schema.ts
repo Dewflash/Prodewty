@@ -1011,6 +1011,12 @@ function runMigrations() {
     );
     db.execSync('PRAGMA user_version = 26');
   }
+
+  if (version < 27) {
+    // 2-minute cooldown for testing (2/60 ≈ 0.0333 hours)
+    db.execSync(`UPDATE dungeons SET cooldown_hours = 0.0333`);
+    db.execSync('PRAGMA user_version = 27');
+  }
 }
 
 function seedRealisticData() {

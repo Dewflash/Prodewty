@@ -506,10 +506,10 @@ export default function ProgressScreen() {
         <View style={s.moodCard}>
           <View style={s.moodCardHeader}>
             <Text style={s.sectionHead}>Mood</Text>
+            <View style={{ flex: 1 }} />
             <TouchableOpacity onPress={() => setMoodInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Feather name="info" size={14} color={colors.textMuted} />
             </TouchableOpacity>
-            <View style={{ flex: 1 }} />
             <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Feather name="settings" size={13} color={colors.textMuted} />
             </TouchableOpacity>

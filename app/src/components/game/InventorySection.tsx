@@ -12,12 +12,8 @@ import { fmtBuff } from '../../utils/format';
 
 // ─── Chromatic ────────────────────────────────────────────────────────────────
 
-export const GOLD = '#FFD700';
-const GOLD_SHADOW = {
-  textShadowColor: 'rgba(0,0,0,0.55)',
-  textShadowOffset: { width: 0, height: 1 } as { width: number; height: number },
-  textShadowRadius: 2,
-};
+export const GOLD = '#D9DBDE';
+const GOLD_SHADOW = {} as { textShadowColor?: string; textShadowOffset?: { width: number; height: number }; textShadowRadius?: number };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,19 +60,19 @@ export function SlotCard({ label, slotKey, onPress, refreshKey }: {
   }, [slotKey, refreshKey]);
 
   const isChromatic = equipped?.rarity === 'Chromatic';
-  const rarityCol   = equipped ? (isChromatic ? GOLD : (RARITY_COLOR[equipped.rarity as Rarity] ?? colors.border)) : colors.border;
+  const borderCol   = equipped ? (RARITY_COLOR[equipped.rarity as Rarity] ?? colors.border) : colors.border;
   const buffStr     = equipped?.stat_buff ? fmtBuff(equipped.stat_buff) : null;
-  const txtStyle    = isChromatic ? [{ color: GOLD }, GOLD_SHADOW] : [{ color: rarityCol }];
+  const txtStyle    = isChromatic ? [{ color: GOLD }] : [{ color: borderCol }];
   return (
-    <Pressable onPress={onPress} style={[inv.slot, { borderColor: rarityCol, backgroundColor: isChromatic ? '#FFFFFF' : undefined }]}>
+    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol, backgroundColor: isChromatic ? 'rgba(205,127,50,0.20)' : undefined }]}>
       <View style={inv.slotHeader}>
-        <Text style={[inv.slotLabel, isChromatic && { color: GOLD, ...GOLD_SHADOW }]}>{label.toUpperCase()}</Text>
+        <Text style={[inv.slotLabel, isChromatic && { color: GOLD }]}>{label.toUpperCase()}</Text>
         {equipped && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(equipped.rarity as Rarity)}</Text>}
       </View>
       {equipped ? (
         <>
           <Text style={[inv.slotItem, ...txtStyle]} numberOfLines={1}>{equipped.item_name}</Text>
-          {equipped.description && <Text style={[inv.slotDesc, isChromatic && { color: GOLD, ...GOLD_SHADOW }]} numberOfLines={3}>{equipped.description}</Text>}
+          {equipped.description && <Text style={[inv.slotDesc, isChromatic && { color: GOLD }]} numberOfLines={3}>{equipped.description}</Text>}
           {buffStr && (
             <View style={inv.slotFooter}>
               <View style={{ flex: 1 }} />
@@ -98,17 +94,17 @@ export function StatSlotCard({ abbr, statKey, onPress, refreshKey }: {
 }) {
   const [item, setItem] = React.useState<InventoryItem | null>(null);
   React.useEffect(() => {
-    try { setItem(getInventoryByStat(statKey, 'catalyst')[0] ?? null); } catch {}
+    try { setItem(getInventoryByStat(statKey, 'catalyst').find(i => !(i.is_equipped)) ?? null); } catch {}
   }, [statKey, refreshKey]);
 
   const isChromatic = item?.rarity === 'Chromatic';
-  const rarityCol   = item ? (isChromatic ? GOLD : (RARITY_COLOR[item.rarity as Rarity] ?? colors.border)) : colors.border;
+  const borderCol   = item ? (RARITY_COLOR[item.rarity as Rarity] ?? colors.border) : colors.border;
   const buffStr     = item?.stat_buff ? fmtBuff(item.stat_buff) : null;
-  const txtStyle    = isChromatic ? [{ color: GOLD }, GOLD_SHADOW] : [{ color: rarityCol }];
+  const txtStyle    = isChromatic ? [{ color: GOLD }] : [{ color: borderCol }];
   return (
-    <Pressable onPress={onPress} style={[inv.slot, { borderColor: rarityCol, backgroundColor: isChromatic ? '#FFFFFF' : undefined }]}>
+    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol, backgroundColor: isChromatic ? 'rgba(205,127,50,0.20)' : undefined }]}>
       <View style={inv.slotHeader}>
-        <Text style={[inv.slotLabel, isChromatic && { color: GOLD, ...GOLD_SHADOW }]}>{abbr}</Text>
+        <Text style={[inv.slotLabel, isChromatic && { color: GOLD }]}>{abbr}</Text>
         {item && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(item.rarity as Rarity)}</Text>}
       </View>
       {item ? (
@@ -155,7 +151,11 @@ export function ConsumableList({ onUse }: { onUse: (item: InventoryItem) => void
         const buffStr = item.stat_buff ? fmtBuff(item.stat_buff) : null;
         return (
           <View key={item.id} style={[inv.consumableRow, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
-            <View style={[inv.consumableDot, { backgroundColor: col }]} />
+            <View style={[inv.rarityBox, { borderColor: col }]}>
+              <Text style={[inv.rarityBoxTxt, { color: col }]}>
+                {rarity === 'Chromatic' ? '★' : rarityLabel(rarity)}
+              </Text>
+            </View>
             <Text style={[inv.consumableName, { color: col }]}>{item.item_name}</Text>
             {buffStr && <Text style={[inv.consumableBuff, { color: col }]}>{buffStr}</Text>}
             {(item.quantity ?? 1) > 1 && <Text style={[inv.consumableQty, { color: col }]}>×{item.quantity}</Text>}
@@ -253,7 +253,8 @@ export const inv = StyleSheet.create({
   suppliesHint:    { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.border },
 
   consumableRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderRadius: radius.sm, padding: spacing.sm + 2 },
-  consumableDot:  { width: 8, height: 8, borderRadius: 4 },
+  rarityBox:      { borderWidth: 1, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 1, alignItems: 'center', justifyContent: 'center' },
+  rarityBoxTxt:   { fontFamily: fonts.mono.bold, fontSize: 9, letterSpacing: 0.5 },
   consumableName: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, flex: 1 },
   consumableBuff: { fontFamily: fonts.mono.regular, fontSize: 9, opacity: 0.8 },
   consumableQty:  { fontFamily: fonts.mono.bold, fontSize: fontSize.xs },
