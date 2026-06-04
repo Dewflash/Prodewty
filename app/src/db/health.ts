@@ -1,5 +1,7 @@
 import { db } from './schema';
 import { triggerDeathCheck } from './deathCheckSignal';
+import { sqlNow } from '../utils/date';
+import { triggerCurrencyRefresh } from './currencySignal';
 
 export type HealthState = {
   emotional: number;
@@ -86,15 +88,12 @@ function _applyHealthDecay(): void {
   const physical  = Math.max(0, h.physical  - physicalDecay);
   const mental    = Math.max(0, h.mental    - mentalDecay);
 
+  const wasCritical = h.health_critical === 1; // state BEFORE this decay
   const critical = (emotional === 0 || physical === 0 || mental === 0) ? 1 : 0;
-  const wasHealthy = !critical;
-
-  const pad = (x: number) => String(x).padStart(2, '0');
-  const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
 
   db.runSync(
     `UPDATE health_state SET emotional=?, physical=?, mental=?, last_updated=?, health_critical=? WHERE id=1`,
-    emotional, physical, mental, ts, critical,
+    emotional, physical, mental, sqlNow(), critical,
   );
 
   // HP restoration/depletion based on minimum health level
@@ -107,8 +106,8 @@ function _applyHealthDecay(): void {
     db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, Math.floor(restore * daysPassed));
   }
 
-  // Trigger death check immediately if any bar just hit 0
-  if (critical && wasHealthy) {
+  // Trigger death check only when a bar first reaches 0 (wasn't already critical)
+  if (critical && !wasCritical) {
     try { triggerDeathCheck(); } catch {}
   }
 }
@@ -138,16 +137,23 @@ function _applyLoggingHealthBoost(
   );
 }
 
-export function purchaseRestoration(activityId: number): 'ok' | 'insufficient_xp' | 'not_found' {
+export function purchaseRestoration(
+  activityId: number,
+): 'ok' | 'insufficient_xp' | 'not_found' | 'death_state' {
+  // Block restoration when a health bar is at 0 — revival quest required first
+  const h = getHealthState();
+  if (h.emotional <= 0 || h.physical <= 0 || h.mental <= 0) return 'death_state';
+
   const activity = db.getFirstSync<RestorativeActivity>(
     'SELECT * FROM restorative_activities WHERE id = ?', activityId,
   );
   if (!activity) return 'not_found';
 
-  const rpg = db.getFirstSync<{ total_xp: number }>('SELECT total_xp FROM rpg_state WHERE id = 1')!;
-  if (rpg.total_xp < activity.xp_cost) return 'insufficient_xp';
+  const rpg = db.getFirstSync<{ spendable_xp: number }>(
+    'SELECT COALESCE(spendable_xp, total_xp) AS spendable_xp FROM rpg_state WHERE id = 1',
+  )!;
+  if (rpg.spendable_xp < activity.xp_cost) return 'insufficient_xp';
 
-  const h = getHealthState();
   db.runSync(
     `UPDATE health_state SET
        emotional = MIN(100, emotional + ?),
@@ -159,22 +165,24 @@ export function purchaseRestoration(activityId: number): 'ok' | 'insufficient_xp
   );
 
   db.runSync(
-    'UPDATE rpg_state SET total_xp = total_xp - ? WHERE id = 1',
+    'UPDATE rpg_state SET spendable_xp = COALESCE(spendable_xp, 0) - ? WHERE id = 1',
     activity.xp_cost,
   );
 
+  triggerCurrencyRefresh();
   return 'ok';
 }
 
+// Tier boundaries must match getHealthTier() exactly
 export function getHealthXPMultiplier(): number {
   const h = getHealthState();
   const min = Math.min(h.emotional, h.physical, h.mental);
-  if (min <= 0)   return 0.50; // Depleted    −50%
-  if (min < 10)   return 0.65; // Critical    −35%
-  if (min < 20)   return 0.75; // Danger      −25%
-  if (min < 50)   return 0.85; // Weakened    −15%
-  if (min < 70)   return 0.95; // Recovering  −5%
-  return 1.0;                  // Stable/Peak  no penalty
+  if (min <= 0)  return 0.50; // Depleted  −50%
+  if (min < 10)  return 0.65; // Critical  −35%
+  if (min < 20)  return 0.75; // Danger    −25%
+  if (min < 30)  return 0.85; // Weakened  −15%
+  if (min < 50)  return 0.95; // Worn       −5%
+  return 1.0;                 // Stable / Strong / Peak — no penalty
 }
 
 export type HealthTier = { label: string; xpPenalty: string; hpEffect: string };
@@ -212,13 +220,3 @@ export function applyMoodHealthEffects(mood: number, energy: number, productivit
   } catch {}
 }
 
-export function getHealthWarning(): string | null {
-  const h = getHealthState();
-  const min = Math.min(h.emotional, h.physical, h.mental);
-  if (min <= 0)   return 'Health depleted — XP −50%';
-  if (min < 10)   return 'Critical health — XP −35%';
-  if (min < 20)   return 'Danger — XP −25%';
-  if (min < 50)   return 'Weakened — XP −15%';
-  if (min < 70)   return 'Recovering — XP −5%';
-  return null;
-}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { db } from '../db/schema';
+import { MOOD_FALLBACK_COLORS } from '../db/rpg';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
@@ -9,16 +10,6 @@ const PALETTE_COLORS = [
   '#34D399','#EF4444','#F87171','#A855F7','#38BDF8',
   '#F97316','#FBBF24','#EC4899','#64748B','#10B981',
 ];
-
-// Base colors for known moods (fallback if not in DB)
-const MOOD_DEFAULTS: Record<string, string> = {
-  driven:        '#34D399',
-  burnout:       '#EF4444',
-  reminiscing:   '#A855F7',
-  lonely:        '#64748B',
-  overstimulated:'#F97316',
-  relapsed:      '#EF4444',
-};
 
 type Props = {
   visible: boolean;
@@ -39,7 +30,7 @@ export function MoodSettingsSheet({ visible, currentMood, onClose }: Props) {
         `SELECT color, passive_effect, mp_rate FROM custom_moods WHERE name = ?`, currentMood,
       );
       setName(currentMood);
-      setColor(row?.color ?? MOOD_DEFAULTS[currentMood] ?? '#34D399');
+      setColor(row?.color ?? MOOD_FALLBACK_COLORS[currentMood] ?? '#34D399');
       setEffect(row?.passive_effect ?? '');
       setMpRate(String(row?.mp_rate ?? 0));
     } catch {}

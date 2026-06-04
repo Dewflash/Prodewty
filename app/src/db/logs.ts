@@ -1,7 +1,7 @@
 import { db } from './schema';
 import { calculateXP } from '../services/xpEngine';
 import { applyXP } from './rpg';
-import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier, getHealthWarning } from './health';
+import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
 
 const MOOD_XP    = 20;
 const JOURNAL_XP = 15;
@@ -53,7 +53,6 @@ export type MoodLogInput = {
 export type CreateLogResult = {
   xp_awarded: number;
   level_up: boolean;
-  health_warning: string | null;
 };
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -68,8 +67,11 @@ export function getMoodLogForDate(date: string): ActivityLog | null {
 }
 
 export function getLogs(): ActivityLog[] {
+  // Capped at 2 years — prevents unbounded memory growth after months of use
   return db.getAllSync<ActivityLog>(
-    "SELECT * FROM activity_logs ORDER BY log_date DESC, entry_type DESC, created_at DESC",
+    `SELECT * FROM activity_logs
+     WHERE log_date >= date('now', '-730 days') OR log_date IS NULL
+     ORDER BY log_date DESC, entry_type DESC, created_at DESC`,
   );
 }
 
@@ -191,8 +193,8 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
     }
   } catch {}
 
-  const { levelUp } = applyXP(xp, input.selectedCategories[0]?.name ?? 'Coding');
-  return { xp_awarded: xp, level_up: levelUp, health_warning: getHealthWarning() };
+  const { levelUp } = applyXP(xp);
+  return { xp_awarded: xp, level_up: levelUp };
 }
 
 export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
@@ -224,8 +226,8 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
     );
 
     applyMoodHealthEffects(input.mood_rating, input.energy_rating, input.productivity_rating);
-    if (journalXP > 0) applyXP(journalXP, 'journal');
-    return { xp_awarded: journalXP, level_up: false, health_warning: getHealthWarning() };
+    if (journalXP > 0) applyXP(journalXP);
+    return { xp_awarded: journalXP, level_up: false };
   }
 
   // New mood log
@@ -247,8 +249,8 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
   );
 
   applyMoodHealthEffects(input.mood_rating, input.energy_rating, input.productivity_rating);
-  const { levelUp } = applyXP(xp, 'journal');
-  return { xp_awarded: xp, level_up: levelUp, health_warning: getHealthWarning() };
+  const { levelUp } = applyXP(xp);
+  return { xp_awarded: xp, level_up: levelUp };
 }
 
 export function deleteLog(id: number): void {
@@ -256,7 +258,14 @@ export function deleteLog(id: number): void {
   if (!log) return;
   db.runSync('DELETE FROM activity_logs WHERE id = ?', id);
   if (log.xp_awarded > 0) {
-    db.runSync('UPDATE rpg_state SET total_xp = MAX(0, total_xp - ?) WHERE id = 1', log.xp_awarded);
+    db.runSync(
+      `UPDATE rpg_state SET
+         total_xp        = MAX(0, total_xp        - ?),
+         spendable_xp    = MAX(0, COALESCE(spendable_xp, 0) - ?),
+         total_xp_earned = MAX(0, COALESCE(total_xp_earned, 0) - ?)
+       WHERE id = 1`,
+      log.xp_awarded, log.xp_awarded, log.xp_awarded,
+    );
   }
 }
 
@@ -295,11 +304,29 @@ export type CategoryEffect = {
   baselineEnergy: number | null;
 };
 
+// Binary search: find the last date in sortedDates strictly before `date`
+function lastDateBefore(sortedDates: string[], date: string): string | undefined {
+  let lo = 0, hi = sortedDates.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedDates[mid] < date) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return hi >= 0 ? sortedDates[hi] : undefined;
+}
+
 export function getCategoryEffects(): CategoryEffect[] {
   try {
-    // All mood logs indexed by date for O(1) lookup
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    // Query 1: mood logs for the past year
     const allMoods = db.getAllSync<{ log_date: string; mood_rating: number; energy_rating: number }>(
-      "SELECT log_date, mood_rating, energy_rating FROM activity_logs WHERE entry_type = 'mood' AND mood_rating > 0 ORDER BY log_date ASC",
+      `SELECT log_date, mood_rating, energy_rating FROM activity_logs
+       WHERE entry_type = 'mood' AND mood_rating > 0 AND log_date >= ?
+       ORDER BY log_date ASC`,
+      cutoffStr,
     );
     if (allMoods.length < 3) return [];
 
@@ -310,32 +337,37 @@ export function getCategoryEffects(): CategoryEffect[] {
       sortedDates.push(m.log_date);
     }
 
-    const cats = db.getAllSync<{ name: string }>(
-      `SELECT DISTINCT json_extract(categories, '$[0]') as name
+    // Query 2: all activity dates for the past year — replaces N per-category queries
+    const allActivities = db.getAllSync<{ category: string; log_date: string }>(
+      `SELECT json_extract(categories, '$[0]') as category, log_date
        FROM activity_logs
        WHERE entry_type IN ('activity','dungeon','quest')
-         AND categories != '[]' AND categories IS NOT NULL`,
-    ).map(r => r.name).filter(Boolean);
+         AND log_date >= ?
+         AND json_extract(categories, '$[0]') IS NOT NULL
+       ORDER BY log_date ASC`,
+      cutoffStr,
+    );
+
+    // Group activity dates by category in JS
+    const catDates: Record<string, string[]> = {};
+    for (const row of allActivities) {
+      if (row.category) (catDates[row.category] ??= []).push(row.log_date);
+    }
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const r10 = (v: number | null) => v !== null ? Math.round(v * 10) / 10 : null;
 
     const results: CategoryEffect[] = [];
 
-    for (const cat of cats) {
-      const actDates = db.getAllSync<{ log_date: string }>(
-        `SELECT log_date FROM activity_logs
-         WHERE entry_type IN ('activity','dungeon','quest')
-           AND categories LIKE ? AND log_date IS NOT NULL
-         ORDER BY log_date ASC`,
-        `%"${cat}"%`,
-      ).map(r => r.log_date);
-
+    for (const [cat, actDates] of Object.entries(catDates)) {
       if (actDates.length < 2) continue;
 
       const preMoods: number[] = [];
       const preEnergies: number[] = [];
 
       for (const date of actDates) {
-        // Closest mood log strictly before this activity date
-        const prior = sortedDates.filter(d => d < date).pop();
+        // O(log N) binary search instead of O(N) filter
+        const prior = lastDateBefore(sortedDates, date);
         if (prior && moodByDate[prior]) {
           preMoods.push(moodByDate[prior].mood);
           if (moodByDate[prior].energy) preEnergies.push(moodByDate[prior].energy);
@@ -344,13 +376,9 @@ export function getCategoryEffects(): CategoryEffect[] {
 
       if (preMoods.length === 0) continue;
 
-      // Post: average of all mood logs after the earliest activity date
       const earliest = actDates[0];
       const postMoods = allMoods.filter(m => m.log_date > earliest);
       if (postMoods.length === 0) continue;
-
-      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
-      const r10 = (v: number | null) => v !== null ? Math.round(v * 10) / 10 : null;
 
       results.push({
         category: cat,

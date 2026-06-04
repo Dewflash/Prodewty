@@ -18,19 +18,10 @@ import { useAppStore } from '../../src/store/useAppStore';
 import { getCategories } from '../../src/db/categories';
 import { getHabits, addHabit } from '../../src/db/habits';
 import { createActivityLog, upsertMoodLog, getMoodLogForDate } from '../../src/db/logs';
-import { getRPGState, setCurrentMood, isInDeathState } from '../../src/db/rpg';
+import { getRPGState, setCurrentMood, isInDeathState, getCustomMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 
-const LOG_MOOD_STATES = ['driven', 'burnout', 'reminiscing', 'lonely', 'overstimulated', 'relapsed'] as const;
-type LogMoodState = typeof LOG_MOOD_STATES[number];
-const LOG_MOOD_COLORS: Record<LogMoodState, string> = {
-  driven:        '#34D399',
-  burnout:       '#EF4444',
-  reminiscing:   '#A855F7',
-  lonely:        '#64748B',
-  overstimulated:'#F97316',
-  relapsed:      '#EF4444',
-};
+type LogMoodState = string;
 
 type LogMode = 'daily' | 'weekly' | 'other';
 
@@ -74,6 +65,8 @@ export default function LogScreen() {
 
   const [originalMood, setOriginalMood] = useState<{ m: number; e: number; p: number } | null>(null);
   const [currentMoodState, setCurrentMoodState] = useState<LogMoodState>('driven');
+  const [customMoods, setCustomMoods] = useState<CustomMood[]>([]);
+  const [moodInfoVisible, setMoodInfoVisible] = useState(false);
   const [moodSettingsVisible, setMoodSettingsVisible] = useState(false);
 
   const [habitModal, setHabitModal] = useState(false);
@@ -107,7 +100,8 @@ export default function LogScreen() {
       if (logMode !== 'weekly') loadMoodForDate(selectedDate);
       try {
         const rpg = getRPGState();
-        if (rpg.current_mood) setCurrentMoodState(rpg.current_mood as LogMoodState);
+        if (rpg.current_mood) setCurrentMoodState(rpg.current_mood);
+        setCustomMoods(getCustomMoods());
       } catch {}
     }, []),
   );
@@ -265,28 +259,30 @@ export default function LogScreen() {
 
           {/* Mood */}
           <View style={s.moodCard}>
-            <View style={s.rowBetween}>
+            <View style={s.moodCardHeader}>
               <Text style={s.sectionLabel}>Mood</Text>
+              <TouchableOpacity onPress={() => setMoodInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="settings" size={13} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
             <View style={s.moodStateGrid}>
-              {LOG_MOOD_STATES.map(m => {
-                const active = currentMoodState === m;
-                const col = LOG_MOOD_COLORS[m];
+              {customMoods.map(m => {
+                const active = currentMoodState === m.name;
                 return (
                   <Pressable
-                    key={m}
-                    style={[s.moodStateBtn, { borderColor: active ? col : colors.border }, active && { backgroundColor: `${col}18` }]}
-                    onPress={() => { setCurrentMoodState(m); setCurrentMood(m); }}
+                    key={m.name}
+                    style={[s.moodStateBtn, { borderColor: active ? m.color : colors.border }, active && { backgroundColor: `${m.color}18` }]}
+                    onPress={() => { setCurrentMoodState(m.name); setCurrentMood(m.name); }}
                   >
-                    <Text style={[s.moodStateBtnTxt, { color: active ? col : colors.textMuted }]}>{m}</Text>
+                    <Text style={[s.moodStateBtnTxt, { color: active ? m.color : colors.textMuted }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{m.name}</Text>
                   </Pressable>
                 );
               })}
             </View>
-            {/* Settings gear — bottom right */}
-            <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} style={s.moodSettingsBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Feather name="settings" size={13} color={colors.textMuted} />
-            </TouchableOpacity>
           </View>
 
           {/* Activity */}
@@ -438,10 +434,23 @@ export default function LogScreen() {
     </SafeAreaView>
     </SwipeNavWrapper>
 
+      <Modal visible={moodInfoVisible} transparent animationType="slide">
+        <Pressable style={s.overlay} onPress={() => setMoodInfoVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoTitle}>Current Mood</Text>
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+            <Text style={s.infoText}>Your active mood sets Passive Effects — XP and coin modifiers for every activity logged while this mood is active.</Text>
+            <Text style={s.infoText}>Tap the gear icon to customise name, colour, passive effect, and MP rate. A new name creates a new mood state.</Text>
+            <Text style={s.infoText}>Changes here sync to the Progress page, and vice versa.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <MoodSettingsSheet
         visible={moodSettingsVisible}
         currentMood={currentMoodState}
-        onClose={() => setMoodSettingsVisible(false)}
+        onClose={() => { setMoodSettingsVisible(false); setCustomMoods(getCustomMoods()); }}
       />
 
       {/* ─── Modals live outside SwipeNavWrapper so they aren't clipped ─── */}
@@ -549,13 +558,16 @@ const s = StyleSheet.create({
   calCellNumDisabled: { color: colors.textMuted },
 
   // Mood card
-  moodCard:         { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: 'rgba(56,189,248,0.03)' },
-  moodSettingsBtn:  { alignSelf: 'flex-end', marginTop: spacing.xs },
-  moodStatePill:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  moodStatePillTxt: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, letterSpacing: 1 },
-  moodStateGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  moodStateBtn:     { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5 },
-  moodStateBtnTxt:  { fontFamily: fonts.ui.medium, fontSize: fontSize.xs },
+  moodCard:        { gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: 'rgba(56,189,248,0.03)' },
+  moodCardHeader:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  moodStateGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  moodStateBtn:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5 },
+  moodStateBtnTxt: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs },
+  // Mood info sheet
+  infoSheet:  { backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg, paddingBottom: 40, gap: spacing.md },
+  infoHandle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.sm },
+  infoTitle:  { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
+  infoText:   { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20 },
 
   // Habit modal
   kbAvoid: { flex: 1, justifyContent: 'flex-end' },

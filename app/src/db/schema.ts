@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { pad } from '../utils/date';
 
 export const db = SQLite.openDatabaseSync('prodewty.db');
 
@@ -115,9 +116,6 @@ function runMigrations() {
       );
     }
 
-    const count = db.getFirstSync<{ n: number }>('SELECT count(*) as n FROM activity_logs')?.n ?? 0;
-    if (count === 0) seedFakeData();
-
     db.execSync('PRAGMA user_version = 2');
   }
 
@@ -166,12 +164,6 @@ function runMigrations() {
   }
 
   if (version < 4) {
-    // Force health to 50% for testing — remove this in production
-    try { db.execSync(`UPDATE health_state SET emotional = 50, physical = 50, mental = 50`); } catch {}
-
-    // Guarantee fake data for the current week so charts are visible
-    try { seedCurrentWeek(); } catch {}
-
     db.execSync('PRAGMA user_version = 4');
   }
 
@@ -509,10 +501,380 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 16');
   }
+
+  if (version < 17) {
+    // Clear dungeon cooldowns so all gates are available for testing
+    db.execSync(`DELETE FROM dungeon_runs`);
+
+    // Remove any existing game inventory and reseed with one demo item per slot
+    db.execSync(`DELETE FROM inventory WHERE category = 'game'`);
+
+    // Equipment: descending rarity top→C, gloves/coat→D, rest→E
+    const equipItems: [string, string, string, string][] = [
+      ['Shadow Cowl',      'top',        'C', 'A shadowed upper garment. Proof of early gate clearance.'],
+      ['Iron Grips',       'gloves',     'D', 'Reinforced gloves. Standard dungeon gear.'],
+      ['Warden Coat',      'coat',       'D', 'A heavy outer coat. Common among gate runners.'],
+      ['Rugged Leggings',  'pants',      'E', 'Basic dungeon leggings. Common drop.'],
+      ['Tracker Boots',    'shoes',      'E', 'Lightweight boots for dungeon movement. Common drop.'],
+      ['Copper Band',      'ring',       'E', 'A simple copper ring. Common drop.'],
+      ['Hollow Chalice',   'goblet',     'E', 'A plain ceremonial goblet. Common drop.'],
+      ['Stone Pendant',    'necklace',   'E', 'A plain stone pendant. Common drop.'],
+      ['Cord Bracelet',    'bracelet',   'E', 'A simple cord bracelet. Common drop.'],
+      ['Worn Plate Set',   'armour_set', 'E', 'A battered set of armour plates. Common drop.'],
+    ];
+    for (const [nm, slot, rar, desc] of equipItems) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description) VALUES (?, 'equipment', 'game', ?, ?, ?)`,
+        nm, slot, rar, desc,
+      );
+    }
+
+    // Weapons: sword/grimoire→D, rest→E
+    const weaponItems: [string, string, string, string][] = [
+      ['Iron Longsword', 'sword',    'D', 'A standard iron sword. D-rank drop.'],
+      ['Torn Spellbook', 'grimoire', 'D', 'A partially-bound grimoire. D-rank drop.'],
+      ['Rusty Dagger',   'dagger',   'E', 'A short rusty blade. Common drop.'],
+      ['Wooden Shield',  'shield',   'E', 'A basic wooden shield. Common drop.'],
+      ['Gnarled Rod',    'scepter',  'E', 'A crude wooden scepter. Common drop.'],
+    ];
+    for (const [nm, slot, rar, desc] of weaponItems) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description) VALUES (?, 'equipment', 'game', ?, ?, ?)`,
+        nm, slot, rar, desc,
+      );
+    }
+
+    // Catalysts: one per stat at E rarity
+    const catalystItems: [string, string][] = [
+      ['Strength Crystal', 'str'],
+      ['Agility Shard',    'agi'],
+      ['Focus Lens',       'foc'],
+      ['Wisdom Rune',      'wis'],
+      ['Spirit Bead',      'spr'],
+      ['Perception Orb',   'per'],
+      ['Stamina Core',     'sta'],
+    ];
+    for (const [nm, stat] of catalystItems) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description) VALUES (?, 'catalyst', 'game', ?, 'E', ?)`,
+        nm, `catalyst_${stat}`, `Permanently boosts ${stat.toUpperCase()}. Acquired from dungeon drops.`,
+      );
+    }
+
+    // Consumables: a few examples across stats
+    const consumableItems: [string, string, string][] = [
+      ['Strength Tonic', 'str', 'D'],
+      ['Focus Draught',  'foc', 'E'],
+      ['Stamina Brew',   'sta', 'E'],
+    ];
+    for (const [nm, stat, rar] of consumableItems) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description) VALUES (?, 'consumable', 'game', ?, ?, ?)`,
+        nm, `consumable_${stat}`, rar, `+5 ${stat.toUpperCase()} for 1 hour.`,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 17');
+  }
+
+  if (version < 18) {
+    // Equipment: track which item is equipped per slot
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN is_equipped INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // Stat buff: "str:5" means +5 STR
+    try { db.execSync(`ALTER TABLE inventory ADD COLUMN stat_buff TEXT`); } catch {}
+
+    // Active buffs from consumed consumables
+    db.execSync(`CREATE TABLE IF NOT EXISTS active_buffs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id    INTEGER NOT NULL,
+      stat_key   TEXT NOT NULL,
+      stat_value INTEGER NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      expires_at TEXT NOT NULL,
+      is_active  INTEGER NOT NULL DEFAULT 1
+    )`);
+
+    // Seed stat_buff values on v17 equipment + mark one equipped per slot
+    db.runSync(`UPDATE inventory SET stat_buff='wis:3', is_equipped=1 WHERE item_name='Shadow Cowl'`);
+    db.runSync(`UPDATE inventory SET stat_buff='str:2'                  WHERE item_name='Iron Grips'`);
+    db.runSync(`UPDATE inventory SET stat_buff='spr:2'                  WHERE item_name='Warden Coat'`);
+    db.runSync(`UPDATE inventory SET stat_buff='agi:1'                  WHERE item_name='Rugged Leggings'`);
+    db.runSync(`UPDATE inventory SET stat_buff='agi:1'                  WHERE item_name='Tracker Boots'`);
+    db.runSync(`UPDATE inventory SET stat_buff='per:1'                  WHERE item_name='Copper Band'`);
+    db.runSync(`UPDATE inventory SET stat_buff='spr:1'                  WHERE item_name='Hollow Chalice'`);
+    db.runSync(`UPDATE inventory SET stat_buff='foc:1'                  WHERE item_name='Stone Pendant'`);
+    db.runSync(`UPDATE inventory SET stat_buff='sta:1'                  WHERE item_name='Cord Bracelet'`);
+    db.runSync(`UPDATE inventory SET stat_buff='str:1'                  WHERE item_name='Worn Plate Set'`);
+    db.runSync(`UPDATE inventory SET stat_buff='str:3', is_equipped=1   WHERE item_name='Iron Longsword'`);
+    db.runSync(`UPDATE inventory SET stat_buff='wis:2'                  WHERE item_name='Torn Spellbook'`);
+    db.runSync(`UPDATE inventory SET stat_buff='agi:1'                  WHERE item_name='Rusty Dagger'`);
+    db.runSync(`UPDATE inventory SET stat_buff='str:1'                  WHERE item_name='Wooden Shield'`);
+    db.runSync(`UPDATE inventory SET stat_buff='spr:1'                  WHERE item_name='Gnarled Rod'`);
+    db.runSync(`UPDATE inventory SET stat_buff='str:5'                  WHERE item_name='Strength Tonic'`);
+    db.runSync(`UPDATE inventory SET stat_buff='foc:5'                  WHERE item_name='Focus Draught'`);
+    db.runSync(`UPDATE inventory SET stat_buff='sta:5'                  WHERE item_name='Stamina Brew'`);
+
+    db.execSync('PRAGMA user_version = 18');
+  }
+
+  if (version < 19) {
+    // Cache item name in active_buffs so buffs survive item deletion
+    try { db.execSync(`ALTER TABLE active_buffs ADD COLUMN item_name TEXT`); } catch {}
+
+    // Reseed game inventory with diverse rarities + proper descriptions
+    db.execSync(`DELETE FROM inventory WHERE category = 'game'`);
+
+    // Equipment (descending rarity: S → D) with stat_buff and descriptions
+    const equipV19: [string, string, string, string, string][] = [
+      ['Shadow Monarch\'s Cowl', 'top',        'S',  'wis:5', 'Woven from shadow essence. Heightens the senses of all who wear it. Exclusive to S-rank clearances and above.'],
+      ['Hunter\'s Coat',         'coat',       'A',  'spr:3', 'Standard A-rank hunter issue. Reinforced inner lining resists mana fluctuations. Required for ranked gate entry.'],
+      ['Iron Grips',             'gloves',     'B',  'str:2', 'Double-layered iron reinforcement. Found exclusively in B-rank gates and above. A staple for strength-focused hunters.'],
+      ['Shadow Leggings',        'pants',      'C',  'agi:2', 'Lightweight dungeon legwear. Common among E to C-rank hunters on their first runs through the lower gates.'],
+      ['Tracker Boots',          'shoes',      'D',  'agi:1', 'Worn but reliable. Standard issue for low-rank dungeon entry teams. Slightly better than barefoot.'],
+      ['Focus Band',             'ring',       'B',  'foc:2', 'A simple band imbued with faint mana. Sharpens concentration during extended dungeon runs.'],
+      ['Chalice of Eternity',    'goblet',     'SS', 'spr:5', 'Used in an ancient rite predating the first gates. Those who drink from it report hearing whispers from beyond the veil.'],
+      ['Pendulum Necklace',      'necklace',   'A',  'per:3', 'A hunter\'s compass. The pendant vibrates near high-density mana pockets and before gate openings.'],
+      ['Shadow Brace',           'bracelet',   'C',  'sta:1', 'Flexible shadow-thread weave. Absorbs minor impact from dungeon hazards. A common find in C-rank loot.'],
+      ['Iron Shell Set',         'armour_set', 'D',  'str:2', 'A basic full-body plate set. Heavy and loud — but effective at ranks E through D. Favoured by recruits.'],
+    ];
+    for (const [nm, slot, rar, buff, desc] of equipV19) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
+         VALUES (?, 'equipment', 'game', ?, ?, ?, ?, 1)`,
+        nm, slot, rar, buff, desc,
+      );
+    }
+
+    // Weapons (A → E) with diverse rarities
+    const weaponsV19: [string, string, string, string, string][] = [
+      ['Sovereign Blade',  'sword',    'A', 'str:4', 'A blade forged in the style of the Shadow Monarch\'s generals. Hums faintly when near an active gate.'],
+      ['Torn Grimoire',    'grimoire', 'B', 'wis:3', 'Pages missing from the final chapter. Still holds residual power from its original mage. Found in Study-type gates.'],
+      ['Phantom Dagger',   'dagger',   'C', 'agi:2', 'Fast and silent. A staple for perception-based hunters operating in low-light C-rank gates.'],
+      ['Iron Buckler',     'shield',   'D', 'str:1', 'A basic defensive tool. Required equipment for E-rank team leaders entering multi-floor gates.'],
+      ['Gnarled Rod',      'scepter',  'E', 'spr:1', 'A crude mana channel carved from dungeon wood. Found near collapsed altars in the lowest-ranked gates.'],
+    ];
+    for (const [nm, slot, rar, buff, desc] of weaponsV19) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
+         VALUES (?, 'equipment', 'game', ?, ?, ?, ?, 1)`,
+        nm, slot, rar, buff, desc,
+      );
+    }
+
+    // Catalysts (E rarity, one per stat)
+    const catalystsV19: [string, string, string][] = [
+      ['Strength Crystal', 'str', 'Permanently boosts STR by a fixed amount. Acquired from dungeon drops. Extremely rare.'],
+      ['Agility Shard',    'agi', 'Permanently boosts AGI. Dropped by shadow-type monsters in Agility gates.'],
+      ['Focus Lens',       'foc', 'Permanently boosts FOC. Found in Study and Journal type dungeons.'],
+      ['Wisdom Rune',      'wis', 'Permanently boosts WIS. Inscribed by dungeon spirits. Cannot be replicated.'],
+      ['Spirit Bead',      'spr', 'Permanently boosts SPR. Said to contain a fragment of a dissolved dungeon boss.'],
+      ['Perception Orb',   'per', 'Permanently boosts PER. Condenses the essence of observation. Rare E-rank find.'],
+      ['Stamina Core',     'sta', 'Permanently boosts STA. Extracted from high-endurance dungeon creatures.'],
+    ];
+    for (const [nm, stat, desc] of catalystsV19) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description)
+         VALUES (?, 'catalyst', 'game', ?, 'E', ?, ?)`,
+        nm, `catalyst_${stat}`, `${stat.toUpperCase()}:3`, desc,
+      );
+    }
+
+    // Consumables (D → E, varied rarities)
+    const consumablesV19: [string, string, string, string, string][] = [
+      ['Agility Serum',  'agi', 'B', 'agi:5', 'Extracted from shadow beasts. Sharpens reflexes for exactly one hour. Bitter aftertaste.'],
+      ['Focus Draught',  'foc', 'C', 'foc:5', 'Clarity agent used before intel dungeon runs. Brewed from Mystic Archive residue.'],
+      ['Strength Tonic', 'str', 'D', 'str:5', 'Brewed from dungeon moss. Bitter but effective. Standard pre-gate supplement for STR builds.'],
+      ['Stamina Brew',   'sta', 'D', 'sta:5', 'Dense nutritive compound. Extends endurance for one hour. Required for long-floor gates.'],
+      ['Wisdom Elixir',  'wis', 'C', 'wis:5', 'Distilled knowledge essence from the Mystic Archive. Temporary — but the insight lingers.'],
+      ['Spirit Tonic',   'spr', 'E', 'spr:5', 'Common restorative. Boosts SPR for one hour. Available at any hunter supply depot.'],
+    ];
+    for (const [nm, stat, rar, buff, desc] of consumablesV19) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description)
+         VALUES (?, 'consumable', 'game', ?, ?, ?, ?)`,
+        nm, `consumable_${stat}`, rar, buff, desc,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 19');
+  }
+
+  runMigration20();
+
+  if (version < 21) {
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN spendable_xp INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN total_xp_earned INTEGER NOT NULL DEFAULT 0`); } catch {}
+    db.execSync(
+      `UPDATE rpg_state SET
+         spendable_xp    = COALESCE(total_xp, 0),
+         total_xp_earned = (SELECT COALESCE(SUM(xp_awarded), 0) FROM activity_logs)
+       WHERE id = 1`,
+    );
+    db.execSync('PRAGMA user_version = 21');
+  }
+
+  if (version < 22) {
+    db.runSync(
+      `INSERT OR IGNORE INTO inventory
+         (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
+       VALUES (?, 'equipment', 'game', ?, 'Chromatic', ?, ?, 0)`,
+      'Void Sovereign Mantle',
+      'coat',
+      'str:10',
+      'Formed when a dungeon core collapsed inward and fused with a hunter\'s will. No classification system can contain it. Found once. Never again.',
+    );
+    db.execSync('PRAGMA user_version = 22');
+  }
+
+  if (version < 23) {
+    const z  = (n: number) => String(n).padStart(2, '0');
+    const ts = (d: Date)   => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:00`;
+    const dDate = (n: number) => {
+      const d = new Date(); d.setDate(d.getDate() - n);
+      return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+    };
+    const dTs = (n: number, h = 9) => {
+      const d = new Date(); d.setDate(d.getDate() - n); d.setHours(h, 0, 0, 0);
+      return ts(d);
+    };
+    const yesterday = dDate(1);
+
+    // ── 1. Activity logs — 13 days of fresh data ─────────────────────────────
+    db.execSync(`DELETE FROM activity_logs`);
+
+    type E = { d: number; h?: number; t: 'mood'|'act'|'dungeon'|'quest';
+               cat?: string; desc?: string; dur?: number;
+               mood?: number; nrg?: number; prod?: number;
+               xp: number; well?: string; rev?: string };
+
+    const entries: E[] = [
+      { d:13, t:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:13, t:'act',  cat:'Workout',  desc:'Morning run 5km',                 dur:45,  xp:52 },
+      { d:12, t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:12, t:'act',  cat:'Coding',   desc:'Personal project sprint',          dur:90,  xp:65, rev:'Break large features into small commits' },
+      { d:11, t:'mood', mood:6, nrg:6, prod:7, xp:20 },
+      { d:11, t:'act',  cat:'Study',    desc:'System design — caching tradeoffs',dur:60,  xp:48, well:'Finally understood cache invalidation' },
+      { d:10, t:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:10, t:'act',  cat:'Workout',  desc:'HIIT session',                     dur:30,  xp:38 },
+      { d:10, h:10, t:'act', cat:'Devotion', desc:'Morning devotion — Proverbs 3', dur:20, xp:28, rev:'Trust in the Lord with all your heart' },
+      { d:9,  t:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:9,  t:'act',  cat:'Coding',   desc:'Refactored database layer',         dur:80,  xp:60 },
+      { d:9,  h:14, t:'dungeon', cat:'Workout', desc:"E-Rank Gate: Hunter's Run", dur:30,  xp:45 },
+      { d:8,  t:'mood', mood:8, nrg:8, prod:8, xp:20 },
+      { d:8,  t:'act',  cat:'Reading',  desc:'Atomic Habits ch 9–12',             dur:45,  xp:42 },
+      { d:7,  t:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:7,  t:'act',  cat:'Workout',  desc:'Gym — full body',                   dur:60,  xp:62, well:'New PB on bench press' },
+      { d:6,  t:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:6,  t:'act',  cat:'Journal',  desc:'Weekly reflection',                 dur:25,  xp:32, rev:"Stop saying 'I'll try' — say 'I will'" },
+      { d:5,  t:'mood', mood:8, nrg:8, prod:9, xp:20 },
+      { d:5,  t:'act',  cat:'Coding',   desc:'New feature shipped',               dur:120, xp:78, well:'Deployed cleanly on first attempt' },
+      { d:4,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:4,  t:'act',  cat:'Study',    desc:'Algorithm prep — trees and graphs', dur:60,  xp:48 },
+      // day 3: no log (gap for streak testing)
+      { d:2,  t:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:2,  t:'act',  cat:'Workout',  desc:'Sprint intervals',                  dur:35,  xp:40 },
+      { d:2,  h:11, t:'quest', cat:'Coding', desc:'Log: Coding',                  xp:30   },
+      { d:1,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:1,  t:'act',  cat:'Admin',    desc:'Weekly planning session',            dur:30,  xp:28 },
+    ];
+
+    for (const e of entries) {
+      const date = dDate(e.d);
+      const tstr = dTs(e.d, e.h ?? (e.t === 'mood' ? 8 : 9));
+      if (e.t === 'mood') {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             mood_rating,energy_rating,productivity_rating,categories,xp_awarded,what_went_well,what_to_improve)
+           VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
+          date, tstr, e.mood??7, e.nrg??7, e.prod??7, e.xp, e.well??null, e.rev??null,
+        );
+      } else {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             categories,duration_mins,xp_awarded,mood_rating,what_went_well,what_to_improve)
+           VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
+          e.cat??'', e.desc??'', e.t, date, tstr,
+          JSON.stringify([e.cat??'']), e.dur??null, e.xp, e.well??null, e.rev??null,
+        );
+      }
+    }
+
+    // ── 2. Dungeon runs — Hunter's Run on cooldown (12h ago), rest cleared ───
+    db.execSync(`DELETE FROM dungeon_runs`);
+    const huntersRunId = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM dungeons WHERE name = "Hunter's Run" LIMIT 1`,
+    )?.id ?? db.getFirstSync<{ id: number }>('SELECT id FROM dungeons LIMIT 1')?.id;
+    if (huntersRunId) {
+      const t12h = ts(new Date(Date.now() - 43200000)); // 12 hours ago
+      db.runSync(
+        `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
+         VALUES (?, ?, ?, 'completed', 'win', 25, 0)`,
+        huntersRunId, t12h, t12h,
+      );
+    }
+
+    // ── 3. Active buffs — refresh expiry to 2 hours from now ─────────────────
+    db.execSync(`DELETE FROM active_buffs`);
+    db.runSync(
+      `INSERT INTO active_buffs (item_id, stat_key, stat_value, expires_at, item_name)
+       VALUES (0, 'foc', 5, ?, 'Focus Draught')`,
+      ts(new Date(Date.now() + 7200000)),
+    );
+
+    // ── 4. Quest accepted_at — refresh to yesterday so it looks recent ────────
+    db.runSync(
+      `UPDATE quests SET accepted_at = ? WHERE status = 'accepted'`,
+      yesterday + ' 08:00:00',
+    );
+
+    // ── 5. RPG state ──────────────────────────────────────────────────────────
+    // Max-display values for GlobalCurrencyBar layout testing:
+    //   coins=100900 → "100.9k"  gems=1000 → "1.0k"
+    //   blight=9900  → "9.9k"    vigor=9900 → "9.9k"
+    //   spendable_xp=999900 → "999.9k"
+    db.runSync(
+      `UPDATE rpg_state SET
+         current_level=3, total_xp=995, xp_to_next_level=1000,
+         streak_days=7, last_active_date=?,
+         coins=100900, gems=1000, ap=5,
+         hp=35, hp_max=100, mp=40,
+         self_destruct_count=9900, vigor=9900,
+         current_mood='driven', death_acknowledged=0,
+         total_xp_earned=999900, spendable_xp=999900
+       WHERE id=1`,
+      yesterday,
+    );
+
+    // ── 6. Health state ───────────────────────────────────────────────────────
+    // All at 100 → max 3-char display ("100") for each health chip
+    db.runSync(
+      `UPDATE health_state SET
+         emotional=100, physical=100, mental=100,
+         last_updated=?, last_any_log=?, health_critical=0
+       WHERE id=1`,
+      ts(new Date()), yesterday,
+    );
+
+    db.execSync('PRAGMA user_version = 23');
+  }
+
+  if (version < 24) {
+    // Re-apply max-display seed values (v23 may already be set on device)
+    db.runSync(
+      `UPDATE rpg_state SET
+         coins=100900, gems=1000,
+         self_destruct_count=9900, vigor=9900,
+         total_xp_earned=999900, spendable_xp=999900
+       WHERE id=1`,
+    );
+    db.runSync(
+      `UPDATE health_state SET emotional=100, physical=100, mental=100 WHERE id=1`,
+    );
+    db.execSync('PRAGMA user_version = 24');
+  }
 }
 
 function seedRealisticData() {
-  const pad = (n: number) => String(n).padStart(2, '0');
   const now = new Date();
 
   function dateFor(daysAgo: number): string {
@@ -697,67 +1059,232 @@ function seedRealisticData() {
   );
 }
 
-// ─── Seed ─────────────────────────────────────────────────────────────────────
+function runMigration20(): void {
+  const v20 = db.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version ?? 0;
+  if (v20 >= 20) return;
+  // ── Full test reseed: clears and rebuilds all dynamic tables ──────────────
 
-function seedFakeData() {
-  const cats = DEFAULT_CATEGORIES.map(c => c.name);
-  const now = new Date();
+    // Clear cooldowns so every dungeon gate is available
+    db.execSync(`DELETE FROM dungeon_runs`);
 
-  for (let daysAgo = 365; daysAgo >= 0; daysAgo--) {
-    if (Math.random() > 0.65) continue;
-    const n = Math.random() > 0.75 ? 2 : 1;
-    for (let j = 0; j < n; j++) {
-      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo,
-        8 + Math.floor(Math.random() * 14), Math.floor(Math.random() * 60));
-      const pad = (x: number) => String(x).padStart(2, '0');
-      const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
-      const cat   = cats[Math.floor(Math.random() * cats.length)];
-      const mood  = Math.floor(Math.random() * 7) + 4;
-      const energy = Math.floor(Math.random() * 7) + 4;
-      const prod  = Math.floor(Math.random() * 7) + 4;
-      const dur   = (Math.floor(Math.random() * 4) + 1) * 30;
-      const xp    = Math.floor((20 + dur / 4) * (0.8 + mood * 0.04));
+    // Clear and reseed game inventory
+    db.execSync(`DELETE FROM inventory WHERE category = 'game'`);
+
+    // Equipment: 2 items per slot for top/gloves/sword (to test equip swap), 1 elsewhere
+    const eqV20: [string, string, string, string, string, number][] = [
+      // slot, name, rarity, buff, desc, is_equipped
+      ['top',       'Shadow Monarch\'s Cowl', 'S',  'wis:5', 'Woven from shadow essence. Exclusive to S-rank clearances.', 1],
+      ['top',       'Ancient Hood',           'D',  'wis:1', 'A worn hood from a long-forgotten dungeon runner. D-rank drop.', 0],
+      ['gloves',    'Iron Grips',             'B',  'str:2', 'Double-layered iron. Found in B-rank gates and above.', 1],
+      ['gloves',    'Worn Gloves',            'E',  'str:1', 'Basic protection. Common E-rank drop.', 0],
+      ['pants',     'Shadow Leggings',        'C',  'agi:2', 'Lightweight dungeon legwear. C-rank find.', 1],
+      ['pants',     'Rough Trousers',         'E',  'agi:1', 'Standard field trousers. Common.', 0],
+      ['shoes',     'Tracker Boots',          'D',  'agi:1', 'Worn but reliable. Standard low-rank entry gear.', 1],
+      ['ring',      'Focus Band',             'B',  'foc:2', 'A simple band imbued with mana. B-rank drop.', 1],
+      ['ring',      'Copper Ring',            'E',  'foc:1', 'A plain ring. Common drop.', 0],
+      ['goblet',    'Chalice of Eternity',    'SS', 'spr:5', 'Ancient ceremonial goblet. SS-rank find.', 1],
+      ['coat',      'Hunter\'s Coat',         'A',  'spr:3', 'Standard A-rank hunter issue. Resists mana fluctuations.', 1],
+      ['necklace',  'Pendulum Necklace',      'A',  'per:3', 'Vibrates near high-density mana pockets.', 1],
+      ['bracelet',  'Shadow Brace',           'C',  'sta:1', 'Flexible shadow-thread weave. C-rank loot.', 1],
+      ['armour_set','Iron Shell Set',         'D',  'str:2', 'Full plate set. Effective at ranks E–D.', 1],
+    ];
+    for (const [slot, nm, rar, buff, desc, eq] of eqV20) {
       db.runSync(
-        `INSERT INTO activity_logs (category, description, created_at, log_type, categories, mood_rating, energy_rating, productivity_rating, duration_mins, xp_awarded)
-         VALUES (?, '', ?, 'daily', ?, ?, ?, ?, ?, ?)`,
-        cat, ts, JSON.stringify([cat]), mood, energy, prod, dur, xp,
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
+         VALUES (?, 'equipment', 'game', ?, ?, ?, ?, ?)`,
+        nm, slot, rar, buff, desc, eq,
       );
     }
-  }
 
-  const total = db.getFirstSync<{ t: number }>('SELECT sum(xp_awarded) as t FROM activity_logs')?.t ?? 0;
-  let lvl = 1; let xpLeft = total;
-  while (xpLeft >= 500 + (lvl - 1) * 250) { xpLeft -= 500 + (lvl - 1) * 250; lvl++; }
-  db.runSync(
-    `UPDATE rpg_state SET total_xp=?, current_level=?, xp_to_next_level=?,
-     streak_days=12, last_active_date=? WHERE id=1`,
-    xpLeft, lvl, 500 + (lvl - 1) * 250, now.toISOString().split('T')[0],
-  );
-  try {
-    db.runSync('UPDATE rpg_state SET highest_xp_attained=? WHERE id=1', total);
-  } catch {}
-}
+    // Weapons: sword has 2 items for swap test
+    const wpV20: [string, string, string, string, string, number][] = [
+      ['sword',    'Sovereign Blade',  'A', 'str:4', 'Forged in the style of the Shadow Monarch\'s generals. Hums near gates.', 1],
+      ['sword',    'Basic Longsword',  'E', 'str:1', 'A plain steel sword. Common starting weapon.', 0],
+      ['grimoire', 'Torn Grimoire',    'B', 'wis:3', 'Pages missing. Still holds residual power from its mage.', 1],
+      ['dagger',   'Phantom Dagger',   'C', 'agi:2', 'Fast and silent. Staple for perception hunters.', 1],
+      ['shield',   'Iron Buckler',     'D', 'str:1', 'Basic defensive tool. Required for E-rank team leaders.', 1],
+      ['scepter',  'Gnarled Rod',      'E', 'spr:1', 'A crude mana channel. Found near collapsed altars.', 1],
+    ];
+    for (const [slot, nm, rar, buff, desc, eq] of wpV20) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
+         VALUES (?, 'equipment', 'game', ?, ?, ?, ?, ?)`,
+        nm, slot, rar, buff, desc, eq,
+      );
+    }
 
-function seedCurrentWeek() {
-  const cats = DEFAULT_CATEGORIES.map(c => c.name);
-  const now = new Date();
-  for (let d = 6; d >= 0; d--) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d,
-      7 + Math.floor(Math.random() * 8), Math.floor(Math.random() * 60));
-    const pad = (x: number) => String(x).padStart(2, '0');
-    const ts = `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
-    const cat   = cats[Math.floor(Math.random() * cats.length)];
-    const mood  = Math.floor(Math.random() * 5) + 5;
-    const energy = Math.floor(Math.random() * 5) + 5;
-    const prod  = Math.floor(Math.random() * 5) + 5;
-    const dur   = (Math.floor(Math.random() * 3) + 1) * 30;
-    const xp    = Math.floor((20 + dur / 4) * (0.8 + mood * 0.04));
+    // Catalysts: one per stat
+    const catV20: [string, string, string][] = [
+      ['Strength Crystal', 'str', 'Permanently boosts STR. Rare dungeon drop.'],
+      ['Agility Shard',    'agi', 'Permanently boosts AGI. Dropped by shadow-type monsters.'],
+      ['Focus Lens',       'foc', 'Permanently boosts FOC. Found in Study-type dungeons.'],
+      ['Wisdom Rune',      'wis', 'Permanently boosts WIS. Cannot be replicated.'],
+      ['Spirit Bead',      'spr', 'Contains a fragment of a dissolved dungeon boss.'],
+      ['Perception Orb',   'per', 'Condenses the essence of observation. Rare E-rank find.'],
+      ['Stamina Core',     'sta', 'Extracted from high-endurance dungeon creatures.'],
+    ];
+    for (const [nm, stat, desc] of catV20) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description)
+         VALUES (?, 'catalyst', 'game', ?, 'E', ?, ?)`,
+        nm, `catalyst_${stat}`, `${stat.toUpperCase()}:3`, desc,
+      );
+    }
+
+    // Consumables: mix of rarities and stats, multiple per stat to test flat list
+    const conV20: [string, string, string, string][] = [
+      ['Agility Serum',   'agi', 'B', 'Extracted from shadow beasts. +5 AGI for 1 hour.'],
+      ['Focus Draught',   'foc', 'C', 'Clarity agent used before intel dungeon runs.'],
+      ['Strength Tonic',  'str', 'D', 'Brewed from dungeon moss. +5 STR for 1 hour.'],
+      ['Stamina Brew',    'sta', 'D', 'Dense nutritive compound. +5 STA for 1 hour.'],
+      ['Wisdom Elixir',   'wis', 'C', 'Distilled knowledge essence. +5 WIS for 1 hour.'],
+      ['Spirit Tonic',    'spr', 'E', 'Common restorative. +5 SPR for 1 hour.'],
+      ['Power Potion',    'str', 'E', 'Crude strength potion. Basic gate supply. +5 STR for 1 hour.'],
+      ['Clarity Flask',   'foc', 'E', 'A basic mental tonic. +5 FOC for 1 hour.'],
+    ];
+    for (const [nm, stat, rar, desc] of conV20) {
+      db.runSync(
+        `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, stat_buff, description, quantity)
+         VALUES (?, 'consumable', 'game', ?, ?, ?, ?, 3)`,
+        nm, `consumable_${stat}`, rar, `${stat.toUpperCase()}:5`, desc,
+      );
+    }
+
+    // Active buff: one currently active (expires in 2 hours) to test Buffs section in Stats
+    const expIn2h = new Date(Date.now() + 7200000);
+    const fmtExpiry = (d: Date) => {
+      const z = (n: number) => String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:00`;
+    };
+    // Find a consumable to link the buff to (or use id=0 fallback — LEFT JOIN handles missing)
+    db.runSync(`DELETE FROM active_buffs`);
     db.runSync(
-      `INSERT INTO activity_logs (category, description, created_at, log_type, categories, mood_rating, energy_rating, productivity_rating, duration_mins, xp_awarded)
-       VALUES (?, '', ?, 'daily', ?, ?, ?, ?, ?, ?)`,
-      cat, ts, JSON.stringify([cat]), mood, energy, prod, dur, xp,
+      `INSERT INTO active_buffs (item_id, stat_key, stat_value, expires_at, item_name) VALUES (0, 'foc', 5, ?, 'Focus Draught')`,
+      fmtExpiry(expIn2h),
     );
-  }
+
+    // Clear and reseed quests
+    db.execSync(`DELETE FROM quests`);
+    db.execSync(`DELETE FROM quest_completions`);
+    const now2 = new Date();
+    const today2 = `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,'0')}-${String(now2.getDate()).padStart(2,'0')}`;
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',30,'pending')`,
+      'Log: Workout', 'You haven\'t worked out recently. Complete a workout session.', 'Workout');
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status,accepted_at) VALUES (?,?,?,'weekly',30,'accepted',?)`,
+      'Log: Reading', 'Keep the reading habit alive. Log a reading session.', 'Reading', today2 + ' 08:00:00');
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',25,'completed')`,
+      'Log: Coding', 'Keep the coding habit going. Log a coding session.', 'Coding');
+    const cqid = db.getFirstSync<{id:number}>(`SELECT id FROM quests WHERE status='completed' LIMIT 1`)?.id;
+    if (cqid) db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?,25)`, cqid);
+    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',25,'skipped')`,
+      'Log: Journal', 'Complete a journal session.', 'Journal');
+
+    // Clear and reseed activity logs (14 days) — enough for charts + activity effects
+    db.execSync(`DELETE FROM activity_logs`);
+    const nowR = new Date();
+    const dateR = (daysAgo: number) => {
+      const d = new Date(nowR.getFullYear(), nowR.getMonth(), nowR.getDate() - daysAgo);
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    };
+    const tsR = (daysAgo: number, hour = 8) => {
+      const d = new Date(nowR.getFullYear(), nowR.getMonth(), nowR.getDate() - daysAgo, hour, 0, 0);
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:00:00`;
+    };
+
+    type LogEntry = { d: number; h?: number; type: 'mood'|'act'|'dungeon'|'quest';
+      cat?: string; desc?: string; dur?: number; mood?: number; nrg?: number; prod?: number;
+      xp: number; well?: string; rev?: string };
+
+    const logs: LogEntry[] = [
+      // Day 14 — workout + mood
+      { d:14, type:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:14, type:'act',  cat:'Workout', desc:'Morning run 5km',       dur:45,  xp:52 },
+      // Day 13 — coding session
+      { d:13, type:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:13, type:'act',  cat:'Coding',  desc:'Personal project sprint',dur:90,  xp:65, rev:'Break large features into small commits' },
+      // Day 12 — study
+      { d:12, type:'mood', mood:6, nrg:6, prod:7, xp:20 },
+      { d:12, type:'act',  cat:'Study',   desc:'System design review',   dur:60,  xp:48, well:'Understood caching tradeoffs' },
+      // Day 11 — no log
+      // Day 10 — devotion + workout
+      { d:10, type:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:10, type:'act',  cat:'Workout', desc:'HIIT session',           dur:30,  xp:38 },
+      { d:10, h:10, type:'act', cat:'Devotion', desc:'Morning devotion', dur:20,  xp:28 },
+      // Day 9 — coding + dungeon
+      { d:9,  type:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:9,  type:'act',  cat:'Coding',  desc:'Refactored db layer',    dur:80,  xp:60 },
+      { d:9,  h:14, type:'dungeon', cat:'Workout', desc:'E-Rank Gate: Hunter\'s Run', dur:30, xp:45 },
+      // Day 8 — reading
+      { d:8,  type:'mood', mood:8, nrg:8, prod:8, xp:20 },
+      { d:8,  type:'act',  cat:'Reading', desc:'Atomic Habits ch 9-12',  dur:45,  xp:42 },
+      // Day 7 — workout
+      { d:7,  type:'mood', mood:7, nrg:7, prod:7, xp:20 },
+      { d:7,  type:'act',  cat:'Workout', desc:'Gym — full body',        dur:60,  xp:62 },
+      // Day 6 — journal
+      { d:6,  type:'mood', mood:6, nrg:6, prod:6, xp:20 },
+      { d:6,  type:'act',  cat:'Journal', desc:'Weekly reflection',      dur:25,  xp:32, rev:'Stop saying "I\'ll try" — say "I will"' },
+      // Day 5 — coding
+      { d:5,  type:'mood', mood:8, nrg:8, prod:9, xp:20 },
+      { d:5,  type:'act',  cat:'Coding',  desc:'New feature shipped',    dur:120, xp:78, well:'Feature deployed cleanly' },
+      // Day 4 — study
+      { d:4,  type:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:4,  type:'act',  cat:'Study',   desc:'Algorithm prep',         dur:60,  xp:48 },
+      // Day 3 — no log
+      // Day 2 — workout + quest complete
+      { d:2,  type:'mood', mood:7, nrg:8, prod:8, xp:20 },
+      { d:2,  type:'act',  cat:'Workout', desc:'Sprint intervals',       dur:35,  xp:40 },
+      { d:2,  h:11, type:'quest', cat:'Coding', desc:'Log: Coding', xp:30 },
+      // Day 1 — admin
+      { d:1,  type:'mood', mood:7, nrg:7, prod:8, xp:20 },
+      { d:1,  type:'act',  cat:'Admin',   desc:'Weekly planning session',dur:30,  xp:28 },
+      // Today
+      { d:0,  type:'mood', mood:8, nrg:8, prod:8, xp:20 },
+      { d:0,  type:'act',  cat:'Workout', desc:'Morning run',            dur:40,  xp:45 },
+    ];
+
+    for (const e of logs) {
+      const date = dateR(e.d);
+      const ts   = tsR(e.d, e.h ?? (e.type === 'mood' ? 8 : 9));
+      if (e.type === 'mood') {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             mood_rating,energy_rating,productivity_rating,categories,xp_awarded,what_went_well,what_to_improve)
+           VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
+          date, ts, e.mood??7, e.nrg??7, e.prod??7, e.xp, e.well??null, e.rev??null,
+        );
+      } else {
+        db.runSync(
+          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
+             categories,duration_mins,xp_awarded,mood_rating,what_went_well,what_to_improve)
+           VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
+          e.cat??'', e.desc??'', e.type, date, ts,
+          JSON.stringify([e.cat??'']), e.dur??null, e.xp, e.well??null, e.rev??null,
+        );
+      }
+    }
+
+    // RPG state: level 3, 490/500 XP (10 away from level-up), 5 AP, 250 coins, 5 gems
+    // HP: 35/100 (low — easy to test HP death)
+    // Self-destruct: 3 blight, 8 vigor (anima = +5, gem active)
+    db.runSync(
+      `UPDATE rpg_state SET
+         current_level=3, total_xp=490, xp_to_next_level=500,
+         streak_days=7, last_active_date=date('now','localtime'),
+         coins=250, gems=5, ap=5,
+         hp=35, hp_max=100, mp=40,
+         self_destruct_count=3, vigor=8,
+         current_mood='driven', death_acknowledged=0
+       WHERE id=1`,
+    );
+
+    // Health bars: varied levels to test different tiers
+    // Emotional=45 (Worn, −5% XP), Physical=12 (Critical, −35% XP), Mental=68 (Stable)
+    db.runSync(
+      `UPDATE health_state SET emotional=45, physical=12, mental=68,
+         last_updated=datetime('now','localtime'), health_critical=0 WHERE id=1`,
+    );
+
+    db.execSync('PRAGMA user_version = 20');
 }
 
 // ─── Auto-init: called AFTER all constants are defined ────────────────────────

@@ -1,6 +1,9 @@
 import { db } from './schema';
 import { getRPGState, applyXP, getCoinMultiplier } from './rpg';
 import { getHealthState } from './health';
+import { sqlNow, pad } from '../utils/date';
+import { triggerCurrencyRefresh } from './currencySignal';
+import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +80,7 @@ export type DungeonClearResult = {
   xpEarned: number;
   coinsEarned: number;
   itemDropped: string | null;
-  itemRarity: string | null;
+  itemRarity: Rarity | null;
   itemSlotType: string | null;
 };
 
@@ -107,13 +110,13 @@ const CATEGORY_SLOTS: Record<string, string[]> = {
   default:  ['top', 'ring', 'necklace', 'dagger', 'sword', 'shield'],
 };
 
-function rollDrop(rank: string): { rarity: RarityTier; slotType: string } | null {
+function rollDrop(rank: string): RarityTier | null {
   const table = DROP_TABLE[rank] ?? DROP_TABLE['E'];
   const roll = Math.random();
   let cum = 0;
   for (const entry of table) {
     cum += entry.chance;
-    if (roll < cum) return { rarity: entry.rarity, slotType: '' }; // slot filled below
+    if (roll < cum) return entry.rarity;
   }
   return null;
 }
@@ -134,12 +137,18 @@ const RARITY_ORDER: Record<string, number> = {
 export type InventoryItem = {
   id: number; item_name: string; rarity: string;
   slot_type: string | null; description: string | null; quantity: number;
+  stat_buff?: string | null; is_equipped?: number;
+};
+
+export type ActiveBuff = {
+  id: number; stat_key: string; stat_value: number; item_name: string; expires_at: string;
 };
 
 export function getInventoryBySlot(slotType: string): InventoryItem[] {
   try {
     const rows = db.getAllSync<InventoryItem>(
-      `SELECT id, item_name, COALESCE(rarity,'E') as rarity, slot_type, description, quantity
+      `SELECT id, item_name, COALESCE(rarity,'E') as rarity, slot_type, description, quantity,
+              stat_buff, is_equipped
        FROM inventory WHERE slot_type = ? AND category = 'game' ORDER BY id DESC`,
       slotType,
     );
@@ -147,17 +156,75 @@ export function getInventoryBySlot(slotType: string): InventoryItem[] {
   } catch { return []; }
 }
 
+export function getEquippedItem(slotType: string): InventoryItem | null {
+  try {
+    return db.getFirstSync<InventoryItem>(
+      `SELECT id, item_name, COALESCE(rarity,'E') as rarity, slot_type, description, quantity, stat_buff, is_equipped
+       FROM inventory WHERE slot_type = ? AND category = 'game' AND is_equipped = 1 LIMIT 1`,
+      slotType,
+    ) ?? null;
+  } catch { return null; }
+}
+
+export function equipItem(itemId: number, slotType: string): void {
+  try {
+    db.runSync(`UPDATE inventory SET is_equipped = 0 WHERE slot_type = ? AND category = 'game'`, slotType);
+    db.runSync(`UPDATE inventory SET is_equipped = 1 WHERE id = ?`, itemId);
+  } catch {}
+}
+
+export function unequipItem(itemId: number): void {
+  try {
+    db.runSync(`UPDATE inventory SET is_equipped = 0 WHERE id = ?`, itemId);
+  } catch {}
+}
+
+export function getActiveBuffs(): ActiveBuff[] {
+  try {
+    // Remove expired rows on each read to prevent indefinite accumulation
+    try { db.runSync(`DELETE FROM active_buffs WHERE expires_at <= datetime('now','localtime')`); } catch {}
+    return db.getAllSync<ActiveBuff>(
+      // LEFT JOIN: item may have been deleted after use; fall back to cached item_name
+      `SELECT ab.id, ab.stat_key, ab.stat_value,
+              COALESCE(i.item_name, ab.item_name, 'Consumable') as item_name,
+              ab.expires_at
+       FROM active_buffs ab
+       LEFT JOIN inventory i ON i.id = ab.item_id
+       ORDER BY ab.applied_at DESC`,
+    );
+  } catch { return []; }
+}
+
+export function useConsumable(itemId: number): 'ok' | 'no_inventory' {
+  try {
+    const item = db.getFirstSync<{ quantity: number; stat_buff: string | null; item_name: string }>(
+      `SELECT quantity, stat_buff, item_name FROM inventory WHERE id = ?`, itemId,
+    );
+    if (!item || item.quantity <= 0) return 'no_inventory';
+    if (item.stat_buff) {
+      const [statKey, valueStr] = item.stat_buff.split(':');
+      const statValue = parseInt(valueStr, 10);
+      if (statKey && !isNaN(statValue)) {
+        const exp = new Date(Date.now() + 3600000);
+        const expiresAt = `${exp.getFullYear()}-${pad(exp.getMonth()+1)}-${pad(exp.getDate())} ${pad(exp.getHours())}:${pad(exp.getMinutes())}:00`;
+        db.runSync(
+          `INSERT INTO active_buffs (item_id, stat_key, stat_value, expires_at, item_name) VALUES (?,?,?,?,?)`,
+          itemId, statKey, statValue, expiresAt, item.item_name,
+        );
+      }
+    }
+    if (item.quantity <= 1) {
+      db.runSync(`DELETE FROM inventory WHERE id = ?`, itemId);
+    } else {
+      db.runSync(`UPDATE inventory SET quantity = quantity - 1 WHERE id = ?`, itemId);
+    }
+    return 'ok';
+  } catch { return 'no_inventory'; }
+}
+
 export function getInventoryByStat(statKey: string, itemCategory: 'consumable' | 'catalyst'): InventoryItem[] {
   const slotType = `${itemCategory}_${statKey}`;
   return getInventoryBySlot(slotType);
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function sqlNow(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
 }
 
 // ─── Computed stats ───────────────────────────────────────────────────────────
@@ -290,37 +357,36 @@ export function completeRevivalQuest(quest: RevivalQuest): void {
   const rpg    = getRPGState();
   const health = getHealthState();
   const restore = quest.hp_restore;
-  const isHPDeath = (rpg.hp ?? 100) <= 0;
 
   db.runSync(`UPDATE rpg_state SET death_acknowledged = 0, revival_count = revival_count + 1 WHERE id = 1`);
 
-  if (isHPDeath) {
+  // Restore HP if at 0 (covers: HP death ignored then health bar death triggers)
+  if ((rpg.hp ?? 100) <= 0) {
     db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, restore);
-  } else {
-    // Only restore health bars that are actually at 0 — leave non-zero bars untouched
-    const parts: string[] = [];
-    if (health.emotional <= 0) parts.push(`emotional = ${restore}`);
-    if (health.physical  <= 0) parts.push(`physical  = ${restore}`);
-    if (health.mental    <= 0) parts.push(`mental    = ${restore}`);
-    if (parts.length > 0) {
-      try { db.runSync(`UPDATE health_state SET ${parts.join(', ')} WHERE id = 1`); } catch {}
-    }
+  }
+
+  // Restore any zero health bars — independent of whether HP was also at 0
+  const barParts: string[] = [];
+  if (health.emotional <= 0) barParts.push(`emotional = ${restore}`);
+  if (health.physical  <= 0) barParts.push(`physical  = ${restore}`);
+  if (health.mental    <= 0) barParts.push(`mental    = ${restore}`);
+  if (barParts.length > 0) {
+    try { db.runSync(`UPDATE health_state SET ${barParts.join(', ')} WHERE id = 1`); } catch {}
   }
 
   // Log the revival activity
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const now = new Date();
-  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const ts    = `${today} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
+  const today = new Date().toISOString().split('T')[0];
   try {
     db.runSync(
       `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
        VALUES (?, ?, 'daily', 'quest', ?, ?, ?, 15, 0)`,
-      quest.category, `Revival: ${quest.title}`, today, ts,
+      quest.category, `Revival: ${quest.title}`, today, sqlNow(),
       JSON.stringify([quest.category]),
     );
   } catch {}
   addGameLog('quest_complete', `Revival quest completed: ${quest.title}. HP restored.`);
+  // XP is awarded after restoration so isInDeathState() returns false
+  try { applyXP(15); } catch {}
 }
 
 // ─── Dungeons ─────────────────────────────────────────────────────────────────
@@ -378,20 +444,20 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
   const xpEarned    = 45;
   const coinsEarned = Math.floor(dungeon.coin_reward * getCoinMultiplier());
   let itemDropped: string | null = null;
-  let itemRarity: string | null = null;
+  let itemRarity: Rarity | null = null;
   let itemSlotType: string | null = null;
 
-  const drop = rollDrop(dungeon.rank);
-  if (drop) {
+  const droppedRarity = rollDrop(dungeon.rank);
+  if (droppedRarity) {
     const slot = pickSlot(dungeon.category ?? 'default');
-    itemRarity   = drop.rarity;
+    itemRarity   = droppedRarity;
     itemSlotType = slot;
-    itemDropped  = `${drop.rarity}-rank ${slot.replace('_', ' ')}`;
+    itemDropped  = `${droppedRarity}-rank ${slot.replace('_', ' ')}`;
     try {
       db.runSync(
         `INSERT INTO inventory (item_name, item_type, category, slot_type, rarity, description)
          VALUES (?, 'equipment', 'game', ?, ?, ?)`,
-        itemDropped, slot, drop.rarity,
+        itemDropped, slot, droppedRarity,
         `Dropped from ${dungeon.name} (${dungeon.rank}-rank gate).`,
       );
     } catch {}
@@ -416,8 +482,7 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
     );
   } catch {}
 
-  try { applyXP(xpEarned, dungeon.category); } catch {}
-
+  try { applyXP(xpEarned); } catch {}
   addGameLog(
     'dungeon_win',
     `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}`,
@@ -533,7 +598,7 @@ export function completeQuest(questId: number, notes?: string): void {
     );
   } catch {}
 
-  try { applyXP(xpEarned, quest.category); } catch {}
+  try { applyXP(xpEarned); } catch {}
 
   addGameLog('quest_complete', `Quest completed: ${quest.title}. +${xpEarned} XP · +${quest.coin_reward} coins.`);
 }
@@ -560,6 +625,12 @@ export function addGameLog(event_type: string, description: string): void {
 
 export function getQuestCompletedCount(): number {
   return db.getFirstSync<{ n: number }>('SELECT count(*) as n FROM quest_completions')?.n ?? 0;
+}
+
+export function getDungeonClearedCount(): number {
+  return db.getFirstSync<{ n: number }>(
+    "SELECT count(*) as n FROM dungeon_runs WHERE status = 'completed'",
+  )?.n ?? 0;
 }
 
 export function getDeathCount(): number {
@@ -593,5 +664,6 @@ export function purchaseHPBoost(): 'ok' | 'insufficient_coins' | 'hp_not_critica
   if ((rpg.hp ?? 100) > 30) return 'hp_not_critical';
   if ((rpg.coins ?? 0) < 100) return 'insufficient_coins';
   db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + 30), coins = coins - 100 WHERE id = 1`);
+  triggerCurrencyRefresh();
   return 'ok';
 }

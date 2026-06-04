@@ -9,33 +9,8 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 
-// ─── Rarity System ────────────────────────────────────────────────────────────
-
-export type Rarity = 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'Chromatic';
-
-export const RARITY_COLOR: Record<Rarity, string> = {
-  E:         '#64748B', // grey
-  D:         '#CD7F32', // bronze
-  C:         '#B0C4DE', // light steel (distinguishable from grey)
-  B:         '#22C55E', // green (Brawl Stars rare)
-  A:         '#3B82F6', // blue (Brawl Stars super rare)
-  S:         '#A855F7', // purple (Brawl Stars epic)
-  SS:        '#EF4444', // red (Brawl Stars mythic)
-  SSS:       '#EAB308', // gold/yellow (Brawl Stars legendary)
-  Chromatic: '#D4AF37', // deep bold gold (Legendary)
-};
-
-export const RARITY_BG: Record<Rarity, string> = {
-  E:         'rgba(100,116,139,0.08)',
-  D:         'rgba(205,127,50,0.08)',
-  C:         'rgba(176,196,222,0.08)',
-  B:         'rgba(34,197,94,0.08)',
-  A:         'rgba(59,130,246,0.08)',
-  S:         'rgba(168,85,247,0.08)',
-  SS:        'rgba(239,68,68,0.08)',
-  SSS:       'rgba(234,179,8,0.10)',
-  Chromatic: 'rgba(212,175,55,0.10)',
-};
+// ─── Rarity System — re-exported from src/constants/rarity.ts ────────────────
+export { RARITY_COLOR, RARITY_BG, rarityLabel, type Rarity } from '../src/constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,10 +69,6 @@ const POTION_SLOTS: PotionSlot[] = [
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-export function rarityLabel(r: Rarity): string {
-  return r === 'Chromatic' ? 'Legendary' : r;
-}
 
 function RarityBadge({ rarity }: { rarity: Rarity }) {
   const col = RARITY_COLOR[rarity];

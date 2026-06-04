@@ -1,5 +1,5 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -16,24 +16,15 @@ import {
   getLogs, getRecentLogs, getCategoryEffects, getActivityTimeStats,
   type ActivityLog, type CategoryEffect, type ActivityTimeStat,
 } from '../../src/db/logs';
-import { getRPGState, isInDeathState, selfDestruct, setCurrentMood } from '../../src/db/rpg';
-import { resetDeathIgnore, getDeathCount } from '../../src/db/game';
+import { getRPGState, isInDeathState, selfDestruct, setCurrentMood, getCustomMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
+import { resetDeathIgnore, getDeathCount, getQuestCompletedCount, getDungeonClearedCount } from '../../src/db/game';
 import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 import { getHealthState, getHealthTier, type HealthState } from '../../src/db/health';
 
 type Period = 'week' | 'month' | 'year';
 
-const MOOD_STATES = ['driven', 'burnout', 'reminiscing', 'lonely', 'overstimulated', 'relapsed'] as const;
-type MoodState = typeof MOOD_STATES[number];
-const MOOD_STATE_COLORS: Record<MoodState, string> = {
-  driven:       colors.success,
-  burnout:      '#EF4444',
-  reminiscing:  '#A855F7',
-  lonely:       '#64748B',
-  overstimulated: '#F97316',
-  relapsed:     '#EF4444',
-};
+type MoodState = string;
 
 // Soul Record permanent colors
 const BLIGHT_COLOR = '#94A3B8'; // light grey
@@ -47,17 +38,17 @@ const TIER_COLOR: Record<string, string> = {
 };
 
 const ALL_HEALTH_TIERS = [
-  { label: 'Peak',      range: '>90%',   xp: 'None',  hp: '+5/day' },
-  { label: 'Strong',    range: '70–90%', xp: 'None',  hp: '+5/day' },
-  { label: 'Stable',    range: '50–70%', xp: 'None',  hp: '+2/day' },
+  { label: 'Peak',      range: '>90%',   xp: 'None',  hp: '+5/day'  },
+  { label: 'Strong',    range: '70–90%', xp: 'None',  hp: '+5/day'  },
+  { label: 'Stable',    range: '50–70%', xp: 'None',  hp: '+2/day'  },
   { label: 'Worn',      range: '30–50%', xp: '−5%',   hp: 'Neutral' },
-  { label: 'Weakened',  range: '20–50%', xp: '−15%',  hp: '−2/day' },
-  { label: 'Danger',    range: '10–20%', xp: '−25%',  hp: '−5/day' },
-  { label: 'Critical',  range: '<10%',   xp: '−35%',  hp: '−10/day'},
-  { label: 'Depleted',  range: '0%',     xp: '−50%',  hp: '−20/day'},
+  { label: 'Weakened',  range: '20–30%', xp: '−15%',  hp: '−2/day'  },
+  { label: 'Danger',    range: '10–20%', xp: '−25%',  hp: '−5/day'  },
+  { label: 'Critical',  range: '<10%',   xp: '−35%',  hp: '−10/day' },
+  { label: 'Depleted',  range: '0%',     xp: '−50%',  hp: '−20/day' },
 ];
 
-const PASSIVE_EFFECTS: Record<MoodState, string[]> = {
+const MOOD_FALLBACK_PASSIVE: Record<string, string[]> = {
   driven:        ['+10% XP gain', '+5% coin drops'],
   burnout:       ['−20% XP gain', '−10% coins earned'],
   reminiscing:   ['+5% XP gain', 'neutral coin rate'],
@@ -78,9 +69,16 @@ function scoreToColor(v: number | null) {
   if (v === null) return colors.border;
   return colors.moodActive[Math.min(Math.max(Math.round(v) - 1, 0), 9)];
 }
+function fmtNum(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
 function fmtMins(m: number): string {
   if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60); const rm = m % 60;
+  const h = Math.floor(m / 60);
+  if (h >= 24) return `${Math.floor(h / 24)}d`;
+  const rm = m % 60;
   return rm ? `${h}h ${rm}m` : `${h}h`;
 }
 
@@ -279,6 +277,7 @@ export default function ProgressScreen() {
   const [catEffects, setCatEffects] = useState<CategoryEffect[]>([]);
   const [actStats, setActStats] = useState<ActivityTimeStat[]>([]);
   const [currentMoodState, setCurrentMoodState] = useState<MoodState>('driven');
+  const [customMoods, setCustomMoods] = useState<CustomMood[]>([]);
   const [health, setHealth] = useState<HealthState | null>(null);
   const [todaySdCount, setTodaySdCount] = useState(0);
   const [showRevival, setShowRevival] = useState(false);
@@ -288,6 +287,8 @@ export default function ProgressScreen() {
   const [moodSettingsVisible, setMoodSettingsVisible] = useState(false);
   const [deathCount, setDeathCount] = useState(0);
   const [revivalCount, setRevivalCount] = useState(0);
+  const [questCount, setQuestCount] = useState(0);
+  const [dungeonClearCount, setDungeonClearCount] = useState(0);
   const [vigorCount, setVigorCount] = useState(0);
   const [healthTierLabel, setHealthTierLabel] = useState('');
   const [effectsDialogVisible, setEffectsDialogVisible] = useState(false);
@@ -300,31 +301,40 @@ export default function ProgressScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+
+      // ── Immediate: tiny reads rendered above the fold before navigation settles ──
       const rpg = getRPGState();
+      const h   = getHealthState();
       setRPGState(rpg);
-      setCurrentMoodState((rpg.current_mood as MoodState) ?? 'driven');
+      setCurrentMoodState(rpg.current_mood ?? 'driven');
+      setCustomMoods(getCustomMoods());
       setSdCount(rpg.self_destruct_count ?? 0);
-      const today = new Date().toISOString().split('T')[0];
-      const tsc = getLogs().filter(l => l.entry_type === 'self_destruct' && l.log_date === today).length;
-      setTodaySdCount(tsc);
-      const all = getLogs();
-      setAllLogs(all);
-      const days = period === 'week' ? 7 : 30;
-      const recent = getRecentLogs(period === 'year' ? 365 : days);
-      setPeriodLogs(recent);
-      setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
-      setCatEffects(getCategoryEffects());
-      setActStats(getActivityTimeStats(period));
-      try { setHealth(getHealthState()); } catch {}
+      setVigorCount(rpg.vigor ?? 0);
+      setRevivalCount(rpg.revival_count ?? 0);
+      setHealth(h);
+      setHealthTierLabel(getHealthTier(Math.min(h.emotional, h.physical, h.mental)).label);
       setShowRevival(isInDeathState() && (rpg.death_acknowledged ?? 0) === 1);
       setDeathCount(getDeathCount());
-      setRevivalCount((rpg as any).revival_count ?? 0);
-      setVigorCount(rpg.vigor ?? 0);
-      try {
-        const h = getHealthState();
-        const minH = Math.min(h.emotional, h.physical, h.mental);
-        setHealthTierLabel(getHealthTier(minH).label);
-      } catch {}
+      setQuestCount(getQuestCompletedCount());
+      setDungeonClearCount(getDungeonClearedCount());
+
+      // ── Deferred: heavy reads run after animation frame so navigation stays smooth ──
+      const task = InteractionManager.runAfterInteractions(() => {
+        if (!active) return;
+        const today  = new Date().toISOString().split('T')[0];
+        const all    = getLogs();
+        const days   = period === 'week' ? 7 : 30;
+        const recent = getRecentLogs(period === 'year' ? 365 : days);
+        setAllLogs(all);
+        setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && l.log_date === today).length);
+        setPeriodLogs(recent);
+        setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
+        setCatEffects(getCategoryEffects());
+        setActStats(getActivityTimeStats(period));
+      });
+
+      return () => { active = false; task.cancel(); };
     }, [period]),
   );
 
@@ -360,20 +370,23 @@ export default function ProgressScreen() {
   }
 
   const cellH = period === 'week' ? 10 : period === 'month' ? 6 : 4;
-  const moodVals   = chartData.map(d => d.mood);
-  const energyVals = chartData.map(d => d.energy);
-  const prodVals   = chartData.map(d => d.prod);
-  const xpVals     = chartData.map(d => d.xp);
-  const streak     = rpgState?.streak_days ?? 0;
-  const earned     = earnedBadges(allLogs, streak);
-  const breakdown  = buildBreakdown(periodLogs);
-  const dates      = chartData.map(d => d.date);
 
-  const maxXP   = allLogs.reduce((m, l) => Math.max(m, l.xp_awarded), 0);
-  const maxMood = allLogs.reduce((m, l) => l.mood_rating   ? Math.max(m, l.mood_rating)   : m, 0);
-  const maxNrg  = allLogs.reduce((m, l) => l.energy_rating ? Math.max(m, l.energy_rating) : m, 0);
+  // Memoised — only recompute when the underlying data actually changes
+  const streak     = useMemo(() => rpgState?.streak_days ?? 0, [rpgState]);
+  const moodVals   = useMemo(() => chartData.map(d => d.mood),   [chartData]);
+  const energyVals = useMemo(() => chartData.map(d => d.energy), [chartData]);
+  const prodVals   = useMemo(() => chartData.map(d => d.prod),   [chartData]);
+  const xpVals     = useMemo(() => chartData.map(d => d.xp),     [chartData]);
+  const dates      = useMemo(() => chartData.map(d => d.date),   [chartData]);
+  const earned     = useMemo(() => earnedBadges(allLogs, streak), [allLogs, streak]);
+  const breakdown  = useMemo(() => buildBreakdown(periodLogs),   [periodLogs]);
+  const maxXP      = useMemo(() => allLogs.reduce((m, l) => Math.max(m, l.xp_awarded), 0), [allLogs]);
+  const maxMood    = useMemo(() => allLogs.reduce((m, l) => l.mood_rating   ? Math.max(m, l.mood_rating)   : m, 0), [allLogs]);
+  const maxNrg     = useMemo(() => allLogs.reduce((m, l) => l.energy_rating ? Math.max(m, l.energy_rating) : m, 0), [allLogs]);
 
-  const moodColor = MOOD_STATE_COLORS[currentMoodState] ?? colors.primary;
+  function moodColorFor(name: string): string {
+    return customMoods.find(m => m.name === name)?.color ?? MOOD_FALLBACK_COLORS[name] ?? colors.primary;
+  }
 
   return (
     <SwipeNavWrapper currentIndex={0}>
@@ -395,24 +408,22 @@ export default function ProgressScreen() {
               streakDays={rpgState.streak_days}
               frozen={(rpgState.streak_freezes ?? 0) > 0}
             />
-            {/* Effects + XP to next — same line */}
+            {/* Effects row — wraps when many tags active */}
             <View style={s.xpEffectsRow}>
-              {/* "Effects [i]" label on left */}
               <View style={s.effectsLabel}>
                 <Text style={s.effectsTitle}>Effects</Text>
                 <TouchableOpacity onPress={() => setEffectsDialogVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Feather name="info" size={12} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              {/* Tags with clear separation from label */}
               <View style={s.effectsTags}>
                 {healthTierLabel ? (
                   <View style={[s.effectTag, { borderColor: TIER_COLOR[healthTierLabel] ?? colors.border }]}>
                     <Text style={[s.effectTagTxt, { color: TIER_COLOR[healthTierLabel] ?? colors.textMuted }]}>{healthTierLabel}</Text>
                   </View>
                 ) : null}
-                <View style={[s.effectTag, { borderColor: MOOD_STATE_COLORS[currentMoodState] }]}>
-                  <Text style={[s.effectTagTxt, { color: MOOD_STATE_COLORS[currentMoodState] }]}>{currentMoodState}</Text>
+                <View style={[s.effectTag, { borderColor: moodColorFor(currentMoodState), alignSelf: 'center' }]}>
+                  <Text style={[s.effectTagTxt, { color: moodColorFor(currentMoodState) }]}>{currentMoodState}</Text>
                 </View>
                 {(vigorCount - sdCount) < -10 && (
                   <View style={[s.effectTag, { borderColor: colors.danger }]}>
@@ -425,9 +436,6 @@ export default function ProgressScreen() {
                   </View>
                 )}
               </View>
-              <Text style={s.xpToNext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
-                {rpgState.xp_to_next_level - rpgState.total_xp} XP to Level {rpgState.current_level + 1}
-              </Text>
             </View>
 
             {/* Bonus row (streak freeze) */}
@@ -507,12 +515,11 @@ export default function ProgressScreen() {
             </TouchableOpacity>
           </View>
           <View style={s.moodStateRow}>
-            {MOOD_STATES.map(m => {
-              const active = currentMoodState === m;
-              const col = MOOD_STATE_COLORS[m];
+            {customMoods.map(m => {
+              const active = currentMoodState === m.name;
               return (
-                <Pressable key={m} onPress={() => handleMoodSelect(m)} style={[s.moodStateBtn, { borderColor: active ? col : colors.border }, active && { backgroundColor: `${col}15` }]}>
-                  <Text style={[s.moodStateTxt, { color: active ? col : colors.textMuted }]}>{m}</Text>
+                <Pressable key={m.name} onPress={() => handleMoodSelect(m.name)} style={[s.moodStateBtn, { borderColor: active ? m.color : colors.border }, active && { backgroundColor: `${m.color}15` }]}>
+                  <Text style={[s.moodStateTxt, { color: active ? m.color : colors.textMuted }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{m.name}</Text>
                 </Pressable>
               );
             })}
@@ -522,13 +529,14 @@ export default function ProgressScreen() {
         {/* Quick stats */}
         <View style={s.strip}>
           {[
-            { val: allLogs.length,                               label: 'Logs'   },
-            { val: streak,                                        label: 'Streak' },
-            { val: allLogs.reduce((t,l) => t+l.xp_awarded, 0),  label: 'XP'     },
+            { val: allLogs.length,   label: 'Logs'   },
+            { val: questCount,        label: 'Quests' },
+            { val: dungeonClearCount, label: 'Clears' },
+            { val: streak,            label: 'Streak' },
           ].map((item, i, arr) => (
             <React.Fragment key={item.label}>
               <View style={s.stripItem}>
-                <Text style={s.stripVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{item.val}</Text>
+                <Text style={s.stripVal}>{item.val}</Text>
                 <Text style={s.stripLabel}>{item.label}</Text>
               </View>
               {i < arr.length - 1 && <View style={s.stripDiv} />}
@@ -599,13 +607,15 @@ export default function ProgressScreen() {
           <View style={s.recordGrid}>
             {[
               { label: 'Best single XP',     value: maxXP   || '—' },
+              { label: 'Total XP earned',     value: rpgState?.total_xp_earned ?? 0 },
+              { label: 'Total XP spent',      value: Math.max(0, (rpgState?.total_xp_earned ?? 0) - (rpgState?.spendable_xp ?? 0)) },
               { label: 'Best mood',           value: maxMood || '—' },
               { label: 'Best energy',         value: maxNrg  || '—' },
               { label: 'Current streak',      value: `${streak}d`   },
-              { label: 'Self-destruct count', value: sdCount, red: true },
-            { label: 'Total deaths',        value: deathCount || '—', red: deathCount > 0 },
+              { label: 'Self-destruct count', value: sdCount,            red: sdCount > 0    },
+              { label: 'Total deaths',        value: deathCount || '—', red: deathCount > 0 },
             ].map(r => (
-              <View key={r.label} style={[s.recordCard, (r as any).red && sdCount > 0 && s.recordCardRed]}>
+              <View key={r.label} style={[s.recordCard, (r as any).red && s.recordCardRed]}>
                 <Text style={[s.recordVal, (r as any).red && sdCount > 0 && { color: colors.danger }]}>{r.value}</Text>
                 <Text style={s.recordLabel}>{r.label}</Text>
               </View>
@@ -659,14 +669,14 @@ export default function ProgressScreen() {
 
             <View style={s.infoSheetDiv} />
             <Text style={s.effectDialogSection}>MOOD</Text>
-            {(Object.entries(PASSIVE_EFFECTS) as [MoodState, string[]][]).map(([mood, effects]) => {
-              const isActive = mood === currentMoodState;
-              const col = MOOD_STATE_COLORS[mood];
+            {customMoods.map(m => {
+              const isActive = m.name === currentMoodState;
+              const effects = m.passive_effect ?? MOOD_FALLBACK_PASSIVE[m.name]?.join(' · ') ?? '—';
               return (
-                <View key={mood} style={[s.effectDialogRow, isActive && { backgroundColor: `${col}15`, borderRadius: 6 }]}>
-                  <View style={[s.effectDialogDot, { backgroundColor: col }]} />
-                  <Text style={[s.effectDialogLabel, { color: col }]}>{mood}</Text>
-                  <Text style={s.effectDialogEffects}>{effects.join(' · ')}</Text>
+                <View key={m.name} style={[s.effectDialogRow, isActive && { backgroundColor: `${m.color}15`, borderRadius: 6 }]}>
+                  <View style={[s.effectDialogDot, { backgroundColor: m.color }]} />
+                  <Text style={[s.effectDialogLabel, { color: m.color }]}>{m.name}</Text>
+                  <Text style={s.effectDialogEffects}>{effects}</Text>
                   {isActive && <Text style={s.effectDialogActive}>● NOW</Text>}
                 </View>
               );
@@ -708,7 +718,7 @@ export default function ProgressScreen() {
       <MoodSettingsSheet
         visible={moodSettingsVisible}
         currentMood={currentMoodState}
-        onClose={() => setMoodSettingsVisible(false)}
+        onClose={() => { setMoodSettingsVisible(false); setCustomMoods(getCustomMoods()); }}
       />
 
       {/* Activity effects info modal */}
@@ -745,13 +755,12 @@ const s = StyleSheet.create({
   safe:    { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
 
-  xpGroup:      { gap: 4 },
-  xpEffectsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  xpGroup:      { gap: 10 },
+  xpEffectsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   effectsLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  effectsTags:  { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, flexWrap: 'wrap' },
-  xpToNext:     { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, flexShrink: 0 },
+  effectsTags:  { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0, flexWrap: 'wrap' },
 
-  bonusRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  bonusRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 },
   bonusTitle: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
   bonusNone:  { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.border },
 
@@ -781,7 +790,7 @@ const s = StyleSheet.create({
   // Effects row (below XP bar)
   effectsRow:   { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   effectsTitle: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
-  effectTag:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  effectTag:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2, flexShrink: 0 },
   effectTagTxt: { fontFamily: fonts.mono.bold, fontSize: 10, letterSpacing: 1 },
 
   // Effects dialogue
@@ -824,13 +833,13 @@ const s = StyleSheet.create({
   moodStateBadge:    { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   moodStateBadgeTxt: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, letterSpacing: 1 },
   moodStateRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  moodStateBtn:      { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5 },
+  moodStateBtn:      { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 5, flexShrink: 0 },
   moodStateTxt:      { fontFamily: fonts.ui.medium, fontSize: fontSize.xs },
 
-  strip:      { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
-  stripItem:  { flex: 1, alignItems: 'center', gap: 2 },
-  stripVal:   { fontFamily: fonts.mono.bold,    fontSize: fontSize.md, color: colors.textPrimary },
-  stripLabel: { fontFamily: fonts.ui.regular,   fontSize: fontSize.xs, color: colors.textMuted },
+  strip:      { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', justifyContent: 'space-evenly' },
+  stripItem:  { alignItems: 'center', gap: 2, paddingHorizontal: spacing.sm },
+  stripVal:   { fontFamily: fonts.mono.bold, fontSize: fontSize.md, color: colors.textPrimary },
+  stripLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
   stripDiv:   { width: 1, height: 32, backgroundColor: colors.border },
 
   periodRow:   { flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
@@ -850,7 +859,7 @@ const s = StyleSheet.create({
   actStatCat:    { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted, width: 68 },
   actStatBarWrap:{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: radius.pill, overflow: 'hidden' },
   actStatBar:    { height: '100%', borderRadius: radius.pill },
-  actStatTime:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textPrimary, width: 48, textAlign: 'right' },
+  actStatTime:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textPrimary, width: 62, textAlign: 'right' },
   actStatCount:  { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, width: 30, textAlign: 'right' },
 
   breakBar:   { flexDirection: 'row', height: 16, borderRadius: radius.sm, overflow: 'hidden', gap: 1 },

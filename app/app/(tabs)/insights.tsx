@@ -19,6 +19,7 @@ import {
 import { getRPGState, type RPGState } from '../../src/db/rpg';
 import { db } from '../../src/db/schema';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
+import { STAT_ICON, STAT_COLOR } from '../../src/constants/stats';
 
 type WeeklyStatRow = { avg: number | null; min: number | null; max: number | null };
 type WeeklyHealthStats = { emotional: WeeklyStatRow; physical: WeeklyStatRow; mental: WeeklyStatRow };
@@ -62,12 +63,9 @@ function getWeeklyHealthStats(): WeeklyHealthStats {
 
 // ─── Health bar ───────────────────────────────────────────────────────────────
 
-type StatBarConfig = { label: string; icon: React.ComponentProps<typeof Feather>['name']; baseColor: string };
-
-const STAT_BAR_CONFIG: Record<string, StatBarConfig> = {
-  Emotional: { label: 'Emotional', icon: 'activity', baseColor: colors.statEmotional },
-  Physical:  { label: 'Physical',  icon: 'zap',      baseColor: colors.statPhysical  },
-  Mental:    { label: 'Mental',    icon: 'cpu',       baseColor: colors.statMental    },
+// Map capitalised label to shared stat key (insights uses 'Emotional' as key, constants use 'emotional')
+const LABEL_TO_KEY: Record<string, string> = {
+  Emotional: 'emotional', Physical: 'physical', Mental: 'mental',
 };
 
 function barStatus(v: number) {
@@ -79,12 +77,13 @@ function barStatus(v: number) {
 
 function HealthBar({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value);
-  const cfg = STAT_BAR_CONFIG[label] ?? { icon: 'heart', baseColor: colors.success };
-  const col = cfg.baseColor;
+  const key = LABEL_TO_KEY[label] ?? 'emotional';
+  const col  = STAT_COLOR[key as keyof typeof STAT_COLOR] ?? colors.success;
+  const icon = STAT_ICON[key as keyof typeof STAT_ICON] ?? 'heart';
   return (
     <View style={hb.container}>
       <View style={hb.header}>
-        <Feather name={cfg.icon} size={14} color={col} />
+        <Feather name={icon as any} size={14} color={col} />
         <Text style={[hb.label, { color: col }]}>{label}</Text>
         <Text style={[hb.status, { color: col }]}>{barStatus(value)}</Text>
         <Text style={[hb.pct, { color: col }]}>{pct}%</Text>
@@ -178,19 +177,27 @@ export default function RechargeScreen() {
   const [newEmotional, setNewEmotional] = useState('0');
   const [newPhysical, setNewPhysical] = useState('0');
   const [newMental, setNewMental] = useState('0');
+  const [isStatDead, setIsStatDead] = useState(false);
 
   function reload() {
     applyHealthDecay();
-    setHealth(getHealthState());
+    const h = getHealthState();
+    setHealth(h);
     setRpg(getRPGState());
     setActivities(getRestorativeActivities());
     setWeeklyStats(getWeeklyHealthStats());
+    // Block Recharge restore when a health stat is at 0 — must complete revival quest first
+    setIsStatDead(h.emotional <= 0 || h.physical <= 0 || h.mental <= 0);
   }
 
   useFocusEffect(useCallback(() => { reload(); }, []));
 
   function handleBuy(activityId: number) {
     const result = purchaseRestoration(activityId);
+    if (result === 'death_state') {
+      Alert.alert('Revival required', 'Complete a Revival Quest before using Recharge.');
+      return;
+    }
     if (result === 'insufficient_xp') {
       Alert.alert('Not enough XP', 'Earn more XP by logging activities.');
       return;
@@ -214,7 +221,7 @@ export default function RechargeScreen() {
     reload();
   }
 
-  const xp = rpg?.total_xp ?? 0;
+  const xp = rpg?.spendable_xp ?? rpg?.total_xp ?? 0;
   const minBar = health ? Math.min(health.emotional, health.physical, health.mental) : 100;
   const penalty = minBar <= 0 ? '−50% XP (Depleted)'
     : minBar < 10 ? '−35% XP (Critical)'
@@ -294,13 +301,27 @@ export default function RechargeScreen() {
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionHeading}>Restore</Text>
-            <Pressable onPress={() => setAddModal(true)}>
-              <Text style={s.addLink}>+ Custom</Text>
-            </Pressable>
+            {!isStatDead && (
+              <Pressable onPress={() => setAddModal(true)}>
+                <Text style={s.addLink}>+ Custom</Text>
+              </Pressable>
+            )}
           </View>
-          {activities.map(a => (
-            <RestoreCard key={a.id} activity={a} xp={xp} onBuy={() => handleBuy(a.id)} />
-          ))}
+          {isStatDead ? (
+            <View style={s.revivalBlock}>
+              <Feather name="alert-circle" size={20} color={colors.danger} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.revivalBlockTitle}>REVIVAL REQUIRED</Text>
+                <Text style={s.revivalBlockDesc}>
+                  A health bar has hit 0. Complete a Revival Quest from the Progress page before using Recharge.
+                </Text>
+              </View>
+            </View>
+          ) : (
+            activities.map(a => (
+              <RestoreCard key={a.id} activity={a} xp={xp} onBuy={() => handleBuy(a.id)} />
+            ))
+          )}
         </View>
 
       </ScrollView>
@@ -404,6 +425,14 @@ const s = StyleSheet.create({
     padding: spacing.lg, gap: spacing.md,
   },
   barDivider: { height: 1, backgroundColor: colors.border },
+
+  revivalBlock: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md,
+    backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.4)',
+    borderRadius: radius.md, padding: spacing.md,
+  },
+  revivalBlockTitle: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.danger, letterSpacing: 1, marginBottom: 4 },
+  revivalBlockDesc:  { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 18 },
 
   warningCard: {
     backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: colors.danger,

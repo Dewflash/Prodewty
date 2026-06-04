@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, Modal, TextInput,
-  ScrollView, KeyboardAvoidingView, Platform, Switch,
+  ScrollView, KeyboardAvoidingView, Platform, Switch, Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -44,8 +44,12 @@ export function CategoryGrid({ categories, selected, onSelect, onAdded }: Props)
   }
 
   function handleAdd() {
-    if (!newName.trim()) return;
-    addCategory(newName.trim(), newWeight, newAttr, isPhysical, isRecreational, newColor);
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      Alert.alert('Name required', 'Enter a name for the activity tag.');
+      return;
+    }
+    addCategory(trimmed, newWeight, newAttr, isPhysical, isRecreational, newColor);
     setNewName(''); setNewWeight(3); setIsPhysical(false); setIsRecreational(false); setNewColor('#38BDF8');
     setModalVisible(false);
     onAdded();

@@ -1,5 +1,8 @@
 import { db } from './schema';
 import { xpRequiredForLevel, titleForLevel } from '../services/xpEngine';
+import { sqlNow } from '../utils/date';
+import { triggerCurrencyRefresh } from './currencySignal';
+import { triggerDeathCheck } from './deathCheckSignal';
 
 export type RPGState = {
   current_level: number;
@@ -32,10 +35,13 @@ export type RPGState = {
   death_acknowledged: number;
   // v14
   gems: number;
-  revival_count: number;
+  revival_count?: number;
   // v15
   vigor: number;
   last_vigor_date: string | null;
+  // v21
+  spendable_xp: number;
+  total_xp_earned: number;
 };
 
 export function getRPGState(): RPGState {
@@ -79,7 +85,13 @@ export function checkStreakFreeze(): void {
     );
     if (daysMissed === 1) return;
     if (daysMissed === 2 && (state.streak_freezes ?? 0) > 0) {
-      db.runSync('UPDATE rpg_state SET streak_freezes = streak_freezes - 1 WHERE id = 1');
+      // Consume freeze and back-date last_active_date to yesterday so next
+      // applyXP call sees diff=1 and extends the streak instead of resetting it.
+      const yesterday = new Date(new Date(today).getTime() - 86400000).toISOString().split('T')[0];
+      db.runSync(
+        'UPDATE rpg_state SET streak_freezes = streak_freezes - 1, last_active_date = ? WHERE id = 1',
+        yesterday,
+      );
     } else if (daysMissed > 1) {
       db.runSync('UPDATE rpg_state SET streak_days = 0 WHERE id = 1');
     }
@@ -100,9 +112,16 @@ export function isInDeathState(): boolean {
 
 export function selfDestruct(): { count: number; date: string } {
   const today = new Date().toISOString().split('T')[0];
+  const state = getRPGState();
+  // If vigor was already incremented today, undo it — self-destruct nullifies the day's vigor gain
+  const vigorUndo = (state.last_vigor_date === today) ? -1 : 0;
   db.runSync(
-    `UPDATE rpg_state SET self_destruct_count = self_destruct_count + 1, last_self_destruct = ? WHERE id = 1`,
-    today,
+    `UPDATE rpg_state SET
+       self_destruct_count = self_destruct_count + 1,
+       last_self_destruct = ?,
+       vigor = vigor + ?
+     WHERE id = 1`,
+    today, vigorUndo,
   );
   // Health penalties: physical -45, emotional -20, mental -10
   try {
@@ -114,29 +133,45 @@ export function selfDestruct(): { count: number; date: string } {
        WHERE id = 1`,
     );
   } catch {}
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const now = new Date();
-  const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
   try {
     db.runSync(
       `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
        VALUES ('', '', 'daily', 'self_destruct', ?, ?, '[]', 0, 0)`,
-      today, ts,
+      today, sqlNow(),
     );
   } catch {}
-  const state = getRPGState();
-  return { count: state.self_destruct_count, date: today };
+  return { count: getRPGState().self_destruct_count, date: today };
 }
 
 export function setCurrentMood(mood: string): void {
   db.runSync(`UPDATE rpg_state SET current_mood = ? WHERE id = 1`, mood);
 }
 
+export type CustomMood = { name: string; color: string; passive_effect: string | null; mp_rate: number };
+
+// Fallback colors for the 6 default moods — used when DB isn't loaded yet
+export const MOOD_FALLBACK_COLORS: Record<string, string> = {
+  driven:        '#34D399',
+  burnout:       '#EF4444',
+  reminiscing:   '#A855F7',
+  lonely:        '#64748B',
+  overstimulated:'#F97316',
+  relapsed:      '#EF4444',
+};
+
+export function getCustomMoods(): CustomMood[] {
+  try {
+    return db.getAllSync<CustomMood>(
+      `SELECT name, color, passive_effect, mp_rate FROM custom_moods WHERE is_active = 1 ORDER BY id ASC`,
+    );
+  } catch { return []; }
+}
+
 export function clearLevelUpPending(): void {
   db.runSync(`UPDATE rpg_state SET level_up_pending = 0 WHERE id = 1`);
 }
 
-export function applyXP(xp: number, _categoryName: string): { levelUp: boolean; newLevel?: number; state: RPGState } {
+export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; state: RPGState } {
   const state = getRPGState();
 
   // Block XP gain when in death state (HP=0 or any health bar=0)
@@ -184,12 +219,15 @@ export function applyXP(xp: number, _categoryName: string): { levelUp: boolean; 
        ap = COALESCE(ap, 0) + ?,
        coins = COALESCE(coins, 0) + ?,
        hp = MIN(COALESCE(hp_max, 100), COALESCE(hp, 100) + ?),
-       level_up_pending = CASE WHEN ? > 0 THEN ? ELSE level_up_pending END
+       level_up_pending = CASE WHEN ? > 0 THEN ? ELSE level_up_pending END,
+       spendable_xp    = COALESCE(spendable_xp, 0) + ?,
+       total_xp_earned = COALESCE(total_xp_earned, 0) + ?
      WHERE id = 1`,
     current_level, total_xp, xp_to_next_level,
     title, streak_days, today,
     apGained, coinsGained, hpRegen,
     levelsGained, levelUp ? current_level : 0,
+    xp, xp,
   );
   try {
     db.runSync(
@@ -198,13 +236,16 @@ export function applyXP(xp: number, _categoryName: string): { levelUp: boolean; 
     );
   } catch {}
 
+  triggerCurrencyRefresh();
+  if (levelUp) triggerDeathCheck(); // fires checkState → picks up level_up_pending
   return { levelUp, newLevel: levelUp ? current_level : undefined, state: getRPGState() };
 }
 
 export function spendXP(amount: number): 'ok' | 'insufficient' {
   const state = getRPGState();
-  if (state.total_xp < amount) return 'insufficient';
-  db.runSync('UPDATE rpg_state SET total_xp = total_xp - ? WHERE id = 1', amount);
+  if ((state.spendable_xp ?? state.total_xp) < amount) return 'insufficient';
+  db.runSync('UPDATE rpg_state SET spendable_xp = COALESCE(spendable_xp, 0) - ? WHERE id = 1', amount);
+  triggerCurrencyRefresh();
   return 'ok';
 }
 
@@ -216,5 +257,6 @@ export function purchaseStreakFreeze(): 'ok' | 'insufficient_coins' {
     'UPDATE rpg_state SET coins = coins - ?, streak_freezes = streak_freezes + 1 WHERE id = 1',
     COST,
   );
+  triggerCurrencyRefresh();
   return 'ok';
 }

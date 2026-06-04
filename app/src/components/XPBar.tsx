@@ -14,7 +14,8 @@ type Props = {
 };
 
 export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = false }: Props) {
-  const currentLevelXP = totalXP % xpToNext;
+  // total_xp in DB is stored as within-level XP (applyXP subtracts level-ups before saving)
+  const currentLevelXP = totalXP;
   const progress = Math.min(currentLevelXP / xpToNext, 1);
   const streakColor = frozen ? colors.primary : colors.success;
 

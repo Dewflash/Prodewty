@@ -1,6 +1,6 @@
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import {
   useFonts,
@@ -35,6 +35,9 @@ export default function RootLayout() {
 
   const [deathCause,   setDeathCause]   = useState<DeathCause>(null);
   const [levelUpLevel, setLevelUpLevel] = useState<number | null>(null);
+  const pathname    = usePathname();
+  const pathnameRef = useRef(pathname);
+  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
 
   useEffect(() => {
     if (fontsLoaded || fontError) SplashScreen.hideAsync();
@@ -54,8 +57,8 @@ export default function RootLayout() {
       setDeathCause(null);
     }
 
-    // Level-up pending check
-    if ((rpg.level_up_pending ?? 0) > 0) {
+    // Level-up pending check — suppress on game tab (dungeon clear already shows the result)
+    if ((rpg.level_up_pending ?? 0) > 0 && !pathnameRef.current.includes('/game')) {
       setLevelUpLevel(rpg.level_up_pending);
       clearLevelUpPending();
     }
