@@ -25,9 +25,11 @@ export type RestorativeActivity = {
   is_default: number;
 };
 
-// ─── Base decay rates (% per day) ────────────────────────────────────────────
-const BASE_DECAY = 8;
-const INACTIVITY_BONUS = 5;
+// ─── Decay rates (% per day) ─────────────────────────────────────────────────
+// Active day = any activity log exists for the day (bible logs excluded).
+// Active days are more taxing — higher decay requires deliberate recharge.
+const ACTIVE_DECAY   = 30;
+const INACTIVE_DECAY = 20;
 
 function daysSince(dateStr: string | null): number {
   if (!dateStr) return 999;
@@ -76,13 +78,11 @@ function _applyHealthDecay(): void {
   );
   if (daysPassed < 0.042) return; // skip if < ~1 hour
 
-  const noPhysical     = daysSince(h.last_physical_log)     >= 1;
-  const noRecreational = daysSince(h.last_recreational_log) >= 1;
-  const noActivity     = daysSince(h.last_any_log)          >= 1;
-
-  const physicalDecay  = (BASE_DECAY + (noPhysical     ? INACTIVITY_BONUS : 0)) * daysPassed;
-  const mentalDecay    = (BASE_DECAY + (noRecreational ? INACTIVITY_BONUS : 0)) * daysPassed;
-  const emotionalDecay = (BASE_DECAY + (noActivity     ? INACTIVITY_BONUS : 0)) * daysPassed;
+  const inactive = daysSince(h.last_any_log) >= 1;
+  const decayRate = inactive ? INACTIVE_DECAY : ACTIVE_DECAY;
+  const emotionalDecay = decayRate * daysPassed;
+  const physicalDecay  = decayRate * daysPassed;
+  const mentalDecay    = decayRate * daysPassed;
 
   const emotional = Math.max(0, h.emotional - emotionalDecay);
   const physical  = Math.max(0, h.physical  - physicalDecay);
@@ -179,25 +179,27 @@ export function purchaseRestoration(
 export function getHealthXPMultiplier(): number {
   const h = getHealthState();
   const min = Math.min(h.emotional, h.physical, h.mental);
-  if (min <= 0)  return 0.50; // Depleted  −50%
-  if (min < 10)  return 0.65; // Critical  −35%
-  if (min < 20)  return 0.75; // Danger    −25%
-  if (min < 30)  return 0.85; // Weakened  −15%
-  if (min < 50)  return 0.95; // Worn       −5%
-  return 1.0;                 // Stable / Strong / Peak — no penalty
+  if (min <= 0)  return 0.93;
+  if (min < 10)  return 0.94;
+  if (min < 20)  return 0.95;
+  if (min < 30)  return 0.96;
+  if (min < 50)  return 0.98;
+  if (min < 70)  return 1.01;
+  if (min < 90)  return 1.02;
+  return 1.03;
 }
 
-export type HealthTier = { label: string; xpPenalty: string; hpEffect: string };
+export type HealthTier = { label: string; xpMult: string; hpEffect: string };
 
 export function getHealthTier(minHealth: number): HealthTier {
-  if (minHealth <= 0)  return { label: 'Depleted', xpPenalty: '−50%', hpEffect: '−20 HP/day' };
-  if (minHealth < 10)  return { label: 'Critical',  xpPenalty: '−35%', hpEffect: '−10 HP/day' };
-  if (minHealth < 20)  return { label: 'Danger',    xpPenalty: '−25%', hpEffect: '−5 HP/day'  };
-  if (minHealth < 30)  return { label: 'Weakened',  xpPenalty: '−15%', hpEffect: '−2 HP/day'  };
-  if (minHealth < 50)  return { label: 'Worn',      xpPenalty: '−5%',  hpEffect: 'Neutral'     };
-  if (minHealth < 70)  return { label: 'Stable',    xpPenalty: 'None', hpEffect: '+2 HP/day'   };
-  if (minHealth < 90)  return { label: 'Strong',    xpPenalty: 'None', hpEffect: '+5 HP/day'   };
-  return                      { label: 'Peak',      xpPenalty: 'None', hpEffect: '+5 HP/day'   };
+  if (minHealth <= 0)  return { label: 'Depleted', xpMult: '0.93×', hpEffect: '−20 HP/day' };
+  if (minHealth < 10)  return { label: 'Critical',  xpMult: '0.94×', hpEffect: '−10 HP/day' };
+  if (minHealth < 20)  return { label: 'Danger',    xpMult: '0.95×', hpEffect: '−5 HP/day'  };
+  if (minHealth < 30)  return { label: 'Weakened',  xpMult: '0.96×', hpEffect: '−2 HP/day'  };
+  if (minHealth < 50)  return { label: 'Worn',      xpMult: '0.98×', hpEffect: 'Neutral'     };
+  if (minHealth < 70)  return { label: 'Stable',    xpMult: '1.01×', hpEffect: '+2 HP/day'   };
+  if (minHealth < 90)  return { label: 'Strong',    xpMult: '1.02×', hpEffect: '+5 HP/day'   };
+  return                      { label: 'Peak',      xpMult: '1.03×', hpEffect: '+5 HP/day'   };
 }
 
 // Called on each mood log submission — mood/energy/productivity shift the health bars

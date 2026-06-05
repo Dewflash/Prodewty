@@ -1,6 +1,7 @@
 import { db } from './schema';
-import { getRPGState, applyXP, getCoinMultiplier } from './rpg';
+import { getRPGState, applyXP } from './rpg';
 import { getHealthState } from './health';
+import { sessionXP } from '../services/xpEngine';
 import { sqlNow, pad } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
@@ -89,17 +90,18 @@ export type DungeonClearResult = {
 
 type RarityTier = 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'Chromatic';
 
+// Fixed cascade: ceiling 30%, next 15%, next 7.5%, next 0.5%, no-drop 47%
+// S–Legend dungeons use custom tables. 'Chromatic' = doc's 'Legend' item tier.
 const DROP_TABLE: Record<string, { rarity: RarityTier; chance: number }[]> = {
-  E: [
-    { rarity: 'E',  chance: 0.30 },
-    { rarity: 'D',  chance: 0.12 },
-    { rarity: 'C',  chance: 0.03 },
-  ],
-  D: [{ rarity: 'D', chance: 0.40 }, { rarity: 'C', chance: 0.20 }, { rarity: 'B', chance: 0.08 }, { rarity: 'A', chance: 0.02 }],
-  C: [{ rarity: 'C', chance: 0.40 }, { rarity: 'B', chance: 0.25 }, { rarity: 'A', chance: 0.10 }, { rarity: 'S', chance: 0.03 }],
-  B: [{ rarity: 'B', chance: 0.40 }, { rarity: 'A', chance: 0.25 }, { rarity: 'S', chance: 0.15 }, { rarity: 'SS', chance: 0.05 }],
-  A: [{ rarity: 'A', chance: 0.35 }, { rarity: 'S', chance: 0.25 }, { rarity: 'SS', chance: 0.10 }, { rarity: 'SSS', chance: 0.03 }],
-  S: [{ rarity: 'S', chance: 0.30 }, { rarity: 'SS', chance: 0.20 }, { rarity: 'SSS', chance: 0.08 }, { rarity: 'Chromatic', chance: 0.02 }],
+  E:      [{ rarity: 'E',        chance: 0.300 }, { rarity: 'D',        chance: 0.150 }, { rarity: 'C',        chance: 0.075 }, { rarity: 'B',        chance: 0.005 }],
+  D:      [{ rarity: 'D',        chance: 0.300 }, { rarity: 'C',        chance: 0.150 }, { rarity: 'B',        chance: 0.075 }, { rarity: 'A',        chance: 0.005 }],
+  C:      [{ rarity: 'C',        chance: 0.300 }, { rarity: 'B',        chance: 0.150 }, { rarity: 'A',        chance: 0.075 }, { rarity: 'S',        chance: 0.005 }],
+  B:      [{ rarity: 'B',        chance: 0.300 }, { rarity: 'A',        chance: 0.150 }, { rarity: 'S',        chance: 0.075 }, { rarity: 'SS',       chance: 0.005 }],
+  A:      [{ rarity: 'A',        chance: 0.300 }, { rarity: 'S',        chance: 0.150 }, { rarity: 'SS',       chance: 0.075 }, { rarity: 'SSS',      chance: 0.005 }],
+  S:      [{ rarity: 'A',        chance: 0.200 }, { rarity: 'S',        chance: 0.225 }, { rarity: 'SS',       chance: 0.100 }, { rarity: 'SSS',      chance: 0.005 }],
+  SS:     [{ rarity: 'S',        chance: 0.225 }, { rarity: 'SS',       chance: 0.225 }, { rarity: 'SSS',      chance: 0.049 }, { rarity: 'Chromatic', chance: 0.001 }],
+  SSS:    [{ rarity: 'S',        chance: 0.150 }, { rarity: 'SS',       chance: 0.200 }, { rarity: 'SSS',      chance: 0.1035}, { rarity: 'Chromatic', chance: 0.0025}],
+  Legend: [{ rarity: 'S',        chance: 0.100 }, { rarity: 'SS',       chance: 0.300 }, { rarity: 'SSS',      chance: 0.125 }, { rarity: 'Chromatic', chance: 0.005 }],
 };
 
 // Equipment slot pool per dungeon category
@@ -110,6 +112,33 @@ const CATEGORY_SLOTS: Record<string, string[]> = {
   Journal:  ['ring', 'necklace', 'dagger', 'bracelet'],
   default:  ['top', 'ring', 'necklace', 'dagger', 'sword', 'shield'],
 };
+
+// ─── Coin helpers ─────────────────────────────────────────────────────────────
+
+const DUNGEON_RANK_COIN_MULT: Record<string, number> = {
+  E: 1.0, D: 1.1, C: 1.2, B: 1.3, A: 1.4, S: 1.5, SS: 1.6, SSS: 1.7, Legend: 1.8,
+};
+
+function getMoodCoinMult(): number {
+  try {
+    const row = db.getFirstSync<{ mood_rating: number }>(
+      `SELECT mood_rating FROM activity_logs WHERE entry_type = 'mood' AND mood_rating > 0
+       ORDER BY log_date DESC, created_at DESC LIMIT 1`,
+    );
+    if (!row) return 1.0;
+    return 0.95 + ((row.mood_rating - 1) / 9) * 0.10;
+  } catch { return 1.0; }
+}
+
+function getCategoryWeight(categoryName: string): number {
+  try {
+    const row = db.getFirstSync<{ weight: number }>(
+      'SELECT weight FROM categories WHERE lower(name) = lower(?) LIMIT 1',
+      categoryName,
+    );
+    return row?.weight ?? 5;
+  } catch { return 5; }
+}
 
 function rollDrop(rank: string): RarityTier | null {
   const table = DROP_TABLE[rank] ?? DROP_TABLE['E'];
@@ -443,8 +472,11 @@ export function getActiveDungeonRun(): ActiveDungeonRun | null {
 }
 
 export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClearResult {
-  const xpEarned    = 45;
-  const coinsEarned = Math.floor(dungeon.coin_reward * getCoinMultiplier());
+  const weight      = getCategoryWeight(dungeon.category);
+  const xpEarned    = Math.max(1, Math.floor(sessionXP(dungeon.duration_mins, weight) * 1.20));
+  const rankMult    = DUNGEON_RANK_COIN_MULT[dungeon.rank] ?? 1.0;
+  const baseCoins   = 50 + Math.floor(Math.random() * 51); // rand(50–100)
+  const coinsEarned = Math.floor(baseCoins * rankMult * getMoodCoinMult());
   let itemDropped: string | null = null;
   let itemRarity: Rarity | null = null;
   let itemSlotType: string | null = null;
@@ -561,20 +593,7 @@ export function generateQuests(): void {
       );
     }
 
-    const total = db.getFirstSync<{ n: number }>('SELECT count(*) as n FROM activity_logs')?.n ?? 0;
-    if (total === 0 && existing.length === 0) {
-      for (const [t, d, c, r] of [
-        ['First Activity',  'Log any activity to begin your journey.',           'Any',  20],
-        ['Record Your Mood', "Fill in today's mood, energy, and productivity.", 'Mood', 15],
-      ] as const) {
-        if (!existing.includes(c)) {
-          db.runSync(
-            `INSERT INTO quests (title, description, category, quest_type, coin_reward, status) VALUES (?, ?, ?, 'daily', ?, 'pending')`,
-            t, d, c, r,
-          );
-        }
-      }
-    }
+    // Starter quests (First Activity, Record Mood) removed — defer to onboarding flow at multi-user launch
   } catch {}
 }
 
@@ -583,13 +602,15 @@ export function acceptQuest(questId: number): void {
 }
 
 export function completeQuest(questId: number, notes?: string): void {
-  const quest = db.getFirstSync<Quest>('SELECT * FROM quests WHERE id = ?', questId);
+  const quest = db.getFirstSync<Quest & { duration_mins?: number }>('SELECT * FROM quests WHERE id = ?', questId);
   if (!quest) return;
 
-  const xpEarned = 30;
+  const weight   = getCategoryWeight(quest.category);
+  const duration = quest.duration_mins ?? 30;
+  const xpEarned  = Math.max(1, Math.floor(sessionXP(duration, weight) * 1.10));
+  const questCoins = Math.floor(50 * getMoodCoinMult());
   db.runSync(`UPDATE quests SET status = 'completed' WHERE id = ?`, questId);
-  db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?, ?)`, questId, quest.coin_reward);
-  const questCoins = Math.floor(quest.coin_reward * getCoinMultiplier());
+  db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?, ?)`, questId, questCoins);
   db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', questCoins);
 
   const desc = notes?.trim() ? `${quest.title} — ${notes.trim()}` : quest.title;

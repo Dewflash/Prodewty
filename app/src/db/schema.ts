@@ -5,25 +5,36 @@ export const db = SQLite.openDatabaseSync('prodewty.db');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+// Kevin's personal default profile — remove before multi-user launch and replace with onboarding flow
 const DEFAULT_CATEGORIES = [
-  { name: 'Workout',  weight: 4, attribute: 'strength'   },
-  { name: 'Coding',   weight: 4, attribute: 'focus'      },
-  { name: 'Study',    weight: 3, attribute: 'wisdom'     },
-  { name: 'Reading',  weight: 3, attribute: 'wisdom'     },
-  { name: 'Devotion', weight: 3, attribute: 'wisdom'     },
-  { name: 'Journal',  weight: 2, attribute: 'resilience' },
-  { name: 'Admin',    weight: 1, attribute: 'agility'    },
+  { name: 'Workout',  weight: 18, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
+  { name: 'News',     weight: 16, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+  { name: 'Coding',   weight: 15, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
+  { name: 'Study',    weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+  { name: 'Devotion', weight: 10, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  { name: 'Guitar',   weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  { name: 'Reading',  weight:  6, attribute: 'wisdom',     isPhysical: 0, isRecreational: 1 },
+  { name: 'Journal',  weight:  5, attribute: 'resilience', isPhysical: 0, isRecreational: 0 },
+  { name: 'Admin',    weight:  3, attribute: 'agility',    isPhysical: 0, isRecreational: 0 },
+  { name: 'Meditate', weight:  1, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
 ];
 
 const DEFAULT_RESTORATIVE = [
-  { name: 'Leisure Walk',   desc: 'Light outdoor walk',        cost: 25, e: 0,  p: 15, m: 5  },
-  { name: 'Movie / Show',   desc: 'Watch something you enjoy', cost: 30, e: 5,  p: 0,  m: 15 },
-  { name: 'Read for Fun',   desc: 'Pleasure reading',          cost: 25, e: 5,  p: 0,  m: 10 },
-  { name: 'Social Time',    desc: 'Quality time with people',  cost: 35, e: 20, p: 0,  m: 5  },
-  { name: 'Meditation',     desc: '10+ min mindfulness',       cost: 40, e: 10, p: 0,  m: 10 },
-  { name: 'Full Workout',   desc: 'Intense exercise session',  cost: 60, e: 0,  p: 25, m: 10 },
-  { name: 'Good Sleep',     desc: '7–9 hours of quality sleep',cost: 50, e: 10, p: 10, m: 10 },
-  { name: 'Treat Yourself', desc: 'Something you genuinely enjoy', cost: 35, e: 20, p: 0, m: 5 },
+  { name: 'Scroll',     desc: 'Mindless scroll session',    cost: 100, e: 10, p: 0, m: 0  },
+  { name: 'Music',      desc: 'Listen to music',            cost:  80, e:  5, p: 0, m: 5  },
+  { name: 'Netflix',    desc: 'Watch a show or movie',      cost:  65, e: 10, p: 0, m: 10 },
+  { name: 'Youtube',    desc: 'Watch YouTube',              cost:  60, e:  0, p: 0, m: 10 },
+  { name: 'Game',       desc: 'Play a game',                cost:  55, e:  0, p: 0, m: 5  },
+  { name: 'Journal',    desc: 'Free-write or reflect',      cost:  50, e:  5, p: 0, m: 5  },
+  { name: 'Jam',        desc: 'Play guitar or noodle',      cost:  40, e:  5, p: 0, m: 5  },
+  { name: 'Good meal',  desc: 'Proper sit-down meal',       cost:  35, e:  5, p: 5, m: 0  },
+  { name: 'Good sleep', desc: '7–9 hours quality sleep',    cost:  30, e:  5, p: 5, m: 5  },
+  { name: 'Walk',       desc: 'Outdoor or casual walk',     cost:  30, e:  0, p: 5, m: 5  },
+  { name: 'Bath',       desc: 'Shower or bath',             cost:  25, e:  5, p: 0, m: 5  },
+  { name: 'Talk',       desc: 'Conversation with someone',  cost:  20, e:  5, p: 0, m: 0  },
+  { name: 'Meal',       desc: 'Regular meal',               cost:  20, e:  5, p: 5, m: 0  },
+  { name: 'Sleep',      desc: 'Rest or nap',                cost:  20, e:  0, p: 5, m: 5  },
+  { name: 'Pull-ups',   desc: 'Quick bodyweight set',       cost:  20, e:  0, p: 5, m: 0  },
 ];
 
 // ─── Init (called at module load — must be AFTER all consts above) ────────────
@@ -1049,6 +1060,81 @@ function runMigrations() {
       updated_at TEXT NOT NULL
     )`);
     db.execSync('PRAGMA user_version = 30');
+  }
+
+  if (version < 31) {
+    // 1. Add weekly_boost_until to rpg_state for the 7-day 1.05× boost
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN weekly_boost_until TEXT`); } catch {}
+
+    // 2. Recalculate xp_to_next_level for current level using new curve
+    const rpgRow = db.getFirstSync<{ current_level: number }>('SELECT current_level FROM rpg_state WHERE id = 1');
+    if (rpgRow) {
+      const newThreshold = Math.max(10, Math.ceil((7.5 * rpgRow.current_level + 435) / 10) * 10);
+      db.runSync('UPDATE rpg_state SET xp_to_next_level = ? WHERE id = 1', newThreshold);
+    }
+
+    // 3. Update category weights to new 1-20 scale and insert missing categories
+    const categoryUpdates: { name: string; weight: number; attribute: string; isPhysical: number; isRecreational: number }[] = [
+      { name: 'Workout',  weight: 18, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
+      { name: 'News',     weight: 16, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+      { name: 'Coding',   weight: 15, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
+      { name: 'Study',    weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+      { name: 'Devotion', weight: 10, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+      { name: 'Guitar',   weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+      { name: 'Reading',  weight:  6, attribute: 'wisdom',     isPhysical: 0, isRecreational: 1 },
+      { name: 'Journal',  weight:  5, attribute: 'resilience', isPhysical: 0, isRecreational: 0 },
+      { name: 'Admin',    weight:  3, attribute: 'agility',    isPhysical: 0, isRecreational: 0 },
+      { name: 'Meditate', weight:  1, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+    ];
+    for (const cat of categoryUpdates) {
+      const exists = db.getFirstSync<{ id: number }>('SELECT id FROM categories WHERE lower(name) = lower(?)', cat.name);
+      if (exists) {
+        db.runSync(
+          `UPDATE categories SET weight = ?, attribute = ?, is_physical = ?, is_recreational = ?, is_default = 1 WHERE lower(name) = lower(?)`,
+          cat.weight, cat.attribute, cat.isPhysical, cat.isRecreational, cat.name,
+        );
+      } else {
+        db.runSync(
+          `INSERT INTO categories (name, weight, attribute, is_default, is_physical, is_recreational) VALUES (?, ?, ?, 1, ?, ?)`,
+          cat.name, cat.weight, cat.attribute, cat.isPhysical, cat.isRecreational,
+        );
+      }
+    }
+
+    // 4. Add duration_mins to quests (default 30 mins for all existing quests)
+    try { db.execSync(`ALTER TABLE quests ADD COLUMN duration_mins INTEGER NOT NULL DEFAULT 30`); } catch {}
+
+    // Remove starter quests — these belong in onboarding, not in the personal build
+    try { db.execSync(`DELETE FROM quests WHERE category IN ('Any', 'Mood') AND quest_type = 'daily'`); } catch {}
+
+    // 5. Replace all default restorative activities with new list
+    db.execSync(`DELETE FROM restorative_activities WHERE is_default = 1`);
+    const newRestorative = [
+      { name: 'Scroll',     desc: 'Mindless scroll session',    cost: 100, e: 10, p: 0, m: 0  },
+      { name: 'Music',      desc: 'Listen to music',            cost:  80, e:  5, p: 0, m: 5  },
+      { name: 'Netflix',    desc: 'Watch a show or movie',      cost:  65, e: 10, p: 0, m: 10 },
+      { name: 'Youtube',    desc: 'Watch YouTube',              cost:  60, e:  0, p: 0, m: 10 },
+      { name: 'Game',       desc: 'Play a game',                cost:  55, e:  0, p: 0, m: 5  },
+      { name: 'Journal',    desc: 'Free-write or reflect',      cost:  50, e:  5, p: 0, m: 5  },
+      { name: 'Jam',        desc: 'Play guitar or noodle',      cost:  40, e:  5, p: 0, m: 5  },
+      { name: 'Good meal',  desc: 'Proper sit-down meal',       cost:  35, e:  5, p: 5, m: 0  },
+      { name: 'Good sleep', desc: '7–9 hours quality sleep',    cost:  30, e:  5, p: 5, m: 5  },
+      { name: 'Walk',       desc: 'Outdoor or casual walk',     cost:  30, e:  0, p: 5, m: 5  },
+      { name: 'Bath',       desc: 'Shower or bath',             cost:  25, e:  5, p: 0, m: 5  },
+      { name: 'Talk',       desc: 'Conversation with someone',  cost:  20, e:  5, p: 0, m: 0  },
+      { name: 'Meal',       desc: 'Regular meal',               cost:  20, e:  5, p: 5, m: 0  },
+      { name: 'Sleep',      desc: 'Rest or nap',                cost:  20, e:  0, p: 5, m: 5  },
+      { name: 'Pull-ups',   desc: 'Quick bodyweight set',       cost:  20, e:  0, p: 5, m: 0  },
+    ];
+    for (const a of newRestorative) {
+      db.runSync(
+        `INSERT INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        a.name, a.desc, a.cost, a.e, a.p, a.m,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 31');
   }
 }
 

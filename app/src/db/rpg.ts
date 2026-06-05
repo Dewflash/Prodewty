@@ -88,9 +88,30 @@ export function getAnima(): number {
   } catch { return 0; }
 }
 
-// Coin multiplier: debuff when anima < -10 (blight far exceeds vigor)
+// Coin multiplier: debuff when anima < -10 (blight far exceeds vigor). To be repurposed — new mechanic TBD.
 export function getCoinMultiplier(): number {
   return getAnima() < -10 ? 0.8 : 1.0;
+}
+
+// Weekly log boost: 1.05× on all activity logs for 7 days after submitting a weekly reflection.
+export function getWeeklyBoostMult(): number {
+  try {
+    const row = db.getFirstSync<{ weekly_boost_until: string | null }>(
+      'SELECT weekly_boost_until FROM rpg_state WHERE id = 1',
+    );
+    if (!row?.weekly_boost_until) return 1.0;
+    const today = new Date().toISOString().split('T')[0];
+    return row.weekly_boost_until >= today ? 1.05 : 1.0;
+  } catch { return 1.0; }
+}
+
+export function activateWeeklyBoost(): void {
+  try {
+    const until = new Date();
+    until.setDate(until.getDate() + 7);
+    const untilStr = until.toISOString().split('T')[0];
+    db.runSync('UPDATE rpg_state SET weekly_boost_until = ? WHERE id = 1', untilStr);
+  } catch {}
 }
 
 // Called on app open — auto-applies streak freeze if exactly one day was missed
@@ -227,9 +248,11 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   }
 
   // AP earned on level-up (10 per level)
-  const apGained    = levelsGained * 10;
-  // Coins: rare drop on level-up (20% chance per level gained)
-  const coinsGained = Array.from({ length: levelsGained }).reduce<number>((acc) => acc + (Math.random() < 0.2 ? 10 : 0), 0);
+  const apGained = levelsGained * 10;
+  // Coins: level × 10 per level crossed (e.g. reaching level 5 grants 50 coins)
+  let coinsGained = 0;
+  const startLevel = current_level - levelsGained;
+  for (let lvl = startLevel + 1; lvl <= current_level; lvl++) coinsGained += lvl * 10;
   // HP regen: 10% of XP gained, capped at hp_max
   const hpRegen = Math.floor(xp * 0.1);
 

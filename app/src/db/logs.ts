@@ -1,6 +1,6 @@
 import { db } from './schema';
 import { calculateXP } from '../services/xpEngine';
-import { applyXP } from './rpg';
+import { applyXP, getWeeklyBoostMult, activateWeeklyBoost } from './rpg';
 import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
 
 const MOOD_XP    = 20;
@@ -125,6 +125,7 @@ export function getWeeklyLogs(): { weekStart: string; logs: ActivityLog[] }[] {
 export function createActivityLog(input: ActivityLogInput): CreateLogResult {
   applyHealthDecay();
   const healthMult = getHealthXPMultiplier();
+  const weeklyMult = getWeeklyBoostMult();
 
   const xp = Math.max(Math.floor(
     calculateXP({
@@ -132,7 +133,7 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
       duration_mins: input.duration_mins,
       completed_habit_weights: input.completedHabits.map(h => h.weight),
       log_type: input.log_type,
-    }) * healthMult,
+    }) * healthMult * weeklyMult,
   ), 1);
 
   // For weekly logs: append journal to the existing weekly log for this week rather than duplicating
@@ -194,6 +195,8 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
   } catch {}
 
   const { levelUp } = applyXP(xp);
+  // Weekly log triggers a 7-day 1.05× boost on all subsequent activity logs
+  if (input.log_type === 'weekly') activateWeeklyBoost();
   return { xp_awarded: xp, level_up: levelUp };
 }
 
