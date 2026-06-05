@@ -7,6 +7,7 @@
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^14.0.0",
     "expo": "~54.0.35",
+    "expo-av": "~16.0.8",
     "expo-constants": "~17.0.0",
     "expo-font": "~13.0.0",
     "expo-linking": "~7.0.0",

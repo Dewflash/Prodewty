@@ -20,6 +20,7 @@ import { getHabits, addHabit } from '../../src/db/habits';
 import { createActivityLog, upsertMoodLog, getMoodLogForDate } from '../../src/db/logs';
 import { getRPGState, setCurrentMood, isInDeathState, getCustomMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
+import { playSound, switchBGM } from '../../src/services/audio';
 
 type LogMoodState = string;
 
@@ -92,6 +93,8 @@ export default function LogScreen() {
       }
     } catch {}
   }
+
+  useFocusEffect(useCallback(() => { void switchBGM('historylog'); }, []));
 
   useFocusEffect(
     useCallback(() => {
@@ -203,6 +206,7 @@ export default function LogScreen() {
 
       const dead = isInDeathState();
       setLastLogWasDead(dead);
+      playSound('logging');
       showXPPopup(dead ? 0 : totalXP);
       setRPGState(getRPGState());
       resetForm();

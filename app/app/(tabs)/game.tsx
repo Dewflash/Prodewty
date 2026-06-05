@@ -31,6 +31,7 @@ import { InventorySection, type InvTab } from '../../src/components/game/Invento
 import { fmtBuff, fmtTimer } from '../../src/utils/format';
 import { PendingQuestCard, AcceptedQuestCard, HiddenQuestCard, CompletedQuestCard } from '../../src/components/game/QuestCards';
 import { DungeonCard, RANK_COLOR } from '../../src/components/game/DungeonCard';
+import { playSound, switchBGM } from '../../src/services/audio';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,7 @@ export default function GameScreen() {
     }
   }
 
+  useFocusEffect(useCallback(() => { void switchBGM('game'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, []));
 
   // Countdown tick
@@ -130,6 +132,7 @@ export default function GameScreen() {
     if (dungeonPhase !== 'active' || timerSeconds !== 0) return;
     if (activeRunId !== null && selectedDungeon) {
       failDungeon(activeRunId, selectedDungeon);
+      playSound('faileddungeon');
       setClearResult(null);
       setDungeonPhase('result');
       reload();
@@ -150,6 +153,7 @@ export default function GameScreen() {
   function handleAllocate(key: string) {
     const res = allocateStat(key);
     if (res === 'no_ap') { Alert.alert('No AP', 'Level up to earn more Ability Points.'); return; }
+    playSound('statusgameystatsadd');
     reload();
   }
 
@@ -173,6 +177,7 @@ export default function GameScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Submit Clear', onPress: () => {
         const result = submitDungeonClear(activeRunId!, selectedDungeon!);
+        playSound('collectcoin');
         setClearResult(result);
         setDungeonPhase('result');
         reload();
@@ -187,6 +192,7 @@ export default function GameScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Fail', style: 'destructive', onPress: () => {
         failDungeon(activeRunId!, selectedDungeon!);
+        playSound('faileddungeon');
         triggerDeathCheck();
         setClearResult(null);
         setDungeonPhase('result');
@@ -199,7 +205,7 @@ export default function GameScreen() {
     if (activeRunId === null) return;
     Alert.alert('Abandon Dungeon?', 'No penalty, no reward. Timer stops.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Abandon', style: 'destructive', onPress: () => { abandonDungeon(activeRunId!); closeDungeonFlow(); }},
+      { text: 'Abandon', style: 'destructive', onPress: () => { abandonDungeon(activeRunId!); playSound('abandondungeon'); closeDungeonFlow(); }},
     ]);
   }
 
@@ -212,6 +218,7 @@ export default function GameScreen() {
   function handleEquipItem(item: InventoryItem) {
     if (!item.slot_type) return;
     equipItem(item.id, item.slot_type);
+    playSound('equipingameinventory');
     setBrowserItems(getInventoryBySlot(item.slot_type));
     setEquipRefreshKey(k => k + 1);
     reload();
@@ -220,6 +227,7 @@ export default function GameScreen() {
   function handleUnequipItem(item: InventoryItem) {
     if (!item.slot_type) return;
     unequipItem(item.id);
+    playSound('equipingameinventory');
     setBrowserItems(getInventoryBySlot(item.slot_type));
     setEquipRefreshKey(k => k + 1);
     reload();
@@ -228,6 +236,7 @@ export default function GameScreen() {
   function handleUseConsumable(item: InventoryItem) {
     const result = useConsumable(item.id);
     if (result === 'ok') {
+      playSound('consumableuse');
       setActiveBuffs(getActiveBuffs());
       if (itemBrowserSlot) setBrowserItems(getInventoryBySlot(itemBrowserSlot));
       reload();
@@ -239,6 +248,7 @@ export default function GameScreen() {
   function handleCompleteQuest() {
     if (!completingQuest) return;
     completeQuest(completingQuest.id, questNotes);
+    playSound('collectcoin');
     setCompletingQuest(null);
     setQuestNotes('');
     reload();
@@ -416,7 +426,7 @@ export default function GameScreen() {
                       <PendingQuestCard key={q.id} quest={q}
                         onAccept={() => { acceptQuest(q.id); reload(); }}
                         onHide={() => { skipQuest(q.id); reload(); }}
-                        onDelete={() => { deleteQuest(q.id); reload(); }} />
+                        onDelete={() => { deleteQuest(q.id); playSound('deleteitem'); reload(); }} />
                     ))}
                   </>
                 )}
@@ -426,7 +436,7 @@ export default function GameScreen() {
                     {skipped.map(q => (
                       <HiddenQuestCard key={q.id} quest={q}
                         onReinstate={() => { reinstateQuest(q.id); reload(); }}
-                        onDelete={() => { deleteQuest(q.id); reload(); }} />
+                        onDelete={() => { deleteQuest(q.id); playSound('deleteitem'); reload(); }} />
                     ))}
                   </>
                 )}

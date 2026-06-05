@@ -16,6 +16,7 @@ import {
 import { db } from '../../src/db/schema';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import { playSound, switchBGM } from '../../src/services/audio';
 
 const MONTHS       = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -141,7 +142,7 @@ function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete
   function confirmDelete() {
     Alert.alert('Delete Activity', `Remove "${primary}"? ${log.xp_awarded} XP will be deducted.`, [
       { text:'Cancel', style:'cancel' },
-      { text:'Delete', style:'destructive', onPress:() => { deleteLog(log.id); onDelete(); } },
+      { text:'Delete', style:'destructive', onPress:() => { deleteLog(log.id); playSound('deleteitem'); onDelete(); } },
     ]);
   }
 
@@ -397,6 +398,7 @@ export default function HistoryScreen() {
     }
   }
 
+  useFocusEffect(useCallback(() => { void switchBGM('historylog'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, [tab, year, month, selected]));
 
   const moodByDate: Record<string, number> = {};

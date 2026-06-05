@@ -21,6 +21,7 @@ import { resetDeathIgnore, getDeathCount, getQuestCompletedCount, getDungeonClea
 import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 import { getHealthState, getHealthTier, type HealthState } from '../../src/db/health';
+import { playSound, switchBGM } from '../../src/services/audio';
 
 type Period = 'week' | 'month' | 'year';
 
@@ -299,6 +300,8 @@ export default function ProgressScreen() {
   const [sdFlashVisible, setSdFlashVisible] = useState(false);
   const [sdCount, setSdCount] = useState(0);
 
+  useFocusEffect(useCallback(() => { void switchBGM('progress'); }, []));
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -358,6 +361,7 @@ export default function ProgressScreen() {
       Animated.timing(flashOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start(() => setSdFlashVisible(false));
 
+    playSound('selfdestruct');
     const result = selfDestruct();
     setSdCount(result.count);
     triggerDeathCheck();

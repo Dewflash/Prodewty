@@ -7,6 +7,7 @@ import { db } from '../src/db/schema';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
+import { playSound } from '../src/services/audio';
 
 type InventoryItem = {
   id: number;
@@ -70,7 +71,7 @@ export default function InventoryScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Pressable onPress={() => router.back()} style={s.back}>
+        <Pressable onPress={() => { playSound('globalinventoryback'); router.back(); }} style={s.back}>
           <Feather name="arrow-left" size={22} color={colors.textPrimary} />
         </Pressable>
         <Text style={s.title}>Inventory</Text>

@@ -20,6 +20,7 @@ import { getRPGState, type RPGState } from '../../src/db/rpg';
 import { db } from '../../src/db/schema';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 import { STAT_ICON, STAT_COLOR } from '../../src/constants/stats';
+import { playSound, switchBGM } from '../../src/services/audio';
 
 type WeeklyStatRow = { avg: number | null; min: number | null; max: number | null };
 type WeeklyHealthStats = { emotional: WeeklyStatRow; physical: WeeklyStatRow; mental: WeeklyStatRow };
@@ -190,6 +191,7 @@ export default function RechargeScreen() {
     setIsStatDead(h.emotional <= 0 || h.physical <= 0 || h.mental <= 0);
   }
 
+  useFocusEffect(useCallback(() => { void switchBGM('recharge'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, []));
 
   function handleBuy(activityId: number) {
@@ -202,6 +204,7 @@ export default function RechargeScreen() {
       Alert.alert('Not enough XP', 'Earn more XP by logging activities.');
       return;
     }
+    playSound('restoreinrecharge');
     reload();
     triggerCurrencyRefresh();
   }

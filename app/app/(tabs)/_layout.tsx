@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { GlobalCurrencyBar } from '../../src/components/GlobalCurrencyBar';
+import { playSound } from '../../src/services/audio';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -26,6 +27,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
+      screenListeners={{ tabPress: () => playSound('bottomribbonbutton') }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,

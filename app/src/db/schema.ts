@@ -1017,6 +1017,15 @@ function runMigrations() {
     db.execSync(`UPDATE dungeons SET cooldown_hours = 0.0333`);
     db.execSync('PRAGMA user_version = 27');
   }
+
+  if (version < 28) {
+    db.execSync(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    const bgmZones = ['progress', 'historylog', 'recharge', 'game', 'store'];
+    for (const zone of bgmZones) {
+      db.runSync(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, '0')`, `bgm_${zone}`);
+    }
+    db.execSync('PRAGMA user_version = 28');
+  }
 }
 
 function seedRealisticData() {

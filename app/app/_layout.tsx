@@ -12,6 +12,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { db, initDB } from '../src/db/schema';
 import { checkStreakFreeze, checkVigor, getRPGState, clearLevelUpPending } from '../src/db/rpg';
+import { initAudio, playSound } from '../src/services/audio';
 import { registerDeathCheck } from '../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { getDeathCause, type DeathCause } from '../src/db/game';
@@ -42,6 +43,7 @@ export default function RootLayout() {
 
   function triggerGemBanner() {
     setGemBanner(true);
+    playSound('gem');
     Animated.sequence([
       Animated.spring(bannerY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }),
       Animated.delay(2800),
@@ -60,6 +62,7 @@ export default function RootLayout() {
     // Death check — only show if not already acknowledged
     const cause = getDeathCause();
     if (cause && !(rpg.death_acknowledged)) {
+      playSound('died');
       setDeathCause(cause);
     } else if (!cause) {
       // All clear — reset acknowledged so next death triggers screen again
@@ -69,12 +72,14 @@ export default function RootLayout() {
 
     // Level-up pending check — suppress on game tab (dungeon clear already shows the result)
     if ((rpg.level_up_pending ?? 0) > 0 && !pathnameRef.current.includes('/game')) {
+      playSound('levelup');
       setLevelUpLevel(rpg.level_up_pending);
       clearLevelUpPending();
     }
   }
 
   useEffect(() => {
+    void initAudio();
     const { gemAwarded } = checkVigor();
     if (gemAwarded) triggerGemBanner();
     registerDeathCheck(checkState);
@@ -94,6 +99,7 @@ export default function RootLayout() {
         <Stack.Screen name="milestones" />
         <Stack.Screen name="game-log" />
         <Stack.Screen name="suitup" />
+        <Stack.Screen name="settings" />
       </Stack>
 
       <DeathScreen cause={deathCause} onResolve={() => { setDeathCause(null); checkState(); triggerCurrencyRefresh(); }} />

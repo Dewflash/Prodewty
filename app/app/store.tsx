@@ -10,6 +10,7 @@ import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg'
 import { purchaseHPBoost } from '../src/db/game';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { db } from '../src/db/schema';
+import { playSound, switchBGM } from '../src/services/audio';
 
 function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
   try {
@@ -36,6 +37,7 @@ export default function StoreScreen() {
   const [rpg, setRpg] = useState<RPGState | null>(null);
   const [section, setSection] = useState<StoreSection>('non-game-global');
 
+  useFocusEffect(useCallback(() => { void switchBGM('store'); }, []));
   useFocusEffect(useCallback(() => { setRpg(getRPGState()); }, []));
 
   const coins = rpg?.coins ?? 0;
@@ -51,6 +53,7 @@ export default function StoreScreen() {
         const r = action();
         if (r === 'hp_not_critical') { Alert.alert('HP not critical', 'Only usable when HP ≤ 30.'); return; }
         if (r === 'insufficient_coins') { Alert.alert('Not enough coins'); return; }
+        playSound('purchaseinstore');
         reload();
         triggerCurrencyRefresh();
         Alert.alert('Purchased', `${label} applied.`);

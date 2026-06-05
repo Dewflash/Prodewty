@@ -1,33 +1,111 @@
-/**
- * Audio service — placeholder for future sound effects.
- *
- * To add audio:
- * 1. Drop .mp3 / .wav files into app/assets/audio/
- * 2. Import them here and register in SOUNDS below
- * 3. Install expo-av: npx expo install expo-av
- *    (requires a native rebuild: npx expo run:ios --device)
- * 4. Uncomment and implement the playSound function
- *
- * Planned sounds:
- *  - xp_gain.mp3      — plays on successful log submission
- *  - level_up.mp3     — plays on level up
- *  - badge_unlock.mp3 — plays when a badge is earned
- *  - habit_check.mp3  — subtle tick when checking a habit
- */
+import { Audio } from 'expo-av';
+import { getBGMSelection } from '../db/settings';
 
-// const SOUNDS = {
-//   xp_gain:      require('../../assets/audio/xp_gain.mp3'),
-//   level_up:     require('../../assets/audio/level_up.mp3'),
-//   badge_unlock: require('../../assets/audio/badge_unlock.mp3'),
-//   habit_check:  require('../../assets/audio/habit_check.mp3'),
-// } as const;
+const SOUNDS = {
+  logging:                      require('../../assets/sounds/logging.wav'),
+  levelup:                      require('../../assets/sounds/levelup.mp3'),
+  selfdestruct:                 require('../../assets/sounds/selfdestruct.mp3'),
+  died:                         require('../../assets/sounds/died.mp3'),
+  faileddungeon:                require('../../assets/sounds/faileddungeon.wav'),
+  abandondungeon:               require('../../assets/sounds/abandondungeon.wav'),
+  equipingameinventory:         require('../../assets/sounds/equipingameinventory.mp3'),
+  consumableuse:                require('../../assets/sounds/consumableuse.mp3'),
+  deleteitem:                   require('../../assets/sounds/deleteitem.mp3'),
+  purchaseinstore:              require('../../assets/sounds/purchaseinstore.mp3'),
+  restoreinrecharge:            require('../../assets/sounds/restoreinrecharge.mp3'),
+  statusgameystatsadd:          require('../../assets/sounds/statusgameystatsadd.mp3'),
+  globalinventoryopentopribbon: require('../../assets/sounds/globalinventoryopentopribbon.mp3'),
+  globalinventoryback:          require('../../assets/sounds/globalinventoryback.mp3'),
+  milestonetopribbon:           require('../../assets/sounds/milestonetopribbon.mp3'),
+  topribbonbutton:              require('../../assets/sounds/topribbonbutton.mp3'),
+  bottomribbonbutton:           require('../../assets/sounds/bottomribbonbutton.mp3'),
+  collectcoin:                  require('../../assets/sounds/collectcoin.mp3'),
+  gem:                          require('../../assets/sounds/gem.mp3'),
+} as const;
 
-// type SoundKey = keyof typeof SOUNDS;
+export type SoundKey = keyof typeof SOUNDS;
 
-export async function playSound(_key: string): Promise<void> {
-  // No-op until expo-av is installed and sounds are added
+// ─── SFX ────────────────────────────────────────────────────────────────────
+
+const COOLDOWN_MS = 300;
+const cooldowns: Partial<Record<SoundKey, number>> = {};
+
+export async function initAudio(): Promise<void> {
+  try {
+    await Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+    });
+  } catch {}
 }
 
-export async function preloadSounds(): Promise<void> {
-  // No-op until expo-av is installed
+export function playSound(key: SoundKey): void {
+  const now = Date.now();
+  if ((cooldowns[key] ?? 0) > now) return;
+  cooldowns[key] = now + COOLDOWN_MS;
+  void (async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(SOUNDS[key]);
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.isLoaded && status.didJustFinish) void sound.unloadAsync();
+      });
+    } catch {}
+  })();
+}
+
+// ─── BGM ─────────────────────────────────────────────────────────────────────
+// Replace null with require('../../assets/sounds/bgm_<zone>_<n>.mp3') when files are ready.
+// Track index 0/1/2 maps to the user's selection in Settings.
+
+const BGM_TRACKS: Record<string, (number | null)[]> = {
+  progress:   [null, null, null],
+  historylog: [null, null, null],
+  recharge:   [null, null, null],
+  game:       [null, null, null],
+  store:      [null, null, null],
+};
+
+let bgmSound: Audio.Sound | null = null;
+let currentZone: string | null = null;
+
+export function getCurrentBGMZone(): string | null { return currentZone; }
+
+export async function switchBGM(zone: string): Promise<void> {
+  if (currentZone === zone) return;
+
+  const trackIndex = getBGMSelection(zone);
+  const file = BGM_TRACKS[zone]?.[trackIndex] ?? null;
+
+  if (bgmSound) {
+    try { await bgmSound.stopAsync(); await bgmSound.unloadAsync(); } catch {}
+    bgmSound = null;
+  }
+  currentZone = zone;
+
+  if (file !== null) {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        file,
+        { isLooping: true, shouldPlay: true },
+      );
+      bgmSound = sound;
+    } catch {}
+  }
+}
+
+// Call after changing track selection in Settings while the zone is active
+export async function reloadCurrentBGM(): Promise<void> {
+  if (!currentZone) return;
+  const zone = currentZone;
+  currentZone = null; // clear so switchBGM doesn't early-return
+  await switchBGM(zone);
+}
+
+export async function stopBGM(): Promise<void> {
+  if (bgmSound) {
+    try { await bgmSound.stopAsync(); await bgmSound.unloadAsync(); } catch {}
+    bgmSound = null;
+  }
+  currentZone = null;
 }
