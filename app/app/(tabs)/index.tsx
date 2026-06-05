@@ -838,8 +838,8 @@ const s = StyleSheet.create({
 
   strip:      { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', justifyContent: 'space-evenly' },
   stripItem:  { alignItems: 'center', gap: 2, paddingHorizontal: spacing.sm },
-  stripVal:   { fontFamily: fonts.mono.bold, fontSize: fontSize.md, color: colors.textPrimary },
-  stripLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  stripVal:   { fontFamily: fonts.mono.regular, fontSize: fontSize.md, color: colors.textPrimary },
+  stripLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
   stripDiv:   { width: 1, height: 32, backgroundColor: colors.border },
 
   periodRow:   { flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
@@ -883,8 +883,8 @@ const s = StyleSheet.create({
   recordGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   recordCard:    { flex: 1, minWidth: '45%', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, gap: 4 },
   recordCardRed: { borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.04)' },
-  recordVal:     { fontFamily: fonts.mono.bold,   fontSize: fontSize.lg, color: colors.textPrimary },
-  recordLabel:   { fontFamily: fonts.ui.regular,  fontSize: fontSize.xs, color: colors.textMuted },
+  recordVal:     { fontFamily: fonts.mono.regular, fontSize: fontSize.lg, color: colors.textPrimary },
+  recordLabel:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
 
   badgeGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   badge:             { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2, minWidth: 90 },

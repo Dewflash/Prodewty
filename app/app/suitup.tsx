@@ -29,27 +29,27 @@ type Slot = {
   equipped: Item | null;
 };
 
-// ─── Dummy data ───────────────────────────────────────────────────────────────
+// ─── Demo seed — edit freely for testing ──────────────────────────────────────
 
 const EQUIPMENT_SLOTS: Slot[] = [
-  { key: 'top',        label: 'Top',        icon: 'square',       equipped: { name: 'Shadow Monarch Robe', rarity: 'S',  description: 'Woven from shadow essence. +4 SPR.' } },
-  { key: 'gloves',     label: 'Gloves',     icon: 'square',       equipped: null },
-  { key: 'pants',      label: 'Pants',      icon: 'square',       equipped: { name: 'Obsidian Greaves',    rarity: 'E',  description: 'Basic shadow-iron pants. +1 STR.' } },
-  { key: 'shoes',      label: 'Shoes',      icon: 'square',       equipped: null },
-  { key: 'ring',       label: 'Ring',       icon: 'circle',       equipped: { name: 'Ring of Sovereignty', rarity: 'SSS',description: 'Worn by rulers. +10 to all stats.', stats: '+10 ALL' } },
-  { key: 'goblet',     label: 'Goblet',     icon: 'square',       equipped: null },
-  { key: 'coat',       label: 'Coat',       icon: 'square',       equipped: { name: "Hunter's Coat",       rarity: 'A',  description: 'Standard S-rank hunter coat. +3 AGI.' } },
-  { key: 'necklace',   label: 'Necklace',   icon: 'circle',       equipped: null },
-  { key: 'bracelet',   label: 'Bracelet',   icon: 'circle',       equipped: null },
-  { key: 'armour_set', label: 'Armour Set', icon: 'shield',       equipped: null },
+  { key: 'top',        label: 'Top',        icon: 'square',    equipped: null },
+  { key: 'gloves',     label: 'Gloves',     icon: 'square',    equipped: null },
+  { key: 'pants',      label: 'Pants',      icon: 'square',    equipped: null },
+  { key: 'shoes',      label: 'Shoes',      icon: 'square',    equipped: null },
+  { key: 'ring',       label: 'Ring',       icon: 'circle',    equipped: null },
+  { key: 'goblet',     label: 'Goblet',     icon: 'square',    equipped: null },
+  { key: 'coat',       label: 'Coat',       icon: 'square',    equipped: null },
+  { key: 'necklace',   label: 'Necklace',   icon: 'circle',    equipped: null },
+  { key: 'bracelet',   label: 'Bracelet',   icon: 'circle',    equipped: null },
+  { key: 'armour_set', label: 'Armour Set', icon: 'shield',    equipped: null },
 ];
 
 const WEAPON_SLOTS: Slot[] = [
-  { key: 'dagger',   label: 'Dagger',   icon: 'triangle', equipped: { name: 'Shadow Dagger',     rarity: 'B',        description: 'Fast and silent. +2 AGI, +1 PER.' } },
-  { key: 'sword',    label: 'Sword',    icon: 'triangle', equipped: null },
-  { key: 'shield',   label: 'Shield',   icon: 'shield',   equipped: null },
-  { key: 'grimoire', label: 'Grimoire', icon: 'book-open',equipped: { name: 'Tome of the Fallen', rarity: 'Chromatic',description: 'Ancient knowledge sealed within.', stats: '+8 WIS' } },
-  { key: 'scepter',  label: 'Scepter',  icon: 'triangle', equipped: null },
+  { key: 'dagger',   label: 'Dagger',   icon: 'triangle',  equipped: null },
+  { key: 'sword',    label: 'Sword',    icon: 'triangle',  equipped: null },
+  { key: 'shield',   label: 'Shield',   icon: 'shield',    equipped: null },
+  { key: 'grimoire', label: 'Grimoire', icon: 'book-open', equipped: null },
+  { key: 'scepter',  label: 'Scepter',  icon: 'triangle',  equipped: null },
 ];
 
 type ConsumableSlot = {
@@ -59,13 +59,13 @@ type ConsumableSlot = {
 };
 
 const CONSUMABLE_SLOTS: ConsumableSlot[] = [
-  { stat: 'STR', statKey: 'str', item: { name: 'Strength Draft',  rarity: 'D', description: '+5 STR for 1 hour.', stats: '+5 STR', quantity: 2 } },
+  { stat: 'STR', statKey: 'str', item: null },
   { stat: 'AGI', statKey: 'agi', item: null },
-  { stat: 'FOC', statKey: 'foc', item: { name: 'Focus Elixir',    rarity: 'C', description: '+5 FOC for 1 hour.', stats: '+5 FOC', quantity: 1 } },
+  { stat: 'FOC', statKey: 'foc', item: null },
   { stat: 'WIS', statKey: 'wis', item: null },
   { stat: 'SPR', statKey: 'spr', item: null },
   { stat: 'PER', statKey: 'per', item: null },
-  { stat: 'STA', statKey: 'sta', item: { name: 'Stamina Vial',    rarity: 'B', description: '+5 STA for 1 hour.', stats: '+5 STA', quantity: 3 } },
+  { stat: 'STA', statKey: 'sta', item: null },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

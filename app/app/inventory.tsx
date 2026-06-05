@@ -106,14 +106,6 @@ const s = StyleSheet.create({
   back: { padding: 4 },
   title: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
 
-  tabs:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
-  tabBtn:      { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.sm + 2 },
-  tabBtnActive:{ borderBottomWidth: 2, borderBottomColor: colors.primary },
-  tabTxt:      { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2 },
-  tabTxtActive:{ color: colors.primary },
-  tabCount:    { backgroundColor: colors.border, borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
-  tabCountTxt: { fontFamily: fonts.mono.bold, fontSize: 10, color: colors.textMuted },
-
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   sectionSub: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: -spacing.xs },
 
