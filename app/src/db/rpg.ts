@@ -48,17 +48,37 @@ export function getRPGState(): RPGState {
   return db.getFirstSync<RPGState>('SELECT * FROM rpg_state WHERE id = 1')!;
 }
 
-// Called on app open — increments vigor if no self-destruct today
-export function checkVigor(): void {
+// Called on app open — adds today's optimistic +1; confirms yesterday as clean if no SD logged
+export function checkVigor(): { gemAwarded: boolean } {
   try {
     const state = getRPGState();
     const today = new Date().toISOString().split('T')[0];
     const lastVigor = (state as any).last_vigor_date as string | null;
-    if (lastVigor === today) return; // already incremented today
-    const lastSD = state.last_self_destruct ?? '';
-    if (lastSD === today) return; // self-destructed today — no vigor gain
-    db.runSync(`UPDATE rpg_state SET vigor = vigor + 1, last_vigor_date = ? WHERE id = 1`, today);
-  } catch {}
+    if (lastVigor === today) return { gemAwarded: false }; // already ran today
+
+    const yesterday = new Date(new Date(today).getTime() - 86400000).toISOString().split('T')[0];
+    const sdRow = db.getFirstSync<{ cnt: number }>(
+      `SELECT COUNT(*) as cnt FROM activity_logs WHERE entry_type = 'self_destruct' AND log_date = ?`,
+      yesterday,
+    );
+    const yesterdayClean = (sdRow?.cnt ?? 0) === 0;
+
+    if (yesterdayClean && lastVigor !== null) {
+      // Yesterday confirmed clean and we have a prior login — permanent vigor + gem
+      db.runSync(
+        `UPDATE rpg_state SET vigor = vigor + 1, gems = gems + 1, last_vigor_date = ? WHERE id = 1`,
+        today,
+      );
+      return { gemAwarded: true };
+    } else {
+      // First ever login OR yesterday had SD — optimistic +1 only, no gem
+      db.runSync(
+        `UPDATE rpg_state SET vigor = vigor + 1, last_vigor_date = ? WHERE id = 1`,
+        today,
+      );
+      return { gemAwarded: false };
+    }
+  } catch { return { gemAwarded: false }; }
 }
 
 export function getAnima(): number {
@@ -112,10 +132,13 @@ export function isInDeathState(): boolean {
 
 export function selfDestruct(): { count: number; date: string } {
   const today = new Date().toISOString().split('T')[0];
+  const state = getRPGState();
+  const isFirstSDToday = (state.last_self_destruct ?? '') !== today;
   db.runSync(
     `UPDATE rpg_state SET
        self_destruct_count = self_destruct_count + 1,
        last_self_destruct = ?
+       ${isFirstSDToday ? ', vigor = MAX(0, vigor - 1)' : ''}
      WHERE id = 1`,
     today,
   );

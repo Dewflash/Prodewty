@@ -440,7 +440,7 @@ const s = StyleSheet.create({
   },
   warningText: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.danger },
 
-  infoBtn: { padding: 2 },
+  infoBtn: { padding: 2, marginLeft: spacing.xs },
 
   weeklyCard:  { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: colors.border },
   weeklyHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

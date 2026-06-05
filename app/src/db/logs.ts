@@ -438,13 +438,17 @@ export function getRevelations(query?: string): Revelation[] {
   );
   const q = query?.toLowerCase().trim();
   return rows
-    .map(l => ({
-      id: l.id,
-      log_date: l.log_date ?? l.created_at.split(' ')[0],
-      category: (() => { try { return JSON.parse(l.categories)[0]; } catch { return l.category || '—'; } })(),
-      revelation: l.what_to_improve!,
-      log_type: l.log_type,
-    }))
+    .map(l => {
+      let category = '—';
+      try { const c = JSON.parse(l.categories); if (c[0]) category = c[0]; } catch {}
+      return {
+        id: l.id,
+        log_date: l.log_date ?? l.created_at.split(' ')[0],
+        category,
+        revelation: l.what_to_improve ?? '',
+        log_type: l.log_type,
+      };
+    })
     .filter(r => !q || r.revelation.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
 }
 

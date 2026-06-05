@@ -875,7 +875,7 @@ const s = StyleSheet.create({
   effectRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   effectCat:     { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textPrimary, width: 68 },
   effectStats:   { flex: 1, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'flex-end' },
-  effectLabel:   { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted },
+  effectLabel:   { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, flexShrink: 0 },
   effectNum:     { fontFamily: fonts.mono.bold, fontSize: 10, color: colors.textPrimary, minWidth: 22, textAlign: 'right' },
   effectDiff:    { fontFamily: fonts.mono.bold, fontSize: 10, minWidth: 32, textAlign: 'right' },
   effectSamples: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.textMuted, minWidth: 24, textAlign: 'right' },

@@ -15,7 +15,7 @@ import {
   getComputedStats, getFatigue, getPendingQuests, getAcceptedQuests, getSkippedQuests,
   getCompletedQuests, reinstateQuest, generateQuests,
   getDungeons, startDungeon, getActiveDungeonRun, submitDungeonClear, failDungeon, abandonDungeon,
-  acceptQuest, completeQuest, skipQuest,
+  acceptQuest, completeQuest, skipQuest, deleteQuest,
   allocateStat, getQuestCompletedCount, getDeathCount, getAbandonedCount,
   getInventoryBySlot, getDropRates,
   getEquippedItem, equipItem, unequipItem, useConsumable, getActiveBuffs,
@@ -415,7 +415,8 @@ export default function GameScreen() {
                     {pending.map(q => (
                       <PendingQuestCard key={q.id} quest={q}
                         onAccept={() => { acceptQuest(q.id); reload(); }}
-                        onHide={() => { skipQuest(q.id); reload(); }} />
+                        onHide={() => { skipQuest(q.id); reload(); }}
+                        onDelete={() => { deleteQuest(q.id); reload(); }} />
                     ))}
                   </>
                 )}
@@ -424,7 +425,8 @@ export default function GameScreen() {
                     <Text style={[s.sectionHeading, { color: colors.textMuted }]}>HIDDEN TODAY</Text>
                     {skipped.map(q => (
                       <HiddenQuestCard key={q.id} quest={q}
-                        onReinstate={() => { reinstateQuest(q.id); reload(); }} />
+                        onReinstate={() => { reinstateQuest(q.id); reload(); }}
+                        onDelete={() => { deleteQuest(q.id); reload(); }} />
                     ))}
                   </>
                 )}

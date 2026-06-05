@@ -6,14 +6,17 @@ import { fonts, fontSize } from '../../theme/typography';
 import { spacing, radius } from '../../theme/spacing';
 import type { Quest } from '../../db/game';
 
-export function PendingQuestCard({ quest, onAccept, onHide }: {
-  quest: Quest; onAccept: () => void; onHide: () => void;
+export function PendingQuestCard({ quest, onAccept, onHide, onDelete }: {
+  quest: Quest; onAccept: () => void; onHide: () => void; onDelete: () => void;
 }) {
   return (
     <View style={qc.card}>
       <View style={qc.header}>
         <View style={qc.tag}><Text style={qc.tagTxt}>DAILY QUEST</Text></View>
-        <Pressable onPress={onHide}><Feather name="x" size={14} color={colors.textMuted} /></Pressable>
+        <View style={qc.headerActions}>
+          <Pressable onPress={onHide}><Feather name="x" size={14} color={colors.textMuted} /></Pressable>
+          <Pressable onPress={onDelete}><Feather name="trash-2" size={13} color={colors.border} /></Pressable>
+        </View>
       </View>
       <Text style={qc.title}>{quest.title}</Text>
       {quest.description ? <Text style={qc.desc}>{quest.description}</Text> : null}
@@ -51,7 +54,7 @@ export function AcceptedQuestCard({ quest, onComplete, onHide }: {
   );
 }
 
-export function HiddenQuestCard({ quest, onReinstate }: { quest: Quest; onReinstate: () => void }) {
+export function HiddenQuestCard({ quest, onReinstate, onDelete }: { quest: Quest; onReinstate: () => void; onDelete: () => void }) {
   return (
     <View style={qc.hiddenCard}>
       <View style={qc.hiddenRow}>
@@ -62,6 +65,7 @@ export function HiddenQuestCard({ quest, onReinstate }: { quest: Quest; onReinst
         <Pressable onPress={onReinstate} style={qc.reinstateBtn}>
           <Text style={qc.reinstateTxt}>Reinstate</Text>
         </Pressable>
+        <Pressable onPress={onDelete}><Feather name="trash-2" size={13} color={colors.border} /></Pressable>
       </View>
     </View>
   );
@@ -85,6 +89,7 @@ const qc = StyleSheet.create({
   card:         { backgroundColor: 'rgba(56,189,248,0.04)', borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(56,189,248,0.2)', gap: spacing.sm },
   cardActive:   { borderColor: 'rgba(52,211,153,0.3)', backgroundColor: 'rgba(52,211,153,0.04)' },
   header:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerActions:{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   tag:          { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: colors.primary, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 2 },
   tagTxt:       { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.primary, letterSpacing: 1 },
   activeDot:    { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.success },

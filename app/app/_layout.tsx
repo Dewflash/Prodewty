@@ -1,7 +1,7 @@
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Modal, View, Text, StyleSheet, Pressable } from 'react-native';
+import { AppState, Modal, View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import {
   useFonts,
   Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
@@ -23,7 +23,6 @@ import { spacing, radius } from '../src/theme/spacing';
 
 initDB();
 checkStreakFreeze();
-checkVigor();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -33,11 +32,22 @@ export default function RootLayout() {
     JetBrainsMono_400Regular, JetBrainsMono_700Bold,
   });
 
-  const [deathCause,   setDeathCause]   = useState<DeathCause>(null);
-  const [levelUpLevel, setLevelUpLevel] = useState<number | null>(null);
+  const [deathCause,    setDeathCause]    = useState<DeathCause>(null);
+  const [levelUpLevel,  setLevelUpLevel]  = useState<number | null>(null);
+  const [gemBanner,     setGemBanner]     = useState(false);
+  const bannerY = useRef(new Animated.Value(-80)).current;
   const pathname    = usePathname();
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+
+  function triggerGemBanner() {
+    setGemBanner(true);
+    Animated.sequence([
+      Animated.spring(bannerY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }),
+      Animated.delay(2800),
+      Animated.timing(bannerY, { toValue: -80, duration: 300, useNativeDriver: true }),
+    ]).start(() => setGemBanner(false));
+  }
 
   useEffect(() => {
     if (fontsLoaded || fontError) SplashScreen.hideAsync();
@@ -65,6 +75,8 @@ export default function RootLayout() {
   }
 
   useEffect(() => {
+    const { gemAwarded } = checkVigor();
+    if (gemAwarded) triggerGemBanner();
     registerDeathCheck(checkState);
     checkState();
     const sub = AppState.addEventListener('change', s => { if (s === 'active') checkState(); });
@@ -86,6 +98,16 @@ export default function RootLayout() {
 
       <DeathScreen cause={deathCause} onResolve={() => { setDeathCause(null); checkState(); triggerCurrencyRefresh(); }} />
 
+      {gemBanner && (
+        <Animated.View style={[gb.banner, { transform: [{ translateY: bannerY }] }]}>
+          <Text style={gb.gem}>◆</Text>
+          <View style={gb.text}>
+            <Text style={gb.title}>Yet another successful day without fail</Text>
+            <Text style={gb.sub}>+1 Gem awarded</Text>
+          </View>
+        </Animated.View>
+      )}
+
       {/* Level-up celebration modal */}
       <Modal visible={levelUpLevel !== null} transparent animationType="fade">
         <View style={lv.overlay}>
@@ -104,6 +126,21 @@ export default function RootLayout() {
     </>
   );
 }
+
+const gb = StyleSheet.create({
+  banner: {
+    position: 'absolute', top: 56, left: spacing.md, right: spacing.md,
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1, borderColor: '#FF2400',
+    padding: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    shadowColor: '#FF2400', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 12,
+    zIndex: 999,
+  },
+  gem:   { fontFamily: fonts.mono.bold, fontSize: 20, color: '#FF2400' },
+  text:  { flex: 1, gap: 2 },
+  title: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
+  sub:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: '#FF2400' },
+});
 
 const lv = StyleSheet.create({
   overlay: {

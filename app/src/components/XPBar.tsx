@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
   container: { gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   levelBadge: {
+    flexShrink: 0,
     borderWidth: 1, borderColor: colors.primary, borderRadius: radius.sm,
     paddingHorizontal: spacing.sm, paddingVertical: 4,
     backgroundColor: 'rgba(56,189,248,0.1)',
@@ -62,6 +63,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textPrimary },
   xpText: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 1 },
   streakBadge: {
+    flexShrink: 0,
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1, borderRadius: radius.sm,
     paddingHorizontal: spacing.sm, paddingVertical: 4,
