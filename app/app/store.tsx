@@ -30,11 +30,11 @@ function purchaseRevivalPotion(): 'ok' | 'insufficient_coins' {
   } catch { return 'insufficient_coins'; }
 }
 
-type StoreSection = 'non-game' | 'game';
+type StoreSection = 'non-game-global' | 'game';
 
 export default function StoreScreen() {
   const [rpg, setRpg] = useState<RPGState | null>(null);
-  const [section, setSection] = useState<StoreSection>('non-game');
+  const [section, setSection] = useState<StoreSection>('non-game-global');
 
   useFocusEffect(useCallback(() => { setRpg(getRPGState()); }, []));
 
@@ -88,7 +88,7 @@ export default function StoreScreen() {
     },
   ];
 
-  const items = section === 'non-game' ? nonGameItems : gameItems;
+  const items = section === 'non-game-global' ? nonGameItems : gameItems;
 
   return (
     <SafeAreaView style={s.safe}>
@@ -102,9 +102,9 @@ export default function StoreScreen() {
 
       {/* Section tabs */}
       <View style={s.tabs}>
-        {(['non-game', 'game'] as StoreSection[]).map(t => (
+        {(['non-game-global', 'game'] as StoreSection[]).map(t => (
           <Pressable key={t} onPress={() => setSection(t)} style={[s.tabBtn, section === t && s.tabBtnActive]}>
-            <Text style={[s.tabTxt, section === t && s.tabTxtActive]}>{t === 'non-game' ? 'GLOBAL' : 'GAME'}</Text>
+            <Text style={[s.tabTxt, section === t && s.tabTxtActive]}>{t === 'non-game-global' ? 'GLOBAL' : 'GAME'}</Text>
           </Pressable>
         ))}
       </View>

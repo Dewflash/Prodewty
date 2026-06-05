@@ -52,13 +52,13 @@ const WEAPON_SLOTS: Slot[] = [
   { key: 'scepter',  label: 'Scepter',  icon: 'triangle', equipped: null },
 ];
 
-type PotionSlot = {
+type ConsumableSlot = {
   stat: string;
   statKey: string;
   item: Item | null;
 };
 
-const POTION_SLOTS: PotionSlot[] = [
+const CONSUMABLE_SLOTS: ConsumableSlot[] = [
   { stat: 'STR', statKey: 'str', item: { name: 'Strength Draft',  rarity: 'D', description: '+5 STR for 1 hour.', stats: '+5 STR', quantity: 2 } },
   { stat: 'AGI', statKey: 'agi', item: null },
   { stat: 'FOC', statKey: 'foc', item: { name: 'Focus Elixir',    rarity: 'C', description: '+5 FOC for 1 hour.', stats: '+5 FOC', quantity: 1 } },
@@ -118,19 +118,17 @@ function WeaponCard({ slot, onPress }: { slot: Slot; onPress: () => void }) {
   const { equipped } = slot;
   const rarity = equipped?.rarity ?? 'E';
   const borderCol = equipped ? RARITY_COLOR[rarity] : colors.border;
-  const isLegendary = rarity === 'Chromatic';
-  const gold = RARITY_COLOR.Chromatic;
   return (
     <Pressable onPress={onPress} style={[wc.card, { borderColor: borderCol, backgroundColor: equipped ? RARITY_BG[rarity] : colors.card }]}>
       <View style={wc.header}>
-        <Text style={[wc.slotLabel, isLegendary && { color: gold, fontFamily: fonts.mono.bold }]}>{slot.label.toUpperCase()}</Text>
+        <Text style={wc.slotLabel}>{slot.label.toUpperCase()}</Text>
         {equipped && <RarityBadge rarity={equipped.rarity} />}
       </View>
       {equipped ? (
         <>
-          <Text style={[wc.name, { color: isLegendary ? gold : RARITY_COLOR[equipped.rarity] }]} numberOfLines={1}>{equipped.name}</Text>
-          <Text style={[wc.desc, isLegendary && { color: gold, opacity: 0.8 }]} numberOfLines={2}>{equipped.description}</Text>
-          {equipped.stats && <Text style={[wc.stats, isLegendary && { color: gold }]}>{equipped.stats}</Text>}
+          <Text style={[wc.name, { color: RARITY_COLOR[rarity] }]} numberOfLines={1}>{equipped.name}</Text>
+          <Text style={wc.desc} numberOfLines={2}>{equipped.description}</Text>
+          {equipped.stats && <Text style={wc.stats}>{equipped.stats}</Text>}
         </>
       ) : (
         <Text style={wc.empty}>— Not equipped —</Text>
@@ -148,29 +146,29 @@ const wc = StyleSheet.create({
   empty:     { fontFamily: fonts.ui.regular,  fontSize: fontSize.sm, color: colors.border },
 });
 
-function PotionCard({ slot, onPress }: { slot: PotionSlot; onPress: () => void }) {
+function ConsumableCard({ slot, onPress }: { slot: ConsumableSlot; onPress: () => void }) {
   const { item } = slot;
   const rarity = item?.rarity ?? 'E';
   const borderCol = item ? RARITY_COLOR[rarity] : colors.border;
   return (
-    <Pressable onPress={onPress} style={[pc.card, { borderColor: borderCol, backgroundColor: item ? RARITY_BG[rarity] : colors.card }]}>
-      <Text style={[pc.stat, { color: item ? RARITY_COLOR[rarity] : colors.textMuted }]}>{slot.stat}</Text>
+    <Pressable onPress={onPress} style={[cc.card, { borderColor: borderCol, backgroundColor: item ? RARITY_BG[rarity] : colors.card }]}>
+      <Text style={[cc.stat, { color: item ? RARITY_COLOR[rarity] : colors.textMuted }]}>{slot.stat}</Text>
       {item ? (
         <>
           <RarityBadge rarity={item.rarity} />
-          <Text style={pc.name} numberOfLines={1}>{item.name}</Text>
-          {item.stats && <Text style={pc.stats}>{item.stats}</Text>}
+          <Text style={cc.name} numberOfLines={1}>{item.name}</Text>
+          {item.stats && <Text style={cc.stats}>{item.stats}</Text>}
           {(item.quantity ?? 0) > 1 && (
-            <View style={pc.qty}><Text style={pc.qtyTxt}>×{item.quantity}</Text></View>
+            <View style={cc.qty}><Text style={cc.qtyTxt}>×{item.quantity}</Text></View>
           )}
         </>
       ) : (
-        <Text style={pc.empty}>—</Text>
+        <Text style={cc.empty}>—</Text>
       )}
     </Pressable>
   );
 }
-const pc = StyleSheet.create({
+const cc = StyleSheet.create({
   card:   { borderWidth: 1, borderRadius: radius.md, padding: spacing.sm, gap: 3, alignItems: 'flex-start', position: 'relative', minHeight: 80, width: '31.5%' },
   stat:   { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, letterSpacing: 1 },
   name:   { fontFamily: fonts.ui.medium, fontSize: 10, color: colors.textPrimary },
@@ -253,8 +251,8 @@ export default function SuitUpScreen() {
           <>
             <Text style={s.sectionNote}>One potion per stat. Grants temporary buff for 1 hour when used.</Text>
             <View style={s.grid3}>
-              {POTION_SLOTS.map(slot => (
-                <PotionCard
+              {CONSUMABLE_SLOTS.map(slot => (
+                <ConsumableCard
                   key={slot.statKey}
                   slot={slot}
                   onPress={() => setSelected(slot.statKey === selected ? null : slot.statKey)}

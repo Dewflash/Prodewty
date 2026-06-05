@@ -17,10 +17,6 @@ export const STAT_KEYS: { key: keyof GameStats; label: string; abbr: string }[] 
   { key: 'sta', label: 'Stamina',      abbr: 'STA' },
 ];
 
-const STAT_LABELS: Record<string, string> = {
-  STR: 'Strength', AGI: 'Agility', FOC: 'Focus',
-  WIS: 'Wisdom',   SPR: 'Spirituality', PER: 'Perception', STA: 'Stamina',
-};
 
 // ─── SystemBar ────────────────────────────────────────────────────────────────
 
@@ -61,7 +57,7 @@ export function StatRow({ stat, value, apPart, autoPart, ap, onAllocate, expande
   return (
     <Pressable onPress={onToggle} style={st.row}>
       <Text style={[st.abbr, expanded && st.abbrExpanded]}>
-        {expanded ? STAT_LABELS[stat.abbr] ?? stat.abbr : stat.abbr}
+        {expanded ? stat.label : stat.abbr}
       </Text>
       {!expanded && <Text style={st.val}>{value}</Text>}
       {!expanded && <Text style={st.breakdown}>({apPart} AP + {autoPart} auto)</Text>}

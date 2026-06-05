@@ -27,7 +27,7 @@ import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 
 // Sub-components
 import { SystemBar, StatRow, STAT_KEYS } from '../../src/components/game/StatsSection';
-import { InventorySection, GOLD, type InvTab } from '../../src/components/game/InventorySection';
+import { InventorySection, type InvTab } from '../../src/components/game/InventorySection';
 import { fmtBuff, fmtTimer } from '../../src/utils/format';
 import { PendingQuestCard, AcceptedQuestCard, HiddenQuestCard, CompletedQuestCard } from '../../src/components/game/QuestCards';
 import { DungeonCard, RANK_COLOR } from '../../src/components/game/DungeonCard';
@@ -203,10 +203,10 @@ export default function GameScreen() {
     ]);
   }
 
-  function openItemBrowser(slotType: string, title: string, _items: InventoryItem[]) {
+  function openItemBrowser(slotType: string, title: string, items: InventoryItem[]) {
     setItemBrowserSlot(slotType);
     setItemBrowserTitle(title);
-    setBrowserItems(getInventoryBySlot(slotType));
+    setBrowserItems(items);
   }
 
   function handleEquipItem(item: InventoryItem) {
@@ -263,7 +263,7 @@ export default function GameScreen() {
       <View style={s.ribbon}>
         <View style={s.ribbonGroupLeft}>
           <Pressable style={s.ribbonIcon} onPress={() => setQuestPreview(true)}>
-            <Feather name="scroll" size={18} color={colors.textMuted} />
+            <Feather name="book-open" size={18} color={colors.textMuted} />
           </Pressable>
           <Pressable style={s.ribbonIcon} onPress={() => setGameInfoVisible(true)}>
             <Feather name="info" size={18} color={colors.textMuted} />
@@ -589,26 +589,23 @@ export default function GameScreen() {
                 browserItems.map(item => {
                   const rarity      = (item.rarity as Rarity) ?? 'E';
                   const col         = RARITY_COLOR[rarity];
-                  const isLegendary = rarity === 'Chromatic';
                   const isEquipped  = (item.is_equipped ?? 0) === 1;
                   const isConsumable = item.slot_type?.startsWith('consumable_');
-                  const isCatalyst   = item.slot_type?.startsWith('catalyst_');
                   const buffStr     = item.stat_buff ? fmtBuff(item.stat_buff) : null;
-                  const goldShadow = undefined;
                   return (
                     <View key={item.id} style={[bm.itemCard, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
                       <View style={bm.itemRow}>
                         <View style={[bm.rarityBadge, { borderColor: col }]}>
-                          <Text style={[bm.rarityTxt, { color: isLegendary ? GOLD : col }]}>{rarityLabel(rarity)}</Text>
+                          <Text style={[bm.rarityTxt, { color: col }]}>{rarityLabel(rarity)}</Text>
                         </View>
-                        <Text style={[bm.itemName, { color: isLegendary ? GOLD : col, fontFamily: isLegendary ? fonts.ui.semibold : fonts.ui.regular }]}>
+                        <Text style={[bm.itemName, { color: col }]}>
                           {item.item_name}
                         </Text>
-                        {buffStr && <Text style={[bm.qty, { color: isLegendary ? GOLD : col }]}>{buffStr}</Text>}
+                        {buffStr && <Text style={[bm.qty, { color: col }]}>{buffStr}</Text>}
                         {(item.quantity ?? 1) > 1 && <Text style={bm.qty}>×{item.quantity}</Text>}
                       </View>
                       {item.description ? (
-                        <Text style={[bm.itemDesc, { color: isLegendary ? GOLD : undefined, opacity: isLegendary ? 1 : undefined }]}>{item.description}</Text>
+                        <Text style={bm.itemDesc}>{item.description}</Text>
                       ) : null}
                       <View style={bm.itemActions}>
                         {isConsumable && (

@@ -10,11 +10,6 @@ import {
 import { RARITY_COLOR, RARITY_BG, rarityLabel, type Rarity } from '../../constants/rarity';
 import { fmtBuff } from '../../utils/format';
 
-// ─── Chromatic ────────────────────────────────────────────────────────────────
-
-export const GOLD = '#D9DBDE';
-const GOLD_SHADOW = {} as { textShadowColor?: string; textShadowOffset?: { width: number; height: number }; textShadowRadius?: number };
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type InvTab = 'equipment' | 'weapons' | 'supplies';
@@ -59,20 +54,19 @@ export function SlotCard({ label, slotKey, onPress, refreshKey }: {
     try { setEquipped(getEquippedItem(slotKey)); } catch {}
   }, [slotKey, refreshKey]);
 
-  const isChromatic = equipped?.rarity === 'Chromatic';
-  const borderCol   = equipped ? (RARITY_COLOR[equipped.rarity as Rarity] ?? colors.border) : colors.border;
-  const buffStr     = equipped?.stat_buff ? fmtBuff(equipped.stat_buff) : null;
-  const txtStyle    = isChromatic ? [{ color: GOLD }] : [{ color: borderCol }];
+  const borderCol = equipped ? (RARITY_COLOR[equipped.rarity as Rarity] ?? colors.border) : colors.border;
+  const buffStr   = equipped?.stat_buff ? fmtBuff(equipped.stat_buff) : null;
+  const txtStyle  = [{ color: borderCol }];
   return (
-    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol, backgroundColor: isChromatic ? 'rgba(205,127,50,0.20)' : undefined }]}>
+    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol }]}>
       <View style={inv.slotHeader}>
-        <Text style={[inv.slotLabel, isChromatic && { color: GOLD }]}>{label.toUpperCase()}</Text>
+        <Text style={inv.slotLabel}>{label.toUpperCase()}</Text>
         {equipped && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(equipped.rarity as Rarity)}</Text>}
       </View>
       {equipped ? (
         <>
           <Text style={[inv.slotItem, ...txtStyle]} numberOfLines={1}>{equipped.item_name}</Text>
-          {equipped.description && <Text style={[inv.slotDesc, isChromatic && { color: GOLD }]} numberOfLines={3}>{equipped.description}</Text>}
+          {equipped.description && <Text style={inv.slotDesc} numberOfLines={3}>{equipped.description}</Text>}
           {buffStr && (
             <View style={inv.slotFooter}>
               <View style={{ flex: 1 }} />
@@ -94,23 +88,22 @@ export function StatSlotCard({ abbr, statKey, onPress, refreshKey }: {
 }) {
   const [item, setItem] = React.useState<InventoryItem | null>(null);
   React.useEffect(() => {
-    try { setItem(getInventoryByStat(statKey, 'catalyst').find(i => !(i.is_equipped)) ?? null); } catch {}
+    try { setItem(getEquippedItem(`catalyst_${statKey}`) ?? null); } catch {}
   }, [statKey, refreshKey]);
 
-  const isChromatic = item?.rarity === 'Chromatic';
-  const borderCol   = item ? (RARITY_COLOR[item.rarity as Rarity] ?? colors.border) : colors.border;
-  const buffStr     = item?.stat_buff ? fmtBuff(item.stat_buff) : null;
-  const txtStyle    = isChromatic ? [{ color: GOLD }] : [{ color: borderCol }];
+  const borderCol = item ? (RARITY_COLOR[item.rarity as Rarity] ?? colors.border) : colors.border;
+  const buffStr   = item?.stat_buff ? fmtBuff(item.stat_buff) : null;
+  const txtStyle  = [{ color: borderCol }];
   return (
-    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol, backgroundColor: isChromatic ? 'rgba(205,127,50,0.20)' : undefined }]}>
+    <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol }]}>
       <View style={inv.slotHeader}>
-        <Text style={[inv.slotLabel, isChromatic && { color: GOLD }]}>{abbr}</Text>
+        <Text style={inv.slotLabel}>{abbr}</Text>
         {item && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(item.rarity as Rarity)}</Text>}
       </View>
       {item ? (
         <>
           <Text style={[inv.slotItem, ...txtStyle]} numberOfLines={1}>{item.item_name}</Text>
-          {item.description && <Text style={[inv.slotDesc, isChromatic && { color: GOLD, ...GOLD_SHADOW }]} numberOfLines={3}>{item.description}</Text>}
+          {item.description && <Text style={inv.slotDesc} numberOfLines={3}>{item.description}</Text>}
           {buffStr && (
             <View style={inv.slotFooter}>
               <View style={{ flex: 1 }} />
