@@ -17,6 +17,7 @@ import { db } from '../../src/db/schema';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { getNotesForDate, type BibleNote } from '../../src/db/bible';
 
 const MONTHS       = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -323,6 +324,9 @@ const cd = StyleSheet.create({
   moodCard:   { backgroundColor: 'rgba(168,85,247,0.06)', borderRadius: radius.md, padding: spacing.sm+4, gap: 4, borderWidth: 1, borderColor: 'rgba(168,85,247,0.25)' },
   dungeonCard:{ backgroundColor: 'rgba(56,189,248,0.06)',  borderRadius: radius.md, padding: spacing.sm+4, gap: 4, borderWidth: 1, borderColor: 'rgba(56,189,248,0.25)' },
   questCard:  { backgroundColor: 'rgba(52,211,153,0.06)',  borderRadius: radius.md, padding: spacing.sm+4, gap: 4, borderWidth: 1, borderColor: 'rgba(52,211,153,0.25)' },
+  bibleCard:  { backgroundColor: 'rgba(251,191,36,0.06)',  borderRadius: radius.md, padding: spacing.sm+4, gap: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.25)' },
+  bibleTag:    { borderWidth:1, borderColor:'#FBBF24', borderRadius:3, paddingHorizontal:5, paddingVertical:1 },
+  bibleTagTxt: { fontFamily:fonts.mono.regular, fontSize:9, color:'#FBBF24', letterSpacing:1 },
   sdBanner:   { flexDirection:'row', alignItems:'center', gap:spacing.sm, backgroundColor:'rgba(239,68,68,0.06)', borderRadius:radius.md, padding:spacing.sm+4, borderWidth:1, borderColor:'rgba(239,68,68,0.3)' },
 
   topRow:     { flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start' },
@@ -359,6 +363,23 @@ const cd = StyleSheet.create({
   danger: colors.danger,
 });
 
+// ─── Bible note card (shown in Bible toggle view) ────────────────────────────
+
+function BibleNoteCard({ note }: { note: BibleNote }) {
+  return (
+    <View style={cd.bibleCard}>
+      <View style={cd.topRow}>
+        <View style={cd.bibleTag}>
+          <Text style={cd.bibleTagTxt}>BIBLE</Text>
+        </View>
+        <Text style={cd.xp}>+{note.xp_awarded} XP</Text>
+      </View>
+      <Text style={cd.title}>{note.title || 'Untitled'}</Text>
+      <Text style={cd.time}>{note.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
+    </View>
+  );
+}
+
 // ─── Dispatch card by entry_type ──────────────────────────────────────────────
 
 function LogCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete: () => void; catColors: Record<string, string> }) {
@@ -366,6 +387,7 @@ function LogCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete: () 
     case 'mood':         return <MoodCard     log={log} onSaved={onDelete} />;
     case 'dungeon':      return <DungeonCard  log={log} catColors={catColors} />;
     case 'quest':        return <QuestCard    log={log} catColors={catColors} />;
+    case 'bible':        return null;
     case 'self_destruct':return <SelfDestructBanner log={log} onSaved={onDelete} />;
     default:             return <ActivityCard log={log} onDelete={onDelete} catColors={catColors} />;
   }
@@ -382,6 +404,8 @@ export default function HistoryScreen() {
   const [monthLogs,   setMonthLogs]   = useState<ActivityLog[]>([]);
   const [dayLogs,     setDayLogs]     = useState<ActivityLog[]>([]);
   const [weekGroups,  setWeekGroups]  = useState<{ weekStart: string; logs: ActivityLog[] }[]>([]);
+  const [bibleNotes,  setBibleNotes]  = useState<BibleNote[]>([]);
+  const [viewMode,    setViewMode]    = useState<'logs' | 'bible'>('logs');
   const [monthPicker, setMonthPicker] = useState(false);
   const [yearPicker,  setYearPicker]  = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -393,6 +417,7 @@ export default function HistoryScreen() {
     if (tab === 'daily') {
       setMonthLogs(getLogsForMonth(year, month));
       setDayLogs(getLogsForDate(selected));
+      setBibleNotes(getNotesForDate(selected));
     } else {
       setWeekGroups(getWeeklyLogs());
     }
@@ -487,13 +512,25 @@ export default function HistoryScreen() {
                 <Text style={s.dayTitle}>
                   {selected === todayStr() ? 'Today' : new Date(selected+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}
                 </Text>
+                <View style={s.viewToggle}>
+                  <Pressable onPress={() => setViewMode('logs')} style={[s.toggleBtn, viewMode==='logs' && s.toggleBtnOn]}>
+                    <Text style={[s.toggleTxt, viewMode==='logs' && s.toggleTxtOn]}>Logs</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setViewMode('bible')} style={[s.toggleBtn, viewMode==='bible' && s.toggleBtnOn]}>
+                    <Text style={[s.toggleTxt, viewMode==='bible' && s.toggleTxtOn]}>Bible</Text>
+                  </Pressable>
+                </View>
               </View>
-              {(() => {
+              {viewMode === 'logs' ? (() => {
                 const filtered = dayLogs.filter(l => l.log_type !== 'weekly');
                 return filtered.length === 0
                   ? <Text style={s.emptyNote}>No logs for this date.</Text>
                   : filtered.map(log => <LogCard key={log.id} log={log} onDelete={reload} catColors={catColors} />);
-              })()}
+              })() : (
+                bibleNotes.length === 0
+                  ? <Text style={s.emptyNote}>No devotions for this date.</Text>
+                  : bibleNotes.map(note => <BibleNoteCard key={note.id} note={note} />)
+              )}
             </>
           )}
         </ScrollView>
@@ -569,8 +606,13 @@ const s = StyleSheet.create({
   cellNum:      { fontFamily:fonts.ui.regular, fontSize:fontSize.xs, color:colors.textPrimary },
   cellNumSel:   { color:colors.bg, fontFamily:fonts.ui.medium },
   dot:          { width:4, height:4, borderRadius:2 },
-  dayHeader:    { borderBottomWidth:1, borderBottomColor:colors.border, paddingBottom:spacing.sm },
+  dayHeader:    { flexDirection:'row', alignItems:'center', justifyContent:'space-between', borderBottomWidth:1, borderBottomColor:colors.border, paddingBottom:spacing.sm },
   dayTitle:     { fontFamily:fonts.ui.semibold, fontSize:fontSize.md, color:colors.textPrimary },
+  viewToggle:   { flexDirection:'row', gap:4 },
+  toggleBtn:    { paddingHorizontal:spacing.sm, paddingVertical:3, borderRadius:radius.sm, borderWidth:1, borderColor:colors.border },
+  toggleBtnOn:  { borderColor:'#FBBF24', backgroundColor:'rgba(251,191,36,0.08)' },
+  toggleTxt:    { fontFamily:fonts.mono.regular, fontSize:9, color:colors.textMuted, letterSpacing:1 },
+  toggleTxtOn:  { color:'#FBBF24' },
   emptyNote:    { fontFamily:fonts.ui.regular, fontSize:fontSize.base, color:colors.textMuted },
   weekGroup:    { gap:spacing.sm },
   weekHeading:  { fontFamily:fonts.ui.semibold, fontSize:fontSize.sm, color:colors.primary, paddingTop:spacing.sm },

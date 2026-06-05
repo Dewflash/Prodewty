@@ -1026,6 +1026,30 @@ function runMigrations() {
     }
     db.execSync('PRAGMA user_version = 28');
   }
+
+  if (version < 29) {
+    db.execSync(`CREATE TABLE IF NOT EXISTS bible_notes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      title       TEXT NOT NULL DEFAULT '',
+      content     TEXT NOT NULL DEFAULT '',
+      log_date    TEXT NOT NULL,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL,
+      xp_awarded  INTEGER NOT NULL DEFAULT 0
+    )`);
+    db.execSync('PRAGMA user_version = 29');
+  }
+
+  if (version < 30) {
+    db.execSync(`CREATE TABLE IF NOT EXISTS finance_networth (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      month      TEXT NOT NULL UNIQUE,
+      amount     REAL NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+    db.execSync('PRAGMA user_version = 30');
+  }
 }
 
 function seedRealisticData() {

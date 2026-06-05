@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Alert, View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
-import { getBGMSelection, setBGMSelection } from '../src/db/settings';
+import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
+import { db } from '../src/db/schema';
 
 const BGM_ZONES = [
   { zone: 'progress',   label: 'Progress',     tracks: ['Track 1', 'Track 2', 'Track 3'] },
@@ -24,12 +26,65 @@ export default function SettingsScreen() {
     return init;
   });
 
+  const [bibleXP, setBibleXP] = useState(() => getSetting('bible_xp', '50'));
+  const [currency, setCurrency] = useState(() => getSetting('finance_currency', '$') || '$');
+
+  const bibleXPRef = useRef(bibleXP);
+  const currencyRef = useRef(currency);
+
   function handleSelect(zone: string, index: number) {
     setBGMSelection(zone, index);
     setSelections(prev => ({ ...prev, [zone]: index }));
-    if (getCurrentBGMZone() === zone) {
-      void reloadCurrentBGM();
-    }
+    if (getCurrentBGMZone() === zone) void reloadCurrentBGM();
+  }
+
+  function saveBibleXP(val: string) {
+    const n = parseInt(val, 10);
+    const clamped = isNaN(n) ? 50 : Math.max(10, Math.min(200, n));
+    const saved = String(clamped);
+    setSetting('bible_xp', saved);
+    setBibleXP(saved);
+    bibleXPRef.current = saved;
+  }
+
+  function saveCurrency(val: string) {
+    const clean = val.trim().slice(0, 3) || '$';
+    setSetting('finance_currency', clean);
+    setCurrency(clean);
+    currencyRef.current = clean;
+  }
+
+  async function handleWipeActivityLogs() {
+    const count = (db.getFirstSync<{ n: number }>('SELECT COUNT(*) as n FROM activity_logs')?.n ?? 0);
+
+    Alert.alert(
+      'Wipe activity log',
+      `This will permanently delete all ${count} activity log${count !== 1 ? 's' : ''}. This cannot be undone.\n\nAuthenticate to confirm.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Authenticate & Wipe',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'Confirm activity log wipe',
+                fallbackLabel: 'Use passcode',
+                disableDeviceFallback: false,
+              });
+              if (result.success) {
+                db.execSync('DELETE FROM activity_logs');
+                Alert.alert('Done', 'All activity logs have been deleted.');
+              } else {
+                Alert.alert('Cancelled', 'Authentication failed — logs not deleted.');
+              }
+            } catch {
+              Alert.alert('Error', 'Biometric authentication unavailable on this device.');
+            }
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -43,11 +98,10 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
-        <Text style={s.sectionLabel}>BACKGROUND MUSIC</Text>
-        <Text style={s.sectionHint}>
-          Selections saved — tracks will play once audio files are added.
-        </Text>
 
+        {/* ── BGM ── */}
+        <Text style={s.sectionLabel}>BACKGROUND MUSIC</Text>
+        <Text style={s.sectionHint}>Selections saved — tracks will play once audio files are added.</Text>
         {BGM_ZONES.map(({ zone, label, tracks }) => (
           <View key={zone} style={s.zoneCard}>
             <Text style={s.zoneLabel}>{label}</Text>
@@ -61,15 +115,67 @@ export default function SettingsScreen() {
                     onPress={() => handleSelect(zone, i)}
                   >
                     <View style={[s.radio, selected && s.radioOn]} />
-                    <Text style={[s.trackLabel, selected && s.trackLabelOn]}>
-                      {trackLabel}
-                    </Text>
+                    <Text style={[s.trackLabel, selected && s.trackLabelOn]}>{trackLabel}</Text>
                   </Pressable>
                 );
               })}
             </View>
           </View>
         ))}
+
+        {/* ── Bible ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>BIBLE</Text>
+        <Text style={s.sectionHint}>XP awarded for your first save on each devotion note (10–200).</Text>
+        <View style={s.fieldCard}>
+          <Text style={s.fieldLabel}>XP per devotion</Text>
+          <TextInput
+            style={s.fieldInput}
+            value={bibleXP}
+            onChangeText={v => { setBibleXP(v); bibleXPRef.current = v; }}
+            onBlur={() => saveBibleXP(bibleXPRef.current)}
+            onSubmitEditing={() => saveBibleXP(bibleXPRef.current)}
+            keyboardType="numeric"
+            returnKeyType="done"
+            maxLength={3}
+            placeholder="50"
+            placeholderTextColor={colors.textMuted}
+          />
+        </View>
+
+        {/* ── Finance ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>FINANCE</Text>
+        <Text style={s.sectionHint}>Currency symbol shown in the Finance screen (max 3 characters).</Text>
+        <View style={s.fieldCard}>
+          <Text style={s.fieldLabel}>Currency symbol</Text>
+          <TextInput
+            style={s.fieldInput}
+            value={currency}
+            onChangeText={v => { setCurrency(v); currencyRef.current = v; }}
+            onBlur={() => saveCurrency(currencyRef.current)}
+            onSubmitEditing={() => saveCurrency(currencyRef.current)}
+            returnKeyType="done"
+            maxLength={3}
+            placeholder="$"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+          />
+        </View>
+
+        {/* ── Danger Zone ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md, color: colors.danger }]}>DANGER ZONE</Text>
+        <View style={s.dangerCard}>
+          <View style={s.dangerRow}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.dangerTitle}>Wipe activity log</Text>
+              <Text style={s.dangerHint}>Permanently deletes all logged activity entries. Requires Face ID / passcode to confirm.</Text>
+            </View>
+            <Pressable style={s.dangerBtn} onPress={handleWipeActivityLogs}>
+              <Feather name="trash-2" size={15} color={colors.danger} />
+              <Text style={s.dangerBtnTxt}>Wipe</Text>
+            </Pressable>
+          </View>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -84,7 +190,8 @@ const s = StyleSheet.create({
   },
   back:  { padding: 6 },
   title: { fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary },
-  scroll: { padding: spacing.md, gap: spacing.md },
+  scroll: { padding: spacing.md, gap: spacing.sm, paddingBottom: 60 },
+
   sectionLabel: {
     fontFamily: fonts.mono.regular, fontSize: fontSize.xs,
     color: colors.primary, letterSpacing: 2, marginBottom: 2,
@@ -93,27 +200,45 @@ const s = StyleSheet.create({
     fontFamily: fonts.ui.regular, fontSize: fontSize.xs,
     color: colors.textMuted, marginBottom: spacing.sm,
   },
+
+  // BGM
   zoneCard: {
     backgroundColor: colors.card, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border,
     padding: spacing.md, gap: spacing.sm,
   },
-  zoneLabel: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
-  trackRow: { flexDirection: 'row', gap: spacing.sm },
-  trackBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm, paddingVertical: 6,
-  },
-  trackBtnOn: { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.08)' },
-  radio: {
-    width: 10, height: 10, borderRadius: 5,
-    borderWidth: 1.5, borderColor: colors.textMuted,
-  },
-  radioOn: { borderColor: colors.primary, backgroundColor: colors.primary },
-  trackLabel: {
-    fontFamily: fonts.ui.regular, fontSize: fontSize.xs,
-    color: colors.textMuted, flex: 1,
-  },
+  zoneLabel:    { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
+  trackRow:     { flexDirection: 'row', gap: spacing.sm },
+  trackBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 6 },
+  trackBtnOn:   { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.08)' },
+  radio:        { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: colors.textMuted },
+  radioOn:      { borderColor: colors.primary, backgroundColor: colors.primary },
+  trackLabel:   { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, flex: 1 },
   trackLabelOn: { color: colors.primary },
+
+  // Field (bible XP + currency)
+  fieldCard: {
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  fieldLabel: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
+  fieldInput: {
+    fontFamily: fonts.mono.bold, fontSize: fontSize.base, color: colors.textPrimary,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingVertical: 2, minWidth: 48, textAlign: 'right',
+  },
+
+  // Danger zone
+  dangerCard: {
+    backgroundColor: 'rgba(239,68,68,0.04)', borderRadius: radius.md,
+    borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
+    padding: spacing.md,
+  },
+  dangerRow:    { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  dangerTitle:  { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.danger },
+  dangerHint:   { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 16 },
+  dangerBtn:    { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 6 },
+  dangerBtnTxt: { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.danger },
 });

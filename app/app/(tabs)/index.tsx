@@ -22,6 +22,7 @@ import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 import { getHealthState, getHealthTier, type HealthState } from '../../src/db/health';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { hapticLight, hapticHeavy } from '../../src/utils/haptics';
 
 type Period = 'week' | 'month' | 'year';
 
@@ -292,13 +293,19 @@ export default function ProgressScreen() {
   const [dungeonClearCount, setDungeonClearCount] = useState(0);
   const [vigorCount, setVigorCount] = useState(0);
   const [healthTierLabel, setHealthTierLabel] = useState('');
+  const [todayLogCount, setTodayLogCount] = useState(0);
+  const [todayXP, setTodayXP] = useState(0);
   const [effectsDialogVisible, setEffectsDialogVisible] = useState(false);
 
   // Shake + flash
-  const shakeAnim   = useRef(new Animated.Value(0)).current;
+  const shakeAnim    = useRef(new Animated.Value(0)).current;
   const flashOpacity = useRef(new Animated.Value(0)).current;
   const [sdFlashVisible, setSdFlashVisible] = useState(false);
   const [sdCount, setSdCount] = useState(0);
+
+  // Hold-to-confirm self-destruct
+  const holdProgress  = useRef(new Animated.Value(0)).current;
+  const holdFired     = useRef(false);
 
   useFocusEffect(useCallback(() => { void switchBGM('progress'); }, []));
 
@@ -331,6 +338,9 @@ export default function ProgressScreen() {
         const recent = getRecentLogs(period === 'year' ? 365 : days);
         setAllLogs(all);
         setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && l.log_date === today).length);
+        const todayActivity = all.filter(l => l.log_date === today && l.entry_type !== 'self_destruct');
+        setTodayLogCount(todayActivity.length);
+        setTodayXP(todayActivity.reduce((s, l) => s + l.xp_awarded, 0));
         setPeriodLogs(recent);
         setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
         setCatEffects(getCategoryEffects());
@@ -369,8 +379,33 @@ export default function ProgressScreen() {
   }
 
   function handleMoodSelect(mood: MoodState) {
+    hapticLight();
     setCurrentMood(mood);
     setCurrentMoodState(mood);
+  }
+
+  function startHold() {
+    holdFired.current = false;
+    holdProgress.setValue(0);
+    Animated.timing(holdProgress, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished && !holdFired.current) {
+        holdFired.current = true;
+        hapticHeavy();
+        handleSelfDestruct();
+        Animated.timing(holdProgress, { toValue: 0, duration: 300, useNativeDriver: false }).start();
+      }
+    });
+  }
+
+  function cancelHold() {
+    if (!holdFired.current) {
+      holdProgress.stopAnimation();
+      Animated.timing(holdProgress, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+    }
   }
 
   const cellH = period === 'week' ? 10 : period === 'month' ? 6 : 4;
@@ -479,7 +514,14 @@ export default function ProgressScreen() {
               <Feather name="info" size={13} color={colors.textMuted} />
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
-            <Pressable onPress={handleSelfDestruct} style={s.sdBtn}>
+            <Pressable
+              onPressIn={startHold}
+              onPressOut={cancelHold}
+              style={s.sdBtn}
+            >
+              <Animated.View style={[s.sdBtnFill, {
+                width: holdProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+              }]} />
               <Text style={s.sdBtnTxt}>SELF DESTRUCT</Text>
             </Pressable>
           </View>
@@ -546,6 +588,15 @@ export default function ProgressScreen() {
               {i < arr.length - 1 && <View style={s.stripDiv} />}
             </React.Fragment>
           ))}
+        </View>
+
+        {/* Today at a glance */}
+        <View style={s.todayRow}>
+          <Text style={s.todayLabel}>today</Text>
+          <View style={s.todayDivider} />
+          <Text style={s.todayStat}>{todayLogCount} {todayLogCount === 1 ? 'log' : 'logs'}</Text>
+          <Text style={s.todayDot}>·</Text>
+          <Text style={[s.todayStat, todayXP > 0 && s.todayXPOn]}>{todayXP} XP</Text>
         </View>
 
         {/* Period filter */}
@@ -786,8 +837,9 @@ const s = StyleSheet.create({
   },
   revivalUrgentTxt: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.danger, letterSpacing: 2 },
 
-  sdBtn:    { backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 3 },
-  sdBtnTxt: { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.danger, letterSpacing: 1 },
+  sdBtn:     { backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 3, overflow: 'hidden', minWidth: 100, alignItems: 'center' },
+  sdBtnFill: { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: 'rgba(239,68,68,0.25)' },
+  sdBtnTxt:  { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.danger, letterSpacing: 1 },
 
   sectionHeadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'nowrap' },
 
@@ -845,6 +897,13 @@ const s = StyleSheet.create({
   stripVal:   { fontFamily: fonts.mono.regular, fontSize: fontSize.md, color: colors.textPrimary },
   stripLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
   stripDiv:   { width: 1, height: 32, backgroundColor: colors.border },
+
+  todayRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: 2 },
+  todayLabel:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1 },
+  todayDivider: { width: 1, height: 10, backgroundColor: colors.border },
+  todayDot:     { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.border },
+  todayStat:    { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  todayXPOn:    { color: colors.success },
 
   periodRow:   { flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
   periodBtn:   { flex: 1, paddingVertical: spacing.sm + 2, alignItems: 'center' },

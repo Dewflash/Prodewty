@@ -1,12 +1,15 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Tabs } from 'expo-router';
 import { View, Pressable, StyleSheet } from 'react-native';
 import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
-import { fonts, fontSize } from '../../src/theme/typography';
+import { fonts } from '../../src/theme/typography';
 import { GlobalCurrencyBar } from '../../src/components/GlobalCurrencyBar';
 import { playSound } from '../../src/services/audio';
+import { hapticLight } from '../../src/utils/haptics';
+import { getPendingQuests, getAcceptedQuests } from '../../src/db/game';
+import { onCurrencyRefresh } from '../../src/db/currencySignal';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 
@@ -24,10 +27,24 @@ function CustomTabBar(props: BottomTabBarProps) {
 }
 
 export default function TabsLayout() {
+  const [questBadge, setQuestBadge] = useState<number | undefined>(undefined);
+  const unsubRef = useRef<(() => void) | null>(null);
+
+  function refreshQuestBadge() {
+    const count = getPendingQuests().length + getAcceptedQuests().length;
+    setQuestBadge(count > 0 ? count : undefined);
+  }
+
+  useEffect(() => {
+    refreshQuestBadge();
+    unsubRef.current = onCurrencyRefresh(refreshQuestBadge);
+    return () => { unsubRef.current?.(); };
+  }, []);
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
-      screenListeners={{ tabPress: () => playSound('bottomribbonbutton') }}
+      screenListeners={{ tabPress: () => { hapticLight(); playSound('bottomribbonbutton'); } }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
@@ -76,6 +93,8 @@ export default function TabsLayout() {
         options={{
           title: 'Game',
           tabBarIcon: ({ focused }) => <TabIcon name="shield" focused={focused} />,
+          tabBarBadge: questBadge,
+          tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 10 },
         }}
       />
       <Tabs.Screen name="stats"           options={{ href: null }} />

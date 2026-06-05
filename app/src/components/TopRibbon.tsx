@@ -7,6 +7,7 @@ import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { getWeeklySummary, type WeeklySummary } from '../db/logs';
 import { playSound } from '../services/audio';
+import { hapticLight } from '../utils/haptics';
 
 type Props = { title: string };
 
@@ -43,8 +44,8 @@ export function TopRibbon({ title }: Props) {
   }
 
   const MENU_ITEMS: { icon: React.ComponentProps<typeof Feather>['name']; label: string; hint: string; onPress: () => void; locked?: boolean }[] = [
-    { icon: 'book',         label: 'Bible',    hint: 'Coming soon — devotion & Bible journaling module', onPress: () => {},                          locked: true },
-    { icon: 'dollar-sign',  label: 'Finance',  hint: 'Coming soon — financial rewards & budgeting',      onPress: () => {},                          locked: true },
+    { icon: 'book',         label: 'Bible',    hint: 'Devotion notes — each new note counts as a devotion log', onPress: () => router.push('/bible') },
+    { icon: 'dollar-sign',  label: 'Finance',  hint: 'Track monthly net worth and view trends',           onPress: () => router.push('/finance') },
     { icon: 'settings',     label: 'Settings', hint: 'BGM selection and app preferences',                onPress: () => router.push('/settings') },
   ];
 
@@ -53,13 +54,13 @@ export function TopRibbon({ title }: Props) {
       <View style={s.ribbon}>
         {/* Left: Hamburger + Store + Inventory */}
         <View style={s.group}>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('topribbonbutton'); setMenuVisible(true); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); setMenuVisible(true); }}>
             <Feather name="menu" size={20} color={colors.textPrimary} />
           </Pressable>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('topribbonbutton'); router.push('/store'); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); router.push('/store'); }}>
             <Feather name="shopping-bag" size={20} color={colors.textPrimary} />
           </Pressable>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('globalinventoryopentopribbon'); router.push('/inventory'); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('globalinventoryopentopribbon'); router.push('/inventory'); }}>
             <Feather name="archive" size={20} color={colors.textPrimary} />
           </Pressable>
         </View>
@@ -69,13 +70,13 @@ export function TopRibbon({ title }: Props) {
 
         {/* Right: Milestones + Summary + Revelations */}
         <View style={s.group}>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('milestonetopribbon'); router.push('/milestones'); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('milestonetopribbon'); router.push('/milestones'); }}>
             <Feather name="flag" size={20} color={colors.textPrimary} />
           </Pressable>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('topribbonbutton'); openSummary(); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); openSummary(); }}>
             <Feather name="clipboard" size={20} color={colors.textPrimary} />
           </Pressable>
-          <Pressable style={s.iconBtn} onPress={() => { playSound('topribbonbutton'); router.push('/revelations'); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); router.push('/revelations'); }}>
             <Ionicons name="bulb-outline" size={21} color="#FBBF24" />
           </Pressable>
         </View>
@@ -93,7 +94,7 @@ export function TopRibbon({ title }: Props) {
               <Pressable
                 key={item.label}
                 style={s.drawerItem}
-                onPress={() => { setMenuVisible(false); item.onPress(); }}
+                onPress={() => { hapticLight(); setMenuVisible(false); item.onPress(); }}
               >
                 <View style={s.drawerItemIcon}>
                   <Feather name={item.icon} size={18} color={colors.primary} />

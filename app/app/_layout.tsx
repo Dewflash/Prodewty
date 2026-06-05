@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { db, initDB } from '../src/db/schema';
 import { checkStreakFreeze, checkVigor, getRPGState, clearLevelUpPending } from '../src/db/rpg';
 import { initAudio, playSound } from '../src/services/audio';
+import { hapticHeavy, hapticSuccess } from '../src/utils/haptics';
 import { registerDeathCheck } from '../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { getDeathCause, type DeathCause } from '../src/db/game';
@@ -63,6 +64,7 @@ export default function RootLayout() {
     const cause = getDeathCause();
     if (cause && !(rpg.death_acknowledged)) {
       playSound('died');
+      hapticHeavy();
       setDeathCause(cause);
     } else if (!cause) {
       // All clear — reset acknowledged so next death triggers screen again
@@ -73,6 +75,7 @@ export default function RootLayout() {
     // Level-up pending check — suppress on game tab (dungeon clear already shows the result)
     if ((rpg.level_up_pending ?? 0) > 0 && !pathnameRef.current.includes('/game')) {
       playSound('levelup');
+      hapticSuccess();
       setLevelUpLevel(rpg.level_up_pending);
       clearLevelUpPending();
     }
@@ -100,6 +103,9 @@ export default function RootLayout() {
         <Stack.Screen name="game-log" />
         <Stack.Screen name="suitup" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="bible" />
+        <Stack.Screen name="bible-editor" />
+        <Stack.Screen name="finance" />
       </Stack>
 
       <DeathScreen cause={deathCause} onResolve={() => { setDeathCause(null); checkState(); triggerCurrencyRefresh(); }} />
