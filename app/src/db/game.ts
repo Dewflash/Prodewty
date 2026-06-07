@@ -88,10 +88,10 @@ export type DungeonClearResult = {
 
 // ─── Rarity drop system ───────────────────────────────────────────────────────
 
-type RarityTier = 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'Chromatic';
+type RarityTier = 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS' | 'Legendary';
 
 // Fixed cascade: ceiling 30%, next 15%, next 7.5%, next 0.5%, no-drop 47%
-// S–Legend dungeons use custom tables. 'Chromatic' = doc's 'Legend' item tier.
+// S–Legend dungeons use custom tables. 'Legendary' = item rarity (distinct from dungeon rank 'Legend').
 const DROP_TABLE: Record<string, { rarity: RarityTier; chance: number }[]> = {
   E:      [{ rarity: 'E',        chance: 0.300 }, { rarity: 'D',        chance: 0.150 }, { rarity: 'C',        chance: 0.075 }, { rarity: 'B',        chance: 0.005 }],
   D:      [{ rarity: 'D',        chance: 0.300 }, { rarity: 'C',        chance: 0.150 }, { rarity: 'B',        chance: 0.075 }, { rarity: 'A',        chance: 0.005 }],
@@ -99,9 +99,9 @@ const DROP_TABLE: Record<string, { rarity: RarityTier; chance: number }[]> = {
   B:      [{ rarity: 'B',        chance: 0.300 }, { rarity: 'A',        chance: 0.150 }, { rarity: 'S',        chance: 0.075 }, { rarity: 'SS',       chance: 0.005 }],
   A:      [{ rarity: 'A',        chance: 0.300 }, { rarity: 'S',        chance: 0.150 }, { rarity: 'SS',       chance: 0.075 }, { rarity: 'SSS',      chance: 0.005 }],
   S:      [{ rarity: 'A',        chance: 0.200 }, { rarity: 'S',        chance: 0.225 }, { rarity: 'SS',       chance: 0.100 }, { rarity: 'SSS',      chance: 0.005 }],
-  SS:     [{ rarity: 'S',        chance: 0.225 }, { rarity: 'SS',       chance: 0.225 }, { rarity: 'SSS',      chance: 0.049 }, { rarity: 'Chromatic', chance: 0.001 }],
-  SSS:    [{ rarity: 'S',        chance: 0.150 }, { rarity: 'SS',       chance: 0.200 }, { rarity: 'SSS',      chance: 0.1035}, { rarity: 'Chromatic', chance: 0.0025}],
-  Legend: [{ rarity: 'S',        chance: 0.100 }, { rarity: 'SS',       chance: 0.300 }, { rarity: 'SSS',      chance: 0.125 }, { rarity: 'Chromatic', chance: 0.005 }],
+  SS:     [{ rarity: 'S',        chance: 0.225 }, { rarity: 'SS',       chance: 0.225 }, { rarity: 'SSS',      chance: 0.049 }, { rarity: 'Legendary', chance: 0.001 }],
+  SSS:    [{ rarity: 'S',        chance: 0.150 }, { rarity: 'SS',       chance: 0.200 }, { rarity: 'SSS',      chance: 0.1035}, { rarity: 'Legendary', chance: 0.0025}],
+  Legend: [{ rarity: 'S',        chance: 0.100 }, { rarity: 'SS',       chance: 0.300 }, { rarity: 'SSS',      chance: 0.125 }, { rarity: 'Legendary', chance: 0.005 }],
 };
 
 // Equipment slot pool per dungeon category
@@ -118,6 +118,73 @@ const CATEGORY_SLOTS: Record<string, string[]> = {
 const DUNGEON_RANK_COIN_MULT: Record<string, number> = {
   E: 1.0, D: 1.1, C: 1.2, B: 1.3, A: 1.4, S: 1.5, SS: 1.6, SSS: 1.7, Legend: 1.8,
 };
+
+// Tier scale shared by player tiers and dungeon ranks (MECHANICS.md §4).
+// Player adds an "F" tier below E so 100 levels split into 10 clean brackets;
+// dungeon ranks (no "F") occupy indices 2–10 on the same scale.
+const DUNGEON_TIER_INDEX: Record<string, number> = {
+  E: 2, D: 3, C: 4, B: 5, A: 6, S: 7, SS: 8, SSS: 9, Legend: 10,
+};
+
+function getPlayerTierIndex(level: number): number {
+  return Math.min(10, Math.floor((level - 1) / 10) + 1);
+}
+
+// Dungeon fail damage: 33 × max(1, tier_diff). At/below player tier → flat 33.
+function getDungeonFailDamage(dungeonRank: string, playerLevel: number): number {
+  const dungeonTierIndex = DUNGEON_TIER_INDEX[dungeonRank] ?? 2;
+  const playerTierIndex  = getPlayerTierIndex(playerLevel);
+  const tierDiff = dungeonTierIndex - playerTierIndex;
+  return tierDiff <= 0 ? 33 : 33 * tierDiff;
+}
+
+// ─── Dungeon Unlock System (MECHANICS.md §11.6) ──────────────────────────────
+// E is always unlocked. D–Legend unlock naturally at the listed level, or early
+// via a one-time Spendable XP purchase (persisted in dungeon_unlocks, permanent).
+
+const DUNGEON_NATURAL_UNLOCK_LEVEL: Record<string, number> = {
+  E: 1, D: 10, C: 25, B: 40, A: 60, S: 75, SS: 85, SSS: 95, Legend: 100,
+};
+
+const DUNGEON_EARLY_UNLOCK_COST: Record<string, number> = {
+  D: 50, C: 100, B: 175, A: 250, S: 375, SS: 625, SSS: 1000, Legend: 1500,
+};
+
+function isRankEarlyUnlocked(rank: string): boolean {
+  return !!db.getFirstSync<{ rank: string }>('SELECT rank FROM dungeon_unlocks WHERE rank = ?', rank);
+}
+
+export function isDungeonRankUnlocked(rank: string, playerLevel: number): boolean {
+  if ((DUNGEON_NATURAL_UNLOCK_LEVEL[rank] ?? 1) <= playerLevel) return true;
+  return isRankEarlyUnlocked(rank);
+}
+
+export function getEarlyUnlockCost(rank: string): number | null {
+  return DUNGEON_EARLY_UNLOCK_COST[rank] ?? null;
+}
+
+export function getDungeonUnlockInfo(rank: string): {
+  unlocked: boolean; naturalLevel: number; earlyCost: number | null;
+} {
+  const { current_level } = getRPGState();
+  return {
+    unlocked: isDungeonRankUnlocked(rank, current_level),
+    naturalLevel: DUNGEON_NATURAL_UNLOCK_LEVEL[rank] ?? 1,
+    earlyCost: getEarlyUnlockCost(rank),
+  };
+}
+
+export function earlyUnlockDungeonRank(rank: string): 'ok' | 'already_unlocked' | 'insufficient_xp' | 'no_cost_defined' {
+  const { current_level, spendable_xp } = getRPGState();
+  if (isDungeonRankUnlocked(rank, current_level)) return 'already_unlocked';
+  const cost = getEarlyUnlockCost(rank);
+  if (cost === null) return 'no_cost_defined';
+  if ((spendable_xp ?? 0) < cost) return 'insufficient_xp';
+  db.runSync('UPDATE rpg_state SET spendable_xp = spendable_xp - ? WHERE id = 1', cost);
+  db.runSync('INSERT OR IGNORE INTO dungeon_unlocks (rank) VALUES (?)', rank);
+  triggerCurrencyRefresh();
+  return 'ok';
+}
 
 function getMoodCoinMult(): number {
   try {
@@ -140,13 +207,18 @@ function getCategoryWeight(categoryName: string): number {
   } catch { return 5; }
 }
 
-function rollDrop(rank: string): RarityTier | null {
+// Spending MP before a dungeon improves drop luck: each point of MP spent adds
+// 0.1 percentage points to the lowest (most common) drop tier — which simultaneously
+// reduces the implicit no-drop chance by the same amount (no_drop = 1 − Σ table chances).
+// e.g. 100 MP spent → +10 percentage points to the lowest tier, −10 to no-drop.
+function rollDrop(rank: string, mpUsed: number = 0): RarityTier | null {
   const table = DROP_TABLE[rank] ?? DROP_TABLE['E'];
+  const bonus = Math.max(0, mpUsed) * 0.001;
   const roll = Math.random();
   let cum = 0;
-  for (const entry of table) {
-    cum += entry.chance;
-    if (roll < cum) return entry.rarity;
+  for (let i = 0; i < table.length; i++) {
+    cum += table[i].chance + (i === 0 ? bonus : 0);
+    if (roll < cum) return table[i].rarity;
   }
   return null;
 }
@@ -161,7 +233,7 @@ export function getDropRates(rank: string): { rarity: string; chance: number }[]
 }
 
 const RARITY_ORDER: Record<string, number> = {
-  Chromatic: 0, SSS: 1, SS: 2, S: 3, A: 4, B: 5, C: 6, D: 7, E: 8,
+  Legendary: 0, SSS: 1, SS: 2, S: 3, A: 4, B: 5, C: 6, D: 7, E: 8,
 };
 
 export type InventoryItem = {
@@ -257,41 +329,36 @@ export function getInventoryByStat(statKey: string, itemCategory: 'consumable' |
   return getInventoryBySlot(slotType);
 }
 
+// All unequipped 'game' items whose slot_type falls within the given set —
+// powers the "unequipped item list" shown below the equipment/weapon grids
+// and the aggregate catalyst tile in Supplies.
+export function getUnequippedBySlots(slotTypes: string[]): InventoryItem[] {
+  if (slotTypes.length === 0) return [];
+  try {
+    const placeholders = slotTypes.map(() => '?').join(',');
+    const rows = db.getAllSync<InventoryItem>(
+      `SELECT id, item_name, COALESCE(rarity,'E') as rarity, slot_type, description, quantity, stat_buff, is_equipped
+       FROM inventory
+       WHERE category = 'game' AND COALESCE(is_equipped, 0) = 0 AND slot_type IN (${placeholders})
+       ORDER BY id DESC`,
+      ...slotTypes,
+    );
+    return rows.sort((a, b) => (RARITY_ORDER[a.rarity] ?? 9) - (RARITY_ORDER[b.rarity] ?? 9));
+  } catch { return []; }
+}
+
 // ─── Computed stats ───────────────────────────────────────────────────────────
-
-function logCount(likePat: string): number {
-  try {
-    return db.getFirstSync<{ n: number }>(
-      `SELECT count(*) as n FROM activity_logs WHERE entry_type = 'activity' AND categories LIKE ?`,
-      likePat,
-    )?.n ?? 0;
-  } catch { return 0; }
-}
-
-function totalActivityCount(): number {
-  try {
-    return db.getFirstSync<{ n: number }>(
-      `SELECT count(*) as n FROM activity_logs WHERE entry_type = 'activity'`,
-    )?.n ?? 0;
-  } catch { return 0; }
-}
 
 export function getComputedStats(): GameStats {
   const rpg = getRPGState();
-  const workout    = logCount('%"Workout"%');
-  const coding     = logCount('%"Coding"%');
-  const studyEtc   = logCount('%"Study"%') + logCount('%"Reading"%') + logCount('%"Devotion"%');
-  const admin      = logCount('%"Admin"%');
-  const journalEtc = logCount('%"Journal"%') + logCount('%"Devotion"%');
-  const total      = totalActivityCount();
 
-  const str_ap = rpg.strength    ?? 0; const str_auto = Math.floor(workout    / 5);
-  const agi_ap = rpg.agility     ?? 0; const agi_auto = Math.floor(admin      / 7);
-  const foc_ap = rpg.focus       ?? 0; const foc_auto = Math.floor(coding     / 5);
-  const wis_ap = rpg.wisdom      ?? 0; const wis_auto = Math.floor(studyEtc   / 5);
-  const spr_ap = rpg.resilience  ?? 0; const spr_auto = Math.floor(journalEtc / 5);
-  const per_ap = rpg.per_stat    ?? 0; const per_auto = Math.floor(total      / 15);
-  const sta_ap = rpg.sta_stat    ?? 0; const sta_auto = Math.floor(workout    / 7);
+  const str_ap = rpg.strength    ?? 0; const str_auto = rpg.strength_auto    ?? 0;
+  const agi_ap = rpg.agility     ?? 0; const agi_auto = rpg.agility_auto     ?? 0;
+  const foc_ap = rpg.focus       ?? 0; const foc_auto = rpg.focus_auto       ?? 0;
+  const wis_ap = rpg.wisdom      ?? 0; const wis_auto = rpg.wisdom_auto      ?? 0;
+  const spr_ap = rpg.resilience  ?? 0; const spr_auto = rpg.resilience_auto  ?? 0;
+  const per_ap = rpg.per_stat    ?? 0; const per_auto = rpg.per_stat_auto    ?? 0;
+  const sta_ap = rpg.sta_stat    ?? 0; const sta_auto = rpg.sta_stat_auto    ?? 0;
 
   return {
     str: str_ap + str_auto, str_ap, str_auto,
@@ -320,6 +387,18 @@ const STAT_COLUMN: Record<string, string> = {
   str: 'strength', agi: 'agility', foc: 'focus',
   wis: 'wisdom',   spr: 'resilience', per: 'per_stat', sta: 'sta_stat',
 };
+
+const VALID_ATTRIBUTES = new Set(['strength', 'wisdom', 'focus', 'agility', 'resilience', 'per_stat', 'sta_stat']);
+
+// Attribute-driven stat gain (replaces hardcoded category-name auto-gain, MECHANICS.md §9.3):
+// each activity log directly adds +1 to the stat matching its category's chosen attribute.
+export function grantAttributeStatGain(categoryName: string): void {
+  try {
+    const cat = db.getFirstSync<{ attribute: string }>('SELECT attribute FROM categories WHERE name = ?', categoryName);
+    if (!cat || !VALID_ATTRIBUTES.has(cat.attribute)) return;
+    db.runSync(`UPDATE rpg_state SET ${cat.attribute}_auto = ${cat.attribute}_auto + 1 WHERE id = 1`);
+  } catch {}
+}
 
 export function allocateStat(statKey: string): 'ok' | 'no_ap' | 'invalid_stat' {
   const col = STAT_COLUMN[statKey];
@@ -450,13 +529,18 @@ export function getDungeonCooldownRemaining(dungeonId: number, cooldownHours: nu
   return `${Math.ceil(remaining)}h`;
 }
 
-export function startDungeon(dungeonId: number): number {
+export function startDungeon(dungeonId: number, mpUsed: number = 0): number {
   const now = sqlNow();
+  const spend = Math.max(0, mpUsed);
   db.runSync(
-    `INSERT INTO dungeon_runs (dungeon_id, started_at, status, result, coins_earned, hp_change, completed_at)
-     VALUES (?, ?, 'active', 'active', 0, 0, ?)`,
-    dungeonId, now, now,
+    `INSERT INTO dungeon_runs (dungeon_id, started_at, status, result, coins_earned, hp_change, completed_at, mp_used)
+     VALUES (?, ?, 'active', 'active', 0, 0, ?, ?)`,
+    dungeonId, now, now, spend,
   );
+  if (spend > 0) {
+    db.runSync('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1', spend);
+    triggerCurrencyRefresh();
+  }
   return db.getFirstSync<{ id: number }>('SELECT last_insert_rowid() as id')?.id ?? 0;
 }
 
@@ -481,7 +565,10 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
   let itemRarity: Rarity | null = null;
   let itemSlotType: string | null = null;
 
-  const droppedRarity = rollDrop(dungeon.rank);
+  const mpUsed = db.getFirstSync<{ mp_used: number }>(
+    'SELECT mp_used FROM dungeon_runs WHERE id = ?', runId,
+  )?.mp_used ?? 0;
+  const droppedRarity = rollDrop(dungeon.rank, mpUsed);
   if (droppedRarity) {
     const slot = pickSlot(dungeon.category ?? 'default');
     itemRarity   = droppedRarity;
@@ -526,13 +613,15 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
 }
 
 export function failDungeon(runId: number, dungeon: Dungeon): void {
+  const { current_level } = getRPGState();
+  const damage = getDungeonFailDamage(dungeon.rank, current_level);
   const now = sqlNow();
   db.runSync(
-    `UPDATE dungeon_runs SET status = 'failed', result = 'fail', completed_at = ?, hp_change = -20 WHERE id = ?`,
-    now, runId,
+    `UPDATE dungeon_runs SET status = 'failed', result = 'fail', completed_at = ?, hp_change = ? WHERE id = ?`,
+    now, -damage, runId,
   );
-  db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - 20) WHERE id = 1');
-  addGameLog('dungeon_fail', `Gate Failed: ${dungeon.name}. HP -20.`);
+  db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - ?) WHERE id = 1', damage);
+  addGameLog('dungeon_fail', `Gate Failed: ${dungeon.name}. HP -${damage}.`);
   triggerDeathCheck();
 }
 
@@ -688,6 +777,27 @@ export function purchaseHPBoost(): 'ok' | 'insufficient_coins' | 'hp_not_critica
   if ((rpg.hp ?? 100) > 30) return 'hp_not_critical';
   if ((rpg.coins ?? 0) < 100) return 'insufficient_coins';
   db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + 30), coins = coins - 100 WHERE id = 1`);
+  triggerCurrencyRefresh();
+  return 'ok';
+}
+
+// ─── Cosmetic purchases (MECHANICS.md §6 — pricing/content placeholders) ────
+// Cosmetic content/visuals aren't designed yet; purchase is a real coin sink
+// that records a cosmetic-tier inventory entry to redeem once content exists.
+const COSMETIC_TIERS: Record<'standard' | 'premium', { cost: number; itemName: string }> = {
+  standard: { cost: 5_000,  itemName: 'Standard Cosmetic Token' },
+  premium:  { cost: 10_000, itemName: 'Premium Cosmetic Token' },
+};
+
+export function purchaseCosmetic(tier: 'standard' | 'premium'): 'ok' | 'insufficient_coins' {
+  const { cost, itemName } = COSMETIC_TIERS[tier];
+  const rpg = getRPGState();
+  if ((rpg.coins ?? 0) < cost) return 'insufficient_coins';
+  db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', cost);
+  db.runSync(
+    `INSERT INTO inventory (item_name, category, item_type, description) VALUES (?, 'cosmetic', 'cosmetic', 'Redeemable once cosmetic content is added — placeholder purchase.')`,
+    itemName,
+  );
   triggerCurrencyRefresh();
   return 'ok';
 }

@@ -9,7 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
-import { CategoryGrid } from '../../src/components/CategoryGrid';
+import { CategoryGrid, type CategoryGridHandle } from '../../src/components/CategoryGrid';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { MoodSelector } from '../../src/components/MoodSelector';
 import { TopRibbon } from '../../src/components/TopRibbon';
@@ -74,6 +74,7 @@ export default function LogScreen() {
   const [newHabitName, setNewHabitName] = useState('');
   const [newHabitWeight, setNewHabitWeight] = useState(3);
 
+  const categoryGridRef = useRef<CategoryGridHandle>(null);
   const xpOpacity = useRef(new Animated.Value(0)).current;
   const xpY = useRef(new Animated.Value(0)).current;
   const [lastXP, setLastXP] = useState(0);
@@ -291,8 +292,21 @@ export default function LogScreen() {
 
           {/* Activity */}
           <View style={s.section}>
-            <Text style={s.sectionLabel}>Activity</Text>
+            <View style={s.activityHeaderRow}>
+              <Text style={s.sectionLabel}>Activity</Text>
+              <Pressable onPress={() => categoryGridRef.current?.showWeightInfo()} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={13} color={colors.textMuted} />
+              </Pressable>
+              <View style={{ flex: 1 }} />
+              <Pressable onPress={() => categoryGridRef.current?.openPastHistory()} style={s.activityHeaderBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="archive" size={13} color={colors.textMuted} />
+              </Pressable>
+              <Pressable onPress={() => categoryGridRef.current?.openManage()} style={s.activityHeaderBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="settings" size={13} color={colors.textMuted} />
+              </Pressable>
+            </View>
             <CategoryGrid
+              ref={categoryGridRef}
               categories={categories}
               selected={selectedCat ? [selectedCat] : []}
               onSelect={(names) => {
@@ -312,8 +326,20 @@ export default function LogScreen() {
 
           {/* Duration */}
           <View style={s.section}>
-            <Text style={s.sectionLabel}>Duration (min)</Text>
-            <TextInput style={s.shortInput} placeholder="Optional" placeholderTextColor={colors.textMuted}
+            <View style={s.labelRow}>
+              <Text style={s.sectionLabel}>Duration (min)</Text>
+              <Pressable onPress={() => Alert.alert(
+                'Duration',
+                "Left blank, duration defaults to 20 minutes for XP purposes.\n\n" +
+                'XP follows a two-phase curve based on category weight:\n' +
+                '≤ 30 min: XP rises toward a cap as duration increases\n' +
+                '> 30 min: XP keeps climbing at a flat per-minute rate (higher for heavier-weighted categories)\n\n' +
+                'Longer sessions in heavier-weighted categories earn more XP — but with diminishing early returns.',
+              )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <TextInput style={s.shortInput} placeholder="Optional — defaults to 20 min" placeholderTextColor={colors.textMuted}
               keyboardType="numeric" value={duration} onChangeText={setDuration} />
           </View>
 
@@ -347,7 +373,17 @@ export default function LogScreen() {
           {/* Habits */}
           <View style={s.section}>
             <View style={s.rowBetween}>
-              <Text style={s.sectionLabel}>Habits</Text>
+              <View style={s.labelRow}>
+                <Text style={s.sectionLabel}>Habits</Text>
+                <Pressable onPress={() => Alert.alert(
+                  'Habits',
+                  'Each habit you check off when submitting a log adds a flat XP bonus: weight × 3.\n\n' +
+                  'e.g. a weight-5 habit adds +15 XP, on top of everything else — duration, mood, health, ' +
+                  'and all other multipliers. Higher-weight habits are worth more XP per completion.',
+                )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                  <Feather name="info" size={13} color={colors.textMuted} />
+                </Pressable>
+              </View>
               <Pressable onPress={() => setHabitModal(true)}><Text style={s.addLink}>+ Add</Text></Pressable>
             </View>
             {habits.length === 0
@@ -462,7 +498,16 @@ export default function LogScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.kbAvoid}>
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setHabitModal(false)} />
           <View style={s.sheet}>
-            <Text style={s.sheetTitle}>New Habit</Text>
+            <View style={s.labelRow}>
+              <Text style={s.sheetTitle}>New Habit</Text>
+              <Pressable onPress={() => Alert.alert(
+                'Habit Weight',
+                'Weight determines the flat XP bonus you earn each time you check this habit off on a log: weight × 3.\n\n' +
+                'e.g. weight 5 → +15 XP per completion, weight 1 → +3 XP. Pick higher weights for habits that matter more to you.',
+              )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+              </Pressable>
+            </View>
             <TextInput style={s.modalInput} placeholder="Habit name" placeholderTextColor={colors.textMuted}
               value={newHabitName} onChangeText={setNewHabitName} autoFocus />
             <Text style={s.sheetSubLabel}>Weight</Text>
@@ -505,6 +550,9 @@ const s = StyleSheet.create({
 
   section: { gap: spacing.sm },
   sectionLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted, letterSpacing: 0.5 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  activityHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  activityHeaderBtn: { marginLeft: spacing.sm },
   shortInput: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
     padding: spacing.md, fontFamily: fonts.mono.regular, fontSize: fontSize.base,

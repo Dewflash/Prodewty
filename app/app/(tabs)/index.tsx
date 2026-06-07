@@ -16,7 +16,7 @@ import {
   getLogs, getRecentLogs, getCategoryEffects, getActivityTimeStats,
   type ActivityLog, type CategoryEffect, type ActivityTimeStat,
 } from '../../src/db/logs';
-import { getRPGState, isInDeathState, selfDestruct, setCurrentMood, getCustomMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
+import { getRPGState, isInDeathState, selfDestruct, setCurrentMood, getCustomMoods, getPastHistoryMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
 import { resetDeathIgnore, getDeathCount, getQuestCompletedCount, getDungeonClearedCount } from '../../src/db/game';
 import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
@@ -40,14 +40,14 @@ const TIER_COLOR: Record<string, string> = {
 };
 
 const ALL_HEALTH_TIERS = [
-  { label: 'Peak',      range: '>90%',   xp: 'None',  hp: '+5/day'  },
-  { label: 'Strong',    range: '70–90%', xp: 'None',  hp: '+5/day'  },
-  { label: 'Stable',    range: '50–70%', xp: 'None',  hp: '+2/day'  },
-  { label: 'Worn',      range: '30–50%', xp: '−5%',   hp: 'Neutral' },
-  { label: 'Weakened',  range: '20–30%', xp: '−15%',  hp: '−2/day'  },
-  { label: 'Danger',    range: '10–20%', xp: '−25%',  hp: '−5/day'  },
-  { label: 'Critical',  range: '<10%',   xp: '−35%',  hp: '−10/day' },
-  { label: 'Depleted',  range: '0%',     xp: '−50%',  hp: '−20/day' },
+  { label: 'Peak',      range: '>90%',   xp: '1.03×' },
+  { label: 'Strong',    range: '70–90%', xp: '1.02×' },
+  { label: 'Stable',    range: '50–70%', xp: '1.01×' },
+  { label: 'Worn',      range: '30–50%', xp: '0.98×' },
+  { label: 'Weakened',  range: '20–30%', xp: '0.96×' },
+  { label: 'Danger',    range: '10–20%', xp: '0.95×' },
+  { label: 'Critical',  range: '<10%',   xp: '0.94×' },
+  { label: 'Depleted',  range: '0%',     xp: '0.93×' },
 ];
 
 const MOOD_FALLBACK_PASSIVE: Record<string, string[]> = {
@@ -287,6 +287,8 @@ export default function ProgressScreen() {
   const [moodInfoVisible, setMoodInfoVisible] = useState(false);
   const [soulRecordInfoVisible, setSoulRecordInfoVisible] = useState(false);
   const [moodSettingsVisible, setMoodSettingsVisible] = useState(false);
+  const [moodHistoryVisible, setMoodHistoryVisible] = useState(false);
+  const [pastMoods, setPastMoods] = useState<CustomMood[]>([]);
   const [deathCount, setDeathCount] = useState(0);
   const [revivalCount, setRevivalCount] = useState(0);
   const [questCount, setQuestCount] = useState(0);
@@ -556,6 +558,9 @@ export default function ProgressScreen() {
             <TouchableOpacity onPress={() => setMoodInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Feather name="info" size={14} color={colors.textMuted} />
             </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setPastMoods(getPastHistoryMoods()); setMoodHistoryVisible(true); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Feather name="archive" size={13} color={colors.textMuted} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setMoodSettingsVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Feather name="settings" size={13} color={colors.textMuted} />
             </TouchableOpacity>
@@ -716,7 +721,6 @@ export default function ProgressScreen() {
                   <Text style={[s.effectDialogLabel, { color: TIER_COLOR[t.label] }]}>{t.label}</Text>
                   <Text style={s.effectDialogRange}>{t.range}</Text>
                   <Text style={s.effectDialogStat}>XP {t.xp}</Text>
-                  <Text style={s.effectDialogStat}>HP {t.hp}</Text>
                   {isActive && <Text style={s.effectDialogActive}>● NOW</Text>}
                 </View>
               );
@@ -748,8 +752,38 @@ export default function ProgressScreen() {
             <Text style={s.infoSheetTitle}>Current Mood</Text>
             <View style={s.infoSheetDiv} />
             <Text style={s.infoSheetText}>Your active mood sets Passive Effects — modifiers on XP and coin gains for every activity while this mood is active.</Text>
-            <Text style={s.infoSheetText}>Tap the gear icon to customise name, colour, passive effect, and MP regeneration rate.</Text>
+            <Text style={s.infoSheetText}>XP change applies a flat ±10% multiplier to every XP gain while the mood is active — set it with the +/− toggle next to the field. MP Rate (±50/day) adjusts how fast MP regenerates on top of the 50/day baseline.</Text>
+            <Text style={s.infoSheetText}>Tap the gear icon to customise name, colour, passive effect, XP change, and MP rate.</Text>
             <Text style={s.infoSheetText}>Changing mood here syncs to the Log page, and vice versa.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Mood Past History modal */}
+      <Modal visible={moodHistoryVisible} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setMoodHistoryVisible(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.infoHandle} />
+            <Text style={s.infoSheetTitle}>Past History — Moods</Text>
+            <View style={s.infoSheetDiv} />
+            <Text style={s.infoSheetText}>Archived moods — viewable, can't be selected again.</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {pastMoods.length === 0 ? (
+                <Text style={[s.infoSheetText, { textAlign: 'center', paddingVertical: spacing.md }]}>Nothing archived yet.</Text>
+              ) : pastMoods.map(m => (
+                <View key={m.name} style={s.moodHistoryRow}>
+                  <View style={[s.moodDot, { backgroundColor: m.color }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.moodHistoryName}>{m.name}</Text>
+                    {!!m.passive_effect && <Text style={s.moodHistoryMeta}>{m.passive_effect}</Text>}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={s.moodHistoryMeta}>XP {m.xp_change > 0 ? `+${m.xp_change}` : m.xp_change}%</Text>
+                    <Text style={s.moodHistoryMeta}>MP {m.mp_rate > 0 ? `+${m.mp_rate}` : m.mp_rate}/day</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -787,7 +821,8 @@ export default function ProgressScreen() {
             <Text style={s.infoSheetText}>Post: average mood score across all logs recorded after the earliest session of that activity.</Text>
             <Text style={s.infoSheetText}>The change (±) shows the mood shift associated with doing this activity.</Text>
             <Text style={s.infoSheetText}>× count = total all-time sessions logged for that category (not period-filtered).</Text>
-            <Text style={s.infoSheetText}>Category weights (1–5) are XP multipliers when you submit a log — separate from these stats.</Text>
+            <Text style={s.infoSheetText}>Category weights (1–20) are XP multipliers when you submit a log — separate from these stats.</Text>
+            <Text style={s.infoSheetText}>Each category also has an "Attribute (for Game)" — every time you log it, that stat gets +1 directly, on top of any AP you've manually allocated to it.</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -870,6 +905,10 @@ const s = StyleSheet.create({
   tollLabel:   { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, letterSpacing: 1, width: '100%', textAlign: 'center' },
   tollEffect:  { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.danger, textAlign: 'center' },
 
+  moodDot:         { width: 10, height: 10, borderRadius: 5 },
+  moodHistoryRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
+  moodHistoryName: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textPrimary },
+  moodHistoryMeta: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
   moodCard:        { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
   moodCardHeader:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   moodSettingsBtn: { alignSelf: 'flex-end', marginTop: spacing.xs },

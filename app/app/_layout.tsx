@@ -11,7 +11,7 @@ import {
 } from '@expo-google-fonts/jetbrains-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import { db, initDB } from '../src/db/schema';
-import { checkStreakFreeze, checkVigor, getRPGState, clearLevelUpPending } from '../src/db/rpg';
+import { checkStreakFreeze, checkVigor, getRPGState, clearLevelUpPending, applyMpRegen } from '../src/db/rpg';
 import { initAudio, playSound } from '../src/services/audio';
 import { hapticHeavy, hapticSuccess } from '../src/utils/haptics';
 import { registerDeathCheck } from '../src/db/deathCheckSignal';
@@ -58,6 +58,7 @@ export default function RootLayout() {
 
   function checkState() {
     applyHealthDecay();
+    applyMpRegen();
     const rpg = getRPGState();
 
     // Death check — only show if not already acknowledged

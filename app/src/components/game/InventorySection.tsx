@@ -4,10 +4,10 @@ import { colors } from '../../theme/colors';
 import { fonts, fontSize } from '../../theme/typography';
 import { spacing, radius } from '../../theme/spacing';
 import {
-  getInventoryBySlot, getInventoryByStat, getEquippedItem,
+  getInventoryBySlot, getInventoryByStat, getEquippedItem, getUnequippedBySlots,
   type InventoryItem,
 } from '../../db/game';
-import { RARITY_COLOR, RARITY_BG, rarityLabel, type Rarity } from '../../constants/rarity';
+import { RARITY_COLOR, RARITY_BG, type Rarity } from '../../constants/rarity';
 import { fmtBuff } from '../../utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ export const STAT_ABBRS      = ['STR', 'AGI', 'FOC', 'WIS', 'SPR', 'PER', 'STA']
 export const STAT_KEYS_SHORT = ['str', 'agi', 'foc', 'wis', 'spr', 'per', 'sta'];
 
 const RARITY_RANK: Record<string, number> = {
-  Chromatic: 0, SSS: 1, SS: 2, S: 3, A: 4, B: 5, C: 6, D: 7, E: 8,
+  Legendary: 0, SSS: 1, SS: 2, S: 3, A: 4, B: 5, C: 6, D: 7, E: 8,
 };
 
 // ─── SlotCard ─────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ export function SlotCard({ label, slotKey, onPress, refreshKey }: {
     <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol }]}>
       <View style={inv.slotHeader}>
         <Text style={inv.slotLabel}>{label.toUpperCase()}</Text>
-        {equipped && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(equipped.rarity as Rarity)}</Text>}
+        {equipped && <Text style={[inv.slotRarity, ...txtStyle]}>{equipped.rarity}</Text>}
       </View>
       {equipped ? (
         <>
@@ -98,7 +98,7 @@ export function StatSlotCard({ abbr, statKey, onPress, refreshKey }: {
     <Pressable onPress={onPress} style={[inv.slot, { borderColor: borderCol }]}>
       <View style={inv.slotHeader}>
         <Text style={inv.slotLabel}>{abbr}</Text>
-        {item && <Text style={[inv.slotRarity, ...txtStyle]}>{rarityLabel(item.rarity as Rarity)}</Text>}
+        {item && <Text style={[inv.slotRarity, ...txtStyle]}>{item.rarity}</Text>}
       </View>
       {item ? (
         <>
@@ -146,7 +146,7 @@ export function ConsumableList({ onUse }: { onUse: (item: InventoryItem) => void
           <View key={item.id} style={[inv.consumableRow, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
             <View style={[inv.rarityBox, { borderColor: col }]}>
               <Text style={[inv.rarityBoxTxt, { color: col }]}>
-                {rarity === 'Chromatic' ? '★' : rarityLabel(rarity)}
+                {rarity === 'Legendary' ? '★' : rarity}
               </Text>
             </View>
             <Text style={[inv.consumableName, { color: col }]}>{item.item_name}</Text>
@@ -163,12 +163,85 @@ export function ConsumableList({ onUse }: { onUse: (item: InventoryItem) => void
   );
 }
 
+// ─── UnequippedList ───────────────────────────────────────────────────────────
+// Items gained but not currently worn, for a given slot group (equipment/weapon
+// grids). Lets users see drops the moment they're earned. Tapping one opens its
+// slot's browser so it can be equipped.
+
+export function UnequippedList({ slots, onOpenBrowser, refreshKey }: {
+  slots: { key: string; label: string }[];
+  onOpenBrowser: (slot: string, title: string, items: InventoryItem[]) => void;
+  refreshKey: number;
+}) {
+  const [items, setItems] = React.useState<InventoryItem[]>([]);
+  const labelOf = React.useCallback(
+    (slotKey: string | null) => slots.find(s => s.key === slotKey)?.label ?? slotKey ?? '',
+    [slots],
+  );
+
+  React.useEffect(() => {
+    try { setItems(getUnequippedBySlots(slots.map(s => s.key))); } catch {}
+  }, [refreshKey]);
+
+  if (items.length === 0) {
+    return <Text style={inv.suppliesHint}>No unequipped items yet — clear dungeons to earn drops.</Text>;
+  }
+
+  return (
+    <View style={inv.list}>
+      {items.map(item => {
+        const rarity  = (item.rarity as Rarity) ?? 'E';
+        const col     = RARITY_COLOR[rarity];
+        const buffStr = item.stat_buff ? fmtBuff(item.stat_buff) : null;
+        return (
+          <Pressable key={item.id}
+            onPress={() => item.slot_type && onOpenBrowser(item.slot_type, labelOf(item.slot_type), getInventoryBySlot(item.slot_type))}
+            style={[inv.consumableRow, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
+            <View style={[inv.rarityBox, { borderColor: col }]}>
+              <Text style={[inv.rarityBoxTxt, { color: col }]}>
+                {rarity === 'Legendary' ? '★' : rarity}
+              </Text>
+            </View>
+            <Text style={[inv.consumableName, { color: col }]} numberOfLines={1}>{item.item_name}</Text>
+            <Text style={inv.unequippedSlot}>{labelOf(item.slot_type)}</Text>
+            {buffStr && <Text style={[inv.consumableBuff, { color: col }]}>{buffStr}</Text>}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── UnusedCatalystTile (8th Supplies tile — aggregate "unused catalysts") ────
+
+export function UnusedCatalystTile({ onPress, refreshKey }: { onPress: () => void; refreshKey: number }) {
+  const [count, setCount] = React.useState(0);
+  React.useEffect(() => {
+    try { setCount(getUnequippedBySlots(STAT_KEYS_SHORT.map(sk => `catalyst_${sk}`)).length); } catch {}
+  }, [refreshKey]);
+
+  return (
+    <Pressable onPress={onPress} style={[inv.slot, { borderColor: colors.border }]}>
+      <View style={inv.slotHeader}>
+        <Text style={inv.slotLabel}>UNUSED</Text>
+        {count > 0 && <Text style={[inv.slotRarity, { color: colors.textMuted }]}>{count}</Text>}
+      </View>
+      {count > 0 ? (
+        <Text style={inv.slotItem}>{count} catalyst{count === 1 ? '' : 's'} not equipped</Text>
+      ) : (
+        <Text style={inv.slotEmpty}>— none —</Text>
+      )}
+    </Pressable>
+  );
+}
+
 // ─── InventorySection ─────────────────────────────────────────────────────────
 
-export function InventorySection({ invTab, setInvTab, onOpenBrowser, onUseConsumable, refreshKey }: {
+export function InventorySection({ invTab, setInvTab, onOpenBrowser, onOpenAggregateBrowser, onUseConsumable, refreshKey }: {
   invTab: InvTab;
   setInvTab: (t: InvTab) => void;
   onOpenBrowser: (slot: string, title: string, items: InventoryItem[]) => void;
+  onOpenAggregateBrowser: (slots: string[], title: string) => void;
   onUseConsumable: (item: InventoryItem) => void;
   refreshKey: number;
 }) {
@@ -183,21 +256,31 @@ export function InventorySection({ invTab, setInvTab, onOpenBrowser, onUseConsum
       </View>
 
       {invTab === 'equipment' && (
-        <View style={inv.grid2}>
-          {EQUIP_SLOTS.map(slot => (
-            <SlotCard key={slot.key} label={slot.label} slotKey={slot.key} refreshKey={refreshKey}
-              onPress={() => onOpenBrowser(slot.key, slot.label, getInventoryBySlot(slot.key))} />
-          ))}
-        </View>
+        <>
+          <View style={inv.grid2}>
+            {EQUIP_SLOTS.map(slot => (
+              <SlotCard key={slot.key} label={slot.label} slotKey={slot.key} refreshKey={refreshKey}
+                onPress={() => onOpenBrowser(slot.key, slot.label, getInventoryBySlot(slot.key))} />
+            ))}
+          </View>
+          <Text style={[inv.suppliesSection, { marginTop: spacing.md }]}>UNEQUIPPED</Text>
+          <Text style={inv.suppliesHint}>Gear you've earned but aren't wearing. Tap one to equip it.</Text>
+          <UnequippedList slots={EQUIP_SLOTS} onOpenBrowser={onOpenBrowser} refreshKey={refreshKey} />
+        </>
       )}
 
       {invTab === 'weapons' && (
-        <View style={inv.grid2}>
-          {WEAPON_SLOTS.map(slot => (
-            <SlotCard key={slot.key} label={slot.label} slotKey={slot.key} refreshKey={refreshKey}
-              onPress={() => onOpenBrowser(slot.key, slot.label, getInventoryBySlot(slot.key))} />
-          ))}
-        </View>
+        <>
+          <View style={inv.grid2}>
+            {WEAPON_SLOTS.map(slot => (
+              <SlotCard key={slot.key} label={slot.label} slotKey={slot.key} refreshKey={refreshKey}
+                onPress={() => onOpenBrowser(slot.key, slot.label, getInventoryBySlot(slot.key))} />
+            ))}
+          </View>
+          <Text style={[inv.suppliesSection, { marginTop: spacing.md }]}>UNEQUIPPED</Text>
+          <Text style={inv.suppliesHint}>Weapons you've earned but aren't wielding. Tap one to equip it.</Text>
+          <UnequippedList slots={WEAPON_SLOTS} onOpenBrowser={onOpenBrowser} refreshKey={refreshKey} />
+        </>
       )}
 
       {invTab === 'supplies' && (
@@ -209,6 +292,8 @@ export function InventorySection({ invTab, setInvTab, onOpenBrowser, onUseConsum
               <StatSlotCard key={abbr} abbr={abbr} statKey={STAT_KEYS_SHORT[i]} refreshKey={refreshKey}
                 onPress={() => onOpenBrowser(`catalyst_${STAT_KEYS_SHORT[i]}`, `${abbr} Catalyst`, getInventoryByStat(STAT_KEYS_SHORT[i], 'catalyst'))} />
             ))}
+            <UnusedCatalystTile refreshKey={refreshKey}
+              onPress={() => onOpenAggregateBrowser(STAT_KEYS_SHORT.map(sk => `catalyst_${sk}`), 'Unused Catalysts')} />
           </View>
           <Text style={[inv.suppliesSection, { marginTop: spacing.md }]}>CONSUMABLES</Text>
           <Text style={inv.suppliesHint}>Temporary stat potions. Sorted by rarity. Effect lasts 1 hour.</Text>
@@ -251,6 +336,7 @@ export const inv = StyleSheet.create({
   consumableName: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, flex: 1 },
   consumableBuff: { fontFamily: fonts.mono.regular, fontSize: 9, opacity: 0.8 },
   consumableQty:  { fontFamily: fonts.mono.bold, fontSize: fontSize.xs },
+  unequippedSlot: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.textMuted, letterSpacing: 0.5 },
   useBtn:         { borderWidth: 1, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 3 },
   useTxt:         { fontFamily: fonts.mono.bold, fontSize: 9, color: colors.success, letterSpacing: 1 },
 });

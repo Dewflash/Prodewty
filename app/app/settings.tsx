@@ -9,7 +9,8 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
-import { db } from '../src/db/schema';
+import { performFullReset } from '../src/db/schema';
+import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 
 const BGM_ZONES = [
   { zone: 'progress',   label: 'Progress',     tracks: ['Track 1', 'Track 2', 'Track 3'] },
@@ -54,12 +55,10 @@ export default function SettingsScreen() {
     currencyRef.current = clean;
   }
 
-  async function handleWipeActivityLogs() {
-    const count = (db.getFirstSync<{ n: number }>('SELECT COUNT(*) as n FROM activity_logs')?.n ?? 0);
-
+  async function handleFullReset() {
     Alert.alert(
-      'Wipe activity log',
-      `This will permanently delete all ${count} activity log${count !== 1 ? 's' : ''}. This cannot be undone.\n\nAuthenticate to confirm.`,
+      'Full wipe & reset',
+      'This permanently deletes ALL progress — logs, quests, inventory, dungeon history, habits, custom moods, categories, recharge activities — and resets your character to Level 1 with full health. Game content (dungeons) is kept and personal-build defaults are re-seeded.\n\nThis cannot be undone.\n\nAuthenticate to confirm.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -68,15 +67,16 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Confirm activity log wipe',
+                promptMessage: 'Confirm full wipe & reset',
                 fallbackLabel: 'Use passcode',
                 disableDeviceFallback: false,
               });
               if (result.success) {
-                db.execSync('DELETE FROM activity_logs');
-                Alert.alert('Done', 'All activity logs have been deleted.');
+                performFullReset();
+                triggerCurrencyRefresh();
+                Alert.alert('Done', 'Everything has been wiped. You are starting fresh at Level 1.');
               } else {
-                Alert.alert('Cancelled', 'Authentication failed — logs not deleted.');
+                Alert.alert('Cancelled', 'Authentication failed — nothing was wiped.');
               }
             } catch {
               Alert.alert('Error', 'Biometric authentication unavailable on this device.');
@@ -166,10 +166,10 @@ export default function SettingsScreen() {
         <View style={s.dangerCard}>
           <View style={s.dangerRow}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.dangerTitle}>Wipe activity log</Text>
-              <Text style={s.dangerHint}>Permanently deletes all logged activity entries. Requires Face ID / passcode to confirm.</Text>
+              <Text style={s.dangerTitle}>Full wipe & reset</Text>
+              <Text style={s.dangerHint}>Permanently resets everything to a fresh Level 1 start — logs, quests, inventory, dungeon history, habits, custom moods, categories, and recharge activities are wiped and re-seeded. Requires Face ID / passcode to confirm.</Text>
             </View>
-            <Pressable style={s.dangerBtn} onPress={handleWipeActivityLogs}>
+            <Pressable style={s.dangerBtn} onPress={handleFullReset}>
               <Feather name="trash-2" size={15} color={colors.danger} />
               <Text style={s.dangerBtnTxt}>Wipe</Text>
             </Pressable>

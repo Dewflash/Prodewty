@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
@@ -17,11 +18,11 @@ import {
   getDungeons, startDungeon, getActiveDungeonRun, submitDungeonClear, failDungeon, abandonDungeon,
   acceptQuest, completeQuest, skipQuest, deleteQuest,
   allocateStat, getQuestCompletedCount, getDeathCount, getAbandonedCount,
-  getInventoryBySlot, getDropRates,
+  getInventoryBySlot, getUnequippedBySlots, getDropRates,
   getEquippedItem, equipItem, unequipItem, useConsumable, getActiveBuffs,
   type GameStats, type Dungeon, type Quest, type DungeonClearResult, type InventoryItem, type ActiveBuff,
 } from '../../src/db/game';
-import { RARITY_COLOR, RARITY_BG, rarityLabel, type Rarity } from '../../src/constants/rarity';
+import { RARITY_COLOR, RARITY_BG, type Rarity } from '../../src/constants/rarity';
 import { triggerDeathCheck } from '../../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 
@@ -64,6 +65,8 @@ export default function GameScreen() {
   const [activeRunId,     setActiveRunId]     = useState<number | null>(null);
   const [timerSeconds,    setTimerSeconds]    = useState(0);
   const [clearResult,     setClearResult]     = useState<DungeonClearResult | null>(null);
+  const [useMp,           setUseMp]           = useState(0);
+  const [mpInfoVisible,   setMpInfoVisible]   = useState(false);
 
   // Quest state
   const [completingQuest, setCompletingQuest] = useState<Quest | null>(null);
@@ -76,6 +79,9 @@ export default function GameScreen() {
   const [itemBrowserSlot, setItemBrowserSlot] = useState<string | null>(null);
   const [itemBrowserTitle,setItemBrowserTitle]= useState('');
   const [browserItems,    setBrowserItems]    = useState<InventoryItem[]>([]);
+  // Set when the browser is showing an aggregate (multi-slot) view, e.g. "unused catalysts" —
+  // equip/unequip then refreshes via getUnequippedBySlots(...) instead of getInventoryBySlot(slot).
+  const [browserSlots,    setBrowserSlots]    = useState<string[] | null>(null);
   const [rarityInfoRank,  setRarityInfoRank]  = useState<string | null>(null);
   const [gameInfoVisible, setGameInfoVisible] = useState(false);
 
@@ -160,12 +166,13 @@ export default function GameScreen() {
   function handleEnterGate(dungeon: Dungeon) {
     if (activeRunId !== null && selectedDungeon?.id === dungeon.id) { setDungeonPhase('active'); return; }
     setSelectedDungeon(dungeon);
+    setUseMp(0);
     setDungeonPhase('entry');
   }
 
   function handleStartTimer() {
     if (!selectedDungeon) return;
-    const runId = startDungeon(selectedDungeon.id);
+    const runId = startDungeon(selectedDungeon.id, useMp);
     setActiveRunId(runId);
     setTimerSeconds(selectedDungeon.duration_mins * 60);
     setDungeonPhase('active');
@@ -188,7 +195,7 @@ export default function GameScreen() {
 
   function handleFailDungeon() {
     if (activeRunId === null || !selectedDungeon) return;
-    Alert.alert('Fail Dungeon?', 'HP will be deducted by 20.', [
+    Alert.alert('Fail Dungeon?', 'HP will be deducted based on the gap between this gate\'s rank and your tier.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Fail', style: 'destructive', onPress: () => {
         failDungeon(activeRunId!, selectedDungeon!);
@@ -213,13 +220,23 @@ export default function GameScreen() {
     setItemBrowserSlot(slotType);
     setItemBrowserTitle(title);
     setBrowserItems(items);
+    setBrowserSlots(null);
+  }
+
+  // Aggregate browser — shows unequipped items spanning several slot_types at once
+  // (e.g. "unused catalysts" tile spans catalyst_str / catalyst_agi / ... ).
+  function openAggregateBrowser(slots: string[], title: string) {
+    setItemBrowserSlot(slots[0] ?? 'aggregate');
+    setItemBrowserTitle(title);
+    setBrowserItems(getUnequippedBySlots(slots));
+    setBrowserSlots(slots);
   }
 
   function handleEquipItem(item: InventoryItem) {
     if (!item.slot_type) return;
     equipItem(item.id, item.slot_type);
     playSound('equipingameinventory');
-    setBrowserItems(getInventoryBySlot(item.slot_type));
+    setBrowserItems(browserSlots ? getUnequippedBySlots(browserSlots) : getInventoryBySlot(item.slot_type));
     setEquipRefreshKey(k => k + 1);
     reload();
   }
@@ -228,7 +245,7 @@ export default function GameScreen() {
     if (!item.slot_type) return;
     unequipItem(item.id);
     playSound('equipingameinventory');
-    setBrowserItems(getInventoryBySlot(item.slot_type));
+    setBrowserItems(browserSlots ? getUnequippedBySlots(browserSlots) : getInventoryBySlot(item.slot_type));
     setEquipRefreshKey(k => k + 1);
     reload();
   }
@@ -328,7 +345,17 @@ export default function GameScreen() {
             )}
 
             <View style={s.divider} />
-            <Text style={s.sectionLabel}>STATUS WINDOW</Text>
+            <View style={s.statusWindowHeader}>
+              <Text style={s.sectionLabel}>STATUS WINDOW</Text>
+              <Pressable onPress={() => Alert.alert(
+                'How stats grow',
+                'Each stat = AP allocation + activity gain.\n\n' +
+                '• AP: earned on level-up (10 AP per level gained). Spend 1 AP → permanently +1 to a stat of your choice using the + button.\n\n' +
+                '• Activity gain: every activity log directly adds +1 to the stat tied to that category\'s chosen "Attribute (for Game)" — set when you create or customise an activity tag.',
+              )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={13} color={colors.textMuted} />
+              </Pressable>
+            </View>
 
             {stats && STAT_KEYS.map(stat => (
               <StatRow
@@ -394,6 +421,7 @@ export default function GameScreen() {
             invTab={invTab}
             setInvTab={setInvTab}
             onOpenBrowser={openItemBrowser}
+            onOpenAggregateBrowser={openAggregateBrowser}
             onUseConsumable={handleUseConsumable}
             refreshKey={equipRefreshKey}
           />
@@ -506,6 +534,29 @@ export default function GameScreen() {
               +45 XP · +{selectedDungeon.coin_reward} Coins · Item drop possible
             </Text>
             <View style={ov.divider} />
+            <View style={ov.mpHeaderRow}>
+              <Text style={ov.fieldLabel}>USE MP</Text>
+              <Pressable onPress={() => setMpInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Feather name="info" size={14} color={colors.textMuted} />
+              </Pressable>
+              <Text style={[ov.mpValue, { marginLeft: 'auto' }]}>{useMp} MP</Text>
+            </View>
+            <View style={ov.mpSliderRow}>
+              <Text style={ov.mpSliderEdge}>0</Text>
+              <Slider
+                style={{ flex: 1 }}
+                minimumValue={0}
+                maximumValue={Math.max(0, rpg?.mp ?? 0)}
+                step={1}
+                value={useMp}
+                onValueChange={setUseMp}
+                minimumTrackTintColor="#8B5CF6"
+                maximumTrackTintColor={colors.border}
+                thumbTintColor="#8B5CF6"
+              />
+              <Text style={ov.mpSliderEdge}>{rpg?.mp ?? 0}</Text>
+            </View>
+            <View style={ov.divider} />
             <Text style={ov.timerStatic}>{fmtTimer(selectedDungeon.duration_mins * 60)}</Text>
             <Text style={ov.timerHint}>Time limit</Text>
             <Pressable onPress={handleStartTimer} style={[ov.primaryBtn, { borderColor: colors.primary }]}>
@@ -582,11 +633,11 @@ export default function GameScreen() {
 
       {/* ── ITEM BROWSER ── */}
       <Modal visible={itemBrowserSlot !== null} transparent animationType="slide">
-        <Pressable style={bm.overlay} onPress={() => setItemBrowserSlot(null)}>
+        <Pressable style={bm.overlay} onPress={() => { setItemBrowserSlot(null); setBrowserSlots(null); }}>
           <Pressable style={bm.sheet} onPress={() => {}}>
             <View style={bm.header}>
               <Text style={bm.title}>{itemBrowserTitle}</Text>
-              <Pressable onPress={() => setItemBrowserSlot(null)} style={bm.closeBtn}>
+              <Pressable onPress={() => { setItemBrowserSlot(null); setBrowserSlots(null); }} style={bm.closeBtn}>
                 <Feather name="x" size={20} color={colors.textPrimary} />
               </Pressable>
             </View>
@@ -608,7 +659,7 @@ export default function GameScreen() {
                     <View key={item.id} style={[bm.itemCard, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
                       <View style={bm.itemRow}>
                         <View style={[bm.rarityBadge, { borderColor: col }]}>
-                          <Text style={[bm.rarityTxt, { color: col }]}>{rarityLabel(rarity)}</Text>
+                          <Text style={[bm.rarityTxt, { color: col }]}>{rarity}</Text>
                         </View>
                         <Text style={[bm.itemName, { color: col }]}>
                           {item.item_name}
@@ -664,6 +715,24 @@ export default function GameScreen() {
         </Pressable>
       </Modal>
 
+      {/* ── USE MP INFO ── */}
+      <Modal visible={mpInfoVisible} transparent animationType="fade">
+        <Pressable style={bm.overlay} onPress={() => setMpInfoVisible(false)}>
+          <Pressable style={bm.raritySheet} onPress={() => {}}>
+            <Text style={bm.raritySheetTitle}>Use MP — Drop Luck</Text>
+            <View style={bm.divider} />
+            <Text style={bm.rateNote}>
+              Spend MP before embarking to improve your odds on this run's item drop. Each point of MP spent
+              adds 0.1% to the gate's lowest-tier drop chance — which equally lowers the no-drop chance, since
+              no-drop is whatever's left after all tiers. e.g. spending 100 MP shifts an E-rank gate's no-drop
+              from 47% down to 37%, and its E-tier chance from 30% up to 40%.{'\n\n'}
+              The MP you choose is deducted from your pool the moment you start the timer — win or lose.
+              MP regenerates naturally at 50/day (modified by your active mood's MP Rate), capped at 100.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* ── GAME INFO / GUIDE ── */}
       <Modal visible={gameInfoVisible} transparent animationType="slide">
         <Pressable style={qm.sheetOverlay} onPress={() => setGameInfoVisible(false)}>
@@ -676,14 +745,19 @@ export default function GameScreen() {
               <Text style={gi.body}>Quests surface activity categories you logged ≥2× in the past 28 days but skipped in the last 7. Accept to commit — complete by logging that activity. Quests reward coins + XP.</Text>
               <View style={qm.divider} />
               <Text style={gi.section}>HOW DUNGEONS WORK</Text>
-              <Text style={gi.body}>Each gate is a real-world timed challenge. Start the timer, complete the objective, and submit clear before time runs out. Failed gates cost −20 HP.</Text>
+              <Text style={gi.body}>Each gate is a real-world timed challenge. Start the timer, complete the objective, and submit clear before time runs out. Failed gates cost HP based on the gap between the gate's rank and your tier — at or below your tier costs a flat 33 HP, each rank above costs 33 HP more.</Text>
+              <View style={qm.divider} />
+              <Text style={gi.section}>DUNGEON RANK PROGRESS</Text>
+              <Text style={gi.body}>Higher-rank gates unlock naturally as you level up. Want a rank early? Head to the Store — every rank can be permanently unlocked ahead of schedule with Spendable XP.</Text>
               <View style={qm.divider} />
               <Text style={gi.section}>RARITY TIER LIST</Text>
-              {(Object.entries(RARITY_COLOR) as [Rarity, string][]).map(([rarity, color]) => (
+              {(Object.entries(RARITY_COLOR) as [Rarity, string][]).map(([rarity, color], i, arr) => (
                 <View key={rarity} style={gi.rarityRow}>
                   <View style={[gi.rarityDot, { backgroundColor: color }]} />
                   <Text style={[gi.rarityLabel, { color }]}>{rarity}</Text>
-                  <Text style={gi.rarityNote}>{rarityLabel(rarity)}</Text>
+                  <Text style={gi.rarityNote}>
+                    {i === 0 ? 'Most common' : i === arr.length - 1 ? 'Rarest' : `Tier ${i + 1} of ${arr.length}`}
+                  </Text>
                 </View>
               ))}
               <View style={qm.divider} />
@@ -795,6 +869,7 @@ const s = StyleSheet.create({
 
   divider:      { height: 1, backgroundColor: colors.border },
   sectionLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2 },
+  statusWindowHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionHeading:{ fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.primary, letterSpacing: 2 },
 
   weaponRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -837,6 +912,11 @@ const ov = StyleSheet.create({
   secondaryBtnTxt:{ fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1 },
   fatigueWarn:   { backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', borderRadius: radius.sm, padding: spacing.sm },
   fatigueWarnTxt:{ fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: '#EF4444' },
+
+  mpHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  mpValue:     { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: '#8B5CF6' },
+  mpSliderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  mpSliderEdge:{ fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, minWidth: 28, textAlign: 'center' },
 });
 
 const qpv = StyleSheet.create({

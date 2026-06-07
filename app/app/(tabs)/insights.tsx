@@ -12,8 +12,8 @@ import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
 import { Feather } from '@expo/vector-icons';
 import {
-  getHealthState, getRestorativeActivities, addRestorativeActivity,
-  applyHealthDecay, purchaseRestoration,
+  getHealthState, getRestorativeActivities, addRestorativeActivity, deleteRestorativeActivity,
+  getPastHistoryRestorativeActivities, applyHealthDecay, purchaseRestoration,
   type HealthState, type RestorativeActivity,
 } from '../../src/db/health';
 import { getRPGState, type RPGState } from '../../src/db/rpg';
@@ -109,9 +109,9 @@ const hb = StyleSheet.create({
 // ─── Activity card ────────────────────────────────────────────────────────────
 
 function RestoreCard({
-  activity, xp, onBuy,
+  activity, xp, onBuy, onDelete,
 }: {
-  activity: RestorativeActivity; xp: number; onBuy: () => void;
+  activity: RestorativeActivity; xp: number; onBuy: () => void; onDelete: () => void;
 }) {
   const restoreLines = [
     activity.emotional_restore > 0 && `+${activity.emotional_restore}% Emotional`,
@@ -129,7 +129,12 @@ function RestoreCard({
         <Text style={rc.restores}>{restoreLines}</Text>
       </View>
       <View style={rc.right}>
-        <Text style={[rc.cost, !canAfford && rc.costLow]}>{activity.xp_cost} XP</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+          <Text style={[rc.cost, !canAfford && rc.costLow]}>{activity.xp_cost} XP</Text>
+          <Pressable onPress={onDelete} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <Feather name="trash-2" size={12} color={colors.danger} />
+          </Pressable>
+        </View>
         <Pressable
           onPress={canAfford ? onBuy : undefined}
           style={[rc.btn, !canAfford && rc.btnDisabled]}
@@ -168,6 +173,8 @@ export default function RechargeScreen() {
   const [rpg, setRpg] = useState<RPGState | null>(null);
   const [activities, setActivities] = useState<RestorativeActivity[]>([]);
   const [addModal, setAddModal] = useState(false);
+  const [historyModal, setHistoryModal] = useState(false);
+  const [pastActivities, setPastActivities] = useState<RestorativeActivity[]>([]);
   const [infoModal, setInfoModal] = useState(false);
   const [snapshotInfoModal, setSnapshotInfoModal] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyHealthStats | null>(null);
@@ -209,6 +216,24 @@ export default function RechargeScreen() {
     triggerCurrencyRefresh();
   }
 
+  function handleDelete(activity: RestorativeActivity) {
+    const usedHint = activity.used === 1
+      ? ` It's been used to restore before, so it'll move to Past Restore — viewable, but can't be selected again.`
+      : '';
+    Alert.alert('Remove restore activity?', `Remove "${activity.name}" from your active list.${usedHint}`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => {
+        deleteRestorativeActivity(activity.id);
+        reload();
+      }},
+    ]);
+  }
+
+  function openPastHistory() {
+    setPastActivities(getPastHistoryRestorativeActivities());
+    setHistoryModal(true);
+  }
+
   function handleAddCustom() {
     if (!newName.trim()) return;
     addRestorativeActivity(
@@ -226,11 +251,11 @@ export default function RechargeScreen() {
 
   const xp = rpg?.spendable_xp ?? rpg?.total_xp ?? 0;
   const minBar = health ? Math.min(health.emotional, health.physical, health.mental) : 100;
-  const penalty = minBar <= 0 ? '−50% XP (Depleted)'
-    : minBar < 10 ? '−35% XP (Critical)'
-    : minBar < 20 ? '−25% XP (Danger)'
-    : minBar < 50 ? '−15% XP (Weakened)'
-    : minBar < 70 ? '−5% XP (Recovering)'
+  const penalty = minBar <= 0 ? '0.93× XP (Depleted)'
+    : minBar < 10 ? '0.94× XP (Critical)'
+    : minBar < 20 ? '0.95× XP (Danger)'
+    : minBar < 30 ? '0.96× XP (Weakened)'
+    : minBar < 50 ? '0.98× XP (Worn)'
     : null;
 
   return (
@@ -304,6 +329,11 @@ export default function RechargeScreen() {
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionHeading}>Restore</Text>
+            <Pressable onPress={openPastHistory} style={s.pastRestoreBtn}>
+              <Feather name="archive" size={12} color={colors.textMuted} />
+              <Text style={s.pastRestoreBtnText}>Past Restore</Text>
+            </Pressable>
+            <View style={{ flex: 1 }} />
             {!isStatDead && (
               <Pressable onPress={() => setAddModal(true)}>
                 <Text style={s.addLink}>+ Custom</Text>
@@ -322,7 +352,7 @@ export default function RechargeScreen() {
             </View>
           ) : (
             activities.map(a => (
-              <RestoreCard key={a.id} activity={a} xp={xp} onBuy={() => handleBuy(a.id)} />
+              <RestoreCard key={a.id} activity={a} xp={xp} onBuy={() => handleBuy(a.id)} onDelete={() => handleDelete(a)} />
             ))
           )}
         </View>
@@ -336,23 +366,19 @@ export default function RechargeScreen() {
             <View style={s.handle} />
             <Text style={s.infoSheetTitle}>How Recharge Works</Text>
             <View style={s.infoDivider} />
-            <Text style={s.infoSheetText}>Bars deplete −8%/day. Missing physical/recreational/any activity adds −5% extra per category.</Text>
+            <Text style={s.infoSheetText}>Bars deplete −30%/day if you've logged an activity today, −20%/day if not.</Text>
             <Text style={s.infoSheetText}>Logging a physical activity restores +5% Physical. Recreational restores +5% Mental.</Text>
             <Text style={s.infoSheetText}>Hitting 0 triggers death state: XP blocked, game penalised.</Text>
             <View style={s.infoDivider} />
-            <Text style={[s.infoSheetText, { fontFamily: fonts.ui.semibold, color: colors.textPrimary }]}>XP Penalty Tiers (lowest bar)</Text>
-            <Text style={s.infoSheetText}>≥70% — No penalty (Stable/Peak)</Text>
-            <Text style={s.infoSheetText}>50–70% — −5% XP (Recovering)</Text>
-            <Text style={s.infoSheetText}>20–50% — −15% XP (Weakened)</Text>
-            <Text style={s.infoSheetText}>10–20% — −25% XP (Danger)</Text>
-            <Text style={s.infoSheetText}>&lt;10% — −35% XP (Critical)</Text>
-            <Text style={s.infoSheetText}>0% — −50% XP (Depleted)</Text>
-            <View style={s.infoDivider} />
-            <Text style={[s.infoSheetText, { fontFamily: fonts.ui.semibold, color: colors.textPrimary }]}>HP Effect (per day)</Text>
-            <Text style={s.infoSheetText}>&lt;30% — HP falls (−2 to −10 HP/day)</Text>
-            <Text style={s.infoSheetText}>30–50% — Neutral</Text>
-            <Text style={s.infoSheetText}>50–70% — HP +2/day</Text>
-            <Text style={s.infoSheetText}>70%+ — HP +5/day</Text>
+            <Text style={[s.infoSheetText, { fontFamily: fonts.ui.semibold, color: colors.textPrimary }]}>XP Multiplier Tiers (lowest bar)</Text>
+            <Text style={s.infoSheetText}>≥90% — 1.03× (Peak)</Text>
+            <Text style={s.infoSheetText}>70–90% — 1.02× (Strong)</Text>
+            <Text style={s.infoSheetText}>50–70% — 1.01× (Stable)</Text>
+            <Text style={s.infoSheetText}>30–50% — 0.98× (Worn)</Text>
+            <Text style={s.infoSheetText}>20–30% — 0.96× (Weakened)</Text>
+            <Text style={s.infoSheetText}>10–20% — 0.95× (Danger)</Text>
+            <Text style={s.infoSheetText}>&lt;10% — 0.94× (Critical)</Text>
+            <Text style={s.infoSheetText}>0% — 0.93× (Depleted)</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -405,6 +431,38 @@ export default function RechargeScreen() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Past Restore history modal */}
+      <Modal visible={historyModal} transparent animationType="fade">
+        <Pressable style={s.historyOverlay} onPress={() => setHistoryModal(false)} />
+        <View style={s.historySheet}>
+          <Text style={s.sheetTitle}>Past Restore</Text>
+          <Text style={s.sheetSubLabel}>Archived restore activities — viewable, can't be selected again.</Text>
+          <ScrollView style={{ maxHeight: 360 }}>
+            {pastActivities.length === 0 ? (
+              <Text style={s.historyEmpty}>Nothing archived yet.</Text>
+            ) : pastActivities.map(a => {
+              const lines = [
+                a.emotional_restore > 0 && `+${a.emotional_restore}% Emotional`,
+                a.physical_restore  > 0 && `+${a.physical_restore}% Physical`,
+                a.mental_restore    > 0 && `+${a.mental_restore}% Mental`,
+              ].filter(Boolean).join('  ');
+              return (
+                <View key={a.id} style={s.historyRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.historyName}>{a.name}</Text>
+                    {!!lines && <Text style={s.historyMeta}>{lines}</Text>}
+                  </View>
+                  <Text style={s.historyMeta}>{a.xp_cost} XP</Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+          <Pressable onPress={() => setHistoryModal(false)} style={s.historyCloseBtn}>
+            <Text style={s.historyCloseBtnText}>Close</Text>
+          </Pressable>
+        </View>
       </Modal>
     </SafeAreaView>
     </SwipeNavWrapper>
@@ -462,10 +520,28 @@ const s = StyleSheet.create({
   infoSheetText:  { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20 },
 
   section: { gap: spacing.sm },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   sectionHeading: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
   addLink: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.primary },
+  pastRestoreBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+  },
+  pastRestoreBtnText: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },
 
+  historyOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  historySheet: {
+    position: 'absolute', top: '20%', left: spacing.lg, right: spacing.lg,
+    backgroundColor: colors.card, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  historyEmpty: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, paddingVertical: spacing.md, textAlign: 'center' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
+  historyName: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textPrimary },
+  historyMeta: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  historyCloseBtn: { borderRadius: radius.md, padding: spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginTop: spacing.xs },
+  historyCloseBtnText: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
   kbAvoid: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg,

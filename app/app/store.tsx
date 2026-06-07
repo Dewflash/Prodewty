@@ -7,10 +7,13 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg';
-import { purchaseHPBoost } from '../src/db/game';
+import { purchaseHPBoost, purchaseCosmetic, getDungeonUnlockInfo, earlyUnlockDungeonRank } from '../src/db/game';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { db } from '../src/db/schema';
 import { playSound, switchBGM } from '../src/services/audio';
+import { RANK_COLOR } from '../src/components/game/DungeonCard';
+
+const DUNGEON_RANKS = ['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Legend'];
 
 function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
   try {
@@ -45,6 +48,24 @@ export default function StoreScreen() {
 
   function reload() { setRpg(getRPGState()); }
 
+  function handleEarlyUnlock(rank: string) {
+    const info = getDungeonUnlockInfo(rank);
+    if (info.earlyCost === null) return;
+    Alert.alert(
+      `Unlock ${rank}-rank gates early?`,
+      `Spend ${info.earlyCost} Spendable XP to permanently unlock ${rank}-rank gates now, ahead of the natural Level ${info.naturalLevel} unlock.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unlock', onPress: () => {
+          const result = earlyUnlockDungeonRank(rank);
+          if (result === 'insufficient_xp') { Alert.alert('Not enough Spendable XP', `Need ${info.earlyCost} spendable XP.`); return; }
+          if (result === 'already_unlocked') { Alert.alert('Already unlocked'); return; }
+          if (result === 'ok') { playSound('purchaseinstore'); reload(); Alert.alert('Unlocked', `${rank}-rank gates are now permanently accessible.`); }
+        }},
+      ],
+    );
+  }
+
   function buy(cost: number, action: () => 'ok' | 'insufficient_coins' | 'hp_not_critical', label: string) {
     if (coins < cost) { Alert.alert('Not enough coins', `Need ${cost} coins.`); return; }
     Alert.alert(`Buy ${label}?`, `Spend ${cost} coins.`, [
@@ -74,6 +95,16 @@ export default function StoreScreen() {
       key: 'mp', icon: 'zap', name: 'MP Boost', cost: 75,
       desc: 'Instantly restores +25 MP.',
       onBuy: () => buy(75, purchaseMPBoost, 'MP Boost'),
+    },
+    {
+      key: 'cosmetic-standard', icon: 'star', name: 'Standard Cosmetic', cost: 5_000,
+      desc: 'Redeemable token for a standard cosmetic — content coming soon.',
+      onBuy: () => buy(5_000, () => purchaseCosmetic('standard'), 'Standard Cosmetic'),
+    },
+    {
+      key: 'cosmetic-premium', icon: 'award', name: 'Premium Cosmetic', cost: 10_000,
+      desc: 'Redeemable token for a premium cosmetic — content coming soon.',
+      onBuy: () => buy(10_000, () => purchaseCosmetic('premium'), 'Premium Cosmetic'),
     },
   ];
 
@@ -132,6 +163,32 @@ export default function StoreScreen() {
             </View>
           </View>
         ))}
+
+        {section === 'game' && (
+          <View style={s.unlockSection}>
+            <Text style={s.unlockTitle}>DUNGEON RANK UNLOCKS</Text>
+            <Text style={s.unlockHint}>Higher-rank gates open naturally as you level up — or unlock any rank early, permanently, by spending Spendable XP.</Text>
+            {DUNGEON_RANKS.map(rank => {
+              const info = getDungeonUnlockInfo(rank);
+              return (
+                <View key={rank} style={s.unlockRow}>
+                  <Text style={[s.unlockRank, { color: RANK_COLOR[rank] ?? colors.textMuted }]}>{rank}</Text>
+                  {info.unlocked ? (
+                    <Text style={s.unlockStatusOk}>Unlocked</Text>
+                  ) : (
+                    <>
+                      <Text style={s.unlockStatus}>Lv {info.naturalLevel} · or {info.earlyCost} spendable XP</Text>
+                      <Pressable style={s.unlockBtn} onPress={() => handleEarlyUnlock(rank)}>
+                        <Text style={s.unlockBtnTxt}>Unlock</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         <Text style={s.moreText}>More items coming once the Game is built.</Text>
       </ScrollView>
     </SafeAreaView>
@@ -172,4 +229,14 @@ const s = StyleSheet.create({
   buyBtnDisabled:{ backgroundColor: colors.border },
   buyBtnText:   { fontFamily: fonts.ui.semibold, fontSize: fontSize.xs, color: colors.bg },
   moreText:     { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, textAlign: 'center', paddingTop: spacing.md },
+
+  unlockSection:  { backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 4 },
+  unlockTitle:    { fontFamily: fonts.mono.bold, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2 },
+  unlockHint:     { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.xs },
+  unlockRow:      { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
+  unlockRank:     { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, width: 48 },
+  unlockStatus:   { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, flex: 1 },
+  unlockStatusOk: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.success, flex: 1 },
+  unlockBtn:      { borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
+  unlockBtnTxt:   { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.primary, letterSpacing: 1 },
 });

@@ -2,6 +2,7 @@ import { db } from './schema';
 import { calculateXP } from '../services/xpEngine';
 import { applyXP, getWeeklyBoostMult, activateWeeklyBoost } from './rpg';
 import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
+import { grantAttributeStatGain } from './game';
 
 const MOOD_XP    = 20;
 const JOURNAL_XP = 15;
@@ -183,14 +184,19 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
     const names = input.selectedCategories.map(c => c.name);
     if (names.length > 0) {
       const ph = names.map(() => '?').join(',');
-      const flags = db.getAllSync<{ is_physical: number; is_recreational: number }>(
-        `SELECT is_physical, is_recreational FROM categories WHERE name IN (${ph})`, ...names,
+      const flags = db.getAllSync<{ is_physical: number; is_recreational: number; is_communal: number }>(
+        `SELECT is_physical, is_recreational, is_communal FROM categories WHERE name IN (${ph})`, ...names,
       );
       applyLoggingHealthBoost(
         flags.some(f => f.is_physical === 1),
         flags.some(f => f.is_recreational === 1),
+        flags.some(f => f.is_communal === 1),
         input.log_date,
       );
+      db.runSync(`UPDATE categories SET used = 1 WHERE name IN (${ph})`, ...names);
+
+      // Activity logs take exactly one category — grant +1 to the stat matching its attribute
+      grantAttributeStatGain(names[0]);
     }
   } catch {}
 

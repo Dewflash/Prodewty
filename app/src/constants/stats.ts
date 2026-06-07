@@ -1,11 +1,13 @@
 // Shared constants for the 3 health stat bars.
 // Single source of truth — import here instead of redefining in each component.
 
+import type { ComponentProps } from 'react';
+import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
 export type StatKey = 'emotional' | 'physical' | 'mental';
 
-export const STAT_ICON: Record<StatKey, string> = {
+export const STAT_ICON: Record<StatKey, ComponentProps<typeof Feather>['name']> = {
   emotional: 'activity',
   physical:  'zap',
   mental:    'cpu',

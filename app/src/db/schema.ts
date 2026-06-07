@@ -728,7 +728,7 @@ function runMigrations() {
     db.runSync(
       `INSERT OR IGNORE INTO inventory
          (item_name, item_type, category, slot_type, rarity, stat_buff, description, is_equipped)
-       VALUES (?, 'equipment', 'game', ?, 'Chromatic', ?, ?, 0)`,
+       VALUES (?, 'equipment', 'game', ?, 'Legendary', ?, ?, 0)`,
       'Void Sovereign Mantle',
       'coat',
       'str:10',
@@ -1135,6 +1135,150 @@ function runMigrations() {
     }
 
     db.execSync('PRAGMA user_version = 31');
+  }
+
+  if (version < 32) {
+    db.runSync(`UPDATE inventory SET rarity = 'Legendary' WHERE rarity = 'Chromatic'`);
+    db.execSync('PRAGMA user_version = 32');
+  }
+
+  if (version < 33) {
+    // Mood deletion usage guard (Phase 1B §2): block deletion once a mood has been activated
+    try { db.execSync(`ALTER TABLE custom_moods ADD COLUMN used INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // Dungeon unlock system (MECHANICS.md §11.6): persists early-unlocked ranks.
+    // Natural unlocks (by level) are computed live and never stored here.
+    db.execSync(`CREATE TABLE IF NOT EXISTS dungeon_unlocks (
+      rank        TEXT PRIMARY KEY,
+      unlocked_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )`);
+
+    db.execSync('PRAGMA user_version = 33');
+  }
+
+  if (version < 34) {
+    // Communal-activity health boost: third logging-flag alongside is_physical/is_recreational, +5 emotional
+    try { db.execSync(`ALTER TABLE categories ADD COLUMN is_communal INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // Category deletion usage guard (mirrors custom_moods): block deletion once a category has been logged against
+    try { db.execSync(`ALTER TABLE categories ADD COLUMN used INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE categories ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`); } catch {}
+
+    db.execSync('PRAGMA user_version = 34');
+  }
+
+  if (version < 35) {
+    // Attribute-driven stat gain: replaces hardcoded category-name auto-gain (§9.3).
+    // Each log of a category increments the rpg_state {attribute}_auto column by 1 directly.
+    for (const col of ['strength_auto', 'wisdom_auto', 'focus_auto', 'agility_auto', 'resilience_auto', 'per_stat_auto', 'sta_stat_auto']) {
+      try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch {}
+    }
+
+    db.execSync('PRAGMA user_version = 35');
+  }
+
+  if (version < 36) {
+    // Restore (recharge) activity deletion + Past History — mirrors categories/moods.
+    try { db.execSync(`ALTER TABLE restorative_activities ADD COLUMN used INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE restorative_activities ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`); } catch {}
+    db.execSync('PRAGMA user_version = 36');
+  }
+
+  if (version < 37) {
+    // MP natural regen + dungeon MP-spend drop boost + mood XP change modifier.
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN last_mp_regen TEXT`); } catch {}
+    try { db.execSync(`ALTER TABLE custom_moods ADD COLUMN xp_change INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE dungeon_runs ADD COLUMN mp_used INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // Re-cap mp_rate to ±50 — clamp any pre-existing values stored under the old ±100 range.
+    try { db.execSync(`UPDATE custom_moods SET mp_rate = MAX(-50, MIN(50, mp_rate))`); } catch {}
+    db.execSync('PRAGMA user_version = 37');
+  }
+}
+
+// ─── Full Wipe / Reset (Phase 1B §1) ─────────────────────────────────────────
+// Wipes all user-generated data back to a fresh-start state and re-seeds the
+// personal-build defaults (categories, recharge activities, custom moods).
+// `dungeons` (game content) and `dungeon_unlocks` early-unlock progress are
+// intentionally NOT both treated the same: dungeons are kept, unlocks are wiped.
+export function performFullReset(): void {
+  const wipeTables = [
+    'activity_logs', 'quests', 'quest_completions',
+    'inventory', 'active_buffs', 'bible_notes',
+    'game_logs', 'dungeon_runs',
+    'habit_completions', 'habits',
+    'dungeon_unlocks',
+  ];
+  for (const t of wipeTables) {
+    try { db.execSync(`DELETE FROM ${t}`); } catch {}
+  }
+
+  // rpg_state → fresh-start defaults (Level 1, 0/450 XP, all currencies zeroed)
+  db.runSync(`DELETE FROM rpg_state WHERE id = 1`);
+  db.runSync(`INSERT INTO rpg_state (id) VALUES (1)`);
+  db.runSync(`UPDATE rpg_state SET xp_to_next_level = 450, mp = 100 WHERE id = 1`);
+
+  // health_state → 100/100/100, no logs
+  db.runSync(`DELETE FROM health_state WHERE id = 1`);
+  db.runSync(`INSERT INTO health_state (id) VALUES (1)`);
+
+  // ── Re-seed personal-build defaults ──
+  db.execSync(`DELETE FROM custom_moods`);
+  const defaultMoods: [string, string, string, number][] = [
+    ['driven',        '#34D399', '+10% XP gain',                  10],
+    ['burnout',       '#EF4444', '−20% XP · −10% coins earned',  -20],
+    ['reminiscing',   '#A855F7', '+5% XP gain',                    5],
+    ['lonely',        '#64748B', '−5% XP gain',                   -5],
+    ['overstimulated','#F97316', '−10% XP · restlessness penalty',-8],
+    ['relapsed',      '#EF4444', '−30% XP · −15% coins earned',  -30],
+  ];
+  for (const [name, color, effect, mp] of defaultMoods) {
+    db.runSync(`INSERT INTO custom_moods (name, color, passive_effect, mp_rate) VALUES (?,?,?,?)`, name, color, effect, mp);
+  }
+
+  db.execSync(`DELETE FROM categories`);
+  const defaultCategories: { name: string; weight: number; attribute: string; isPhysical: number; isRecreational: number }[] = [
+    { name: 'Workout',  weight: 18, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
+    { name: 'News',     weight: 16, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+    { name: 'Coding',   weight: 15, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
+    { name: 'Study',    weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+    { name: 'Devotion', weight: 10, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+    { name: 'Guitar',   weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+    { name: 'Reading',  weight:  6, attribute: 'wisdom',     isPhysical: 0, isRecreational: 1 },
+    { name: 'Journal',  weight:  5, attribute: 'resilience', isPhysical: 0, isRecreational: 0 },
+    { name: 'Admin',    weight:  3, attribute: 'agility',    isPhysical: 0, isRecreational: 0 },
+    { name: 'Meditate', weight:  1, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  ];
+  for (const cat of defaultCategories) {
+    db.runSync(
+      `INSERT INTO categories (name, weight, attribute, is_default, is_physical, is_recreational) VALUES (?, ?, ?, 1, ?, ?)`,
+      cat.name, cat.weight, cat.attribute, cat.isPhysical, cat.isRecreational,
+    );
+  }
+
+  db.execSync(`DELETE FROM restorative_activities`);
+  const defaultRestorative = [
+    { name: 'Scroll',     desc: 'Mindless scroll session',    cost: 100, e: 10, p: 0, m: 0  },
+    { name: 'Music',      desc: 'Listen to music',            cost:  80, e:  5, p: 0, m: 5  },
+    { name: 'Netflix',    desc: 'Watch a show or movie',      cost:  65, e: 10, p: 0, m: 10 },
+    { name: 'Youtube',    desc: 'Watch YouTube',              cost:  60, e:  0, p: 0, m: 10 },
+    { name: 'Game',       desc: 'Play a game',                cost:  55, e:  0, p: 0, m: 5  },
+    { name: 'Journal',    desc: 'Free-write or reflect',      cost:  50, e:  5, p: 0, m: 5  },
+    { name: 'Jam',        desc: 'Play guitar or noodle',      cost:  40, e:  5, p: 0, m: 5  },
+    { name: 'Good meal',  desc: 'Proper sit-down meal',       cost:  35, e:  5, p: 5, m: 0  },
+    { name: 'Good sleep', desc: '7–9 hours quality sleep',    cost:  30, e:  5, p: 5, m: 5  },
+    { name: 'Walk',       desc: 'Outdoor or casual walk',     cost:  30, e:  0, p: 5, m: 5  },
+    { name: 'Bath',       desc: 'Shower or bath',             cost:  25, e:  5, p: 0, m: 5  },
+    { name: 'Talk',       desc: 'Conversation with someone',  cost:  20, e:  5, p: 0, m: 0  },
+    { name: 'Meal',       desc: 'Regular meal',               cost:  20, e:  5, p: 5, m: 0  },
+    { name: 'Sleep',      desc: 'Rest or nap',                cost:  20, e:  0, p: 5, m: 5  },
+    { name: 'Pull-ups',   desc: 'Quick bodyweight set',       cost:  20, e:  0, p: 5, m: 0  },
+  ];
+  for (const a of defaultRestorative) {
+    db.runSync(
+      `INSERT INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      a.name, a.desc, a.cost, a.e, a.p, a.m,
+    );
   }
 }
 

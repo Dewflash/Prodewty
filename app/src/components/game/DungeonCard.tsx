@@ -8,6 +8,7 @@ import { isDungeonOnCooldown, getDungeonCooldownRemaining, type Dungeon } from '
 export const RANK_COLOR: Record<string, string> = {
   E: '#64748B', D: '#34D399', C: '#38BDF8',
   B: '#A855F7', A: '#F97316', S: '#FBBF24',
+  SS: '#F472B6', SSS: '#FB7185', Legend: '#FFFFFF',
 };
 
 export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo }: {

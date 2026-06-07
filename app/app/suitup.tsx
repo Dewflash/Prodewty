@@ -10,7 +10,7 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 
 // ─── Rarity System — re-exported from src/constants/rarity.ts ────────────────
-export { RARITY_COLOR, RARITY_BG, rarityLabel, type Rarity } from '../src/constants/rarity';
+export { RARITY_COLOR, RARITY_BG, type Rarity } from '../src/constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ function RarityBadge({ rarity }: { rarity: Rarity }) {
   const col = RARITY_COLOR[rarity];
   return (
     <View style={[rb.badge, { borderColor: col, backgroundColor: RARITY_BG[rarity] }]}>
-      <Text style={[rb.txt, { color: col }]}>{rarityLabel(rarity)}</Text>
+      <Text style={[rb.txt, { color: col }]}>{rarity}</Text>
     </View>
   );
 }
@@ -200,7 +200,7 @@ export default function SuitUpScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.legendRow}>
         {(Object.entries(RARITY_COLOR) as [Rarity, string][]).map(([r, col]) => (
           <View key={r} style={[s.legendChip, { borderColor: col, backgroundColor: RARITY_BG[r] }]}>
-            <Text style={[s.legendTxt, { color: col }]}>{rarityLabel(r)}</Text>
+            <Text style={[s.legendTxt, { color: col }]}>{r}</Text>
           </View>
         ))}
       </ScrollView>

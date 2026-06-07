@@ -6,6 +6,7 @@
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^14.0.0",
+    "@react-native-community/slider": "^5.0.1",
     "expo": "~54.0.35",
     "expo-av": "~16.0.8",
     "expo-constants": "~17.0.0",

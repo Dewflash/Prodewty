@@ -1,6 +1,6 @@
 import { db } from './schema';
 import { xpRequiredForLevel, titleForLevel } from '../services/xpEngine';
-import { sqlNow } from '../utils/date';
+import { sqlNow, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
 
@@ -16,6 +16,13 @@ export type RPGState = {
   resilience: number;
   per_stat: number;
   sta_stat: number;
+  strength_auto: number;
+  wisdom_auto: number;
+  focus_auto: number;
+  agility_auto: number;
+  resilience_auto: number;
+  per_stat_auto: number;
+  sta_stat_auto: number;
   title: string;
   streak_days: number;
   last_active_date: string | null;
@@ -52,11 +59,11 @@ export function getRPGState(): RPGState {
 export function checkVigor(): { gemAwarded: boolean } {
   try {
     const state = getRPGState();
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     const lastVigor = (state as any).last_vigor_date as string | null;
     if (lastVigor === today) return { gemAwarded: false }; // already ran today
 
-    const yesterday = new Date(new Date(today).getTime() - 86400000).toISOString().split('T')[0];
+    const yesterday = localDateStr(new Date(Date.now() - 86400000));
     const sdRow = db.getFirstSync<{ cnt: number }>(
       `SELECT COUNT(*) as cnt FROM activity_logs WHERE entry_type = 'self_destruct' AND log_date = ?`,
       yesterday,
@@ -152,7 +159,7 @@ export function isInDeathState(): boolean {
 }
 
 export function selfDestruct(): { count: number; date: string } {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const state = getRPGState();
   const isFirstSDToday = (state.last_self_destruct ?? '') !== today;
   db.runSync(
@@ -187,9 +194,75 @@ export function selfDestruct(): { count: number; date: string } {
 
 export function setCurrentMood(mood: string): void {
   db.runSync(`UPDATE rpg_state SET current_mood = ? WHERE id = 1`, mood);
+  db.runSync(`UPDATE custom_moods SET used = 1 WHERE name = ?`, mood);
 }
 
-export type CustomMood = { name: string; color: string; passive_effect: string | null; mp_rate: number };
+export type CustomMood = { name: string; color: string; passive_effect: string | null; mp_rate: number; xp_change: number; used?: number };
+
+function getMoodByName(name: string): CustomMood | null {
+  try {
+    return db.getFirstSync<CustomMood>(
+      `SELECT name, color, passive_effect, mp_rate, xp_change, used FROM custom_moods WHERE name = ?`,
+      name,
+    ) ?? null;
+  } catch { return null; }
+}
+
+// Active mood's passive XP modifier — applied as a multiplier inside applyXP()
+// so it covers every XP source uniformly (activity logs, mood/journal, dungeon loot, quests, habits).
+export function getMoodXPMultiplier(): number {
+  const mood = getMoodByName(getRPGState().current_mood);
+  if (!mood) return 1.0;
+  return 1 + (mood.xp_change ?? 0) / 100;
+}
+
+const MP_REGEN_PER_DAY = 50;
+
+// Natural MP regen — daily-tick pattern mirrors applyHealthDecay. Active mood's
+// MP Rate (±50/day) is additive on top of the 50/day baseline, giving the
+// previously-cosmetic mp_rate field a real effect.
+export function applyMpRegen(): void { try { _applyMpRegen(); } catch {} }
+function _applyMpRegen(): void {
+  const state = getRPGState();
+  const last = (state as any).last_mp_regen as string | null;
+  const now = new Date();
+  if (!last) {
+    db.runSync(`UPDATE rpg_state SET last_mp_regen = ? WHERE id = 1`, sqlNow());
+    return;
+  }
+  const daysPassed = Math.min((now.getTime() - new Date(last).getTime()) / 86400000, 30);
+  if (daysPassed < 0.042) return; // skip if < ~1 hour
+
+  const mood = getMoodByName(state.current_mood);
+  const dailyRate = MP_REGEN_PER_DAY + (mood?.mp_rate ?? 0);
+  const delta = Math.round(dailyRate * daysPassed);
+  if (delta === 0) return;
+
+  const mp = Math.max(0, Math.min(100, state.mp + delta));
+  db.runSync(`UPDATE rpg_state SET mp = ?, last_mp_regen = ? WHERE id = 1`, mp, sqlNow());
+  triggerCurrencyRefresh();
+}
+
+// Deletes a mood from the active list. Moods that have been logged against
+// are archived (kept for Past History, can no longer be selected); never-used ones are purged outright.
+export function deleteCustomMood(name: string): 'archived' | 'purged' | 'not_found' {
+  const mood = db.getFirstSync<{ used: number }>(`SELECT used FROM custom_moods WHERE name = ?`, name);
+  if (!mood) return 'not_found';
+  if (mood.used === 1) {
+    db.runSync(`UPDATE custom_moods SET is_active = 0 WHERE name = ?`, name);
+    return 'archived';
+  }
+  db.runSync(`DELETE FROM custom_moods WHERE name = ?`, name);
+  return 'purged';
+}
+
+export function getPastHistoryMoods(): CustomMood[] {
+  try {
+    return db.getAllSync<CustomMood>(
+      `SELECT name, color, passive_effect, mp_rate, xp_change, used FROM custom_moods WHERE is_active = 0 AND used = 1 ORDER BY name ASC`,
+    );
+  } catch { return []; }
+}
 
 // Fallback colors for the 6 default moods — used when DB isn't loaded yet
 export const MOOD_FALLBACK_COLORS: Record<string, string> = {
@@ -204,7 +277,7 @@ export const MOOD_FALLBACK_COLORS: Record<string, string> = {
 export function getCustomMoods(): CustomMood[] {
   try {
     return db.getAllSync<CustomMood>(
-      `SELECT name, color, passive_effect, mp_rate FROM custom_moods WHERE is_active = 1 ORDER BY id ASC`,
+      `SELECT name, color, passive_effect, mp_rate, xp_change, used FROM custom_moods WHERE is_active = 1 ORDER BY id ASC`,
     );
   } catch { return []; }
 }
@@ -219,6 +292,9 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   // Block XP gain when in death state (HP=0 or any health bar=0)
   if (isInDeathState()) return { levelUp: false, state };
   let { current_level, total_xp, xp_to_next_level } = state;
+
+  // Active mood's passive XP modifier (±10%) — applied here so it covers every XP source.
+  xp = Math.max(1, Math.round(xp * getMoodXPMultiplier()));
 
   total_xp += xp;
   const newHighest = Math.max(state.highest_xp_attained ?? 0, total_xp);
@@ -253,8 +329,6 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   let coinsGained = 0;
   const startLevel = current_level - levelsGained;
   for (let lvl = startLevel + 1; lvl <= current_level; lvl++) coinsGained += lvl * 10;
-  // HP regen: 10% of XP gained, capped at hp_max
-  const hpRegen = Math.floor(xp * 0.1);
 
   db.runSync(
     `UPDATE rpg_state SET
@@ -262,14 +336,13 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
        title = ?, streak_days = ?, last_active_date = ?,
        ap = COALESCE(ap, 0) + ?,
        coins = COALESCE(coins, 0) + ?,
-       hp = MIN(COALESCE(hp_max, 100), COALESCE(hp, 100) + ?),
        level_up_pending = CASE WHEN ? > 0 THEN ? ELSE level_up_pending END,
        spendable_xp    = COALESCE(spendable_xp, 0) + ?,
        total_xp_earned = COALESCE(total_xp_earned, 0) + ?
      WHERE id = 1`,
     current_level, total_xp, xp_to_next_level,
     title, streak_days, today,
-    apGained, coinsGained, hpRegen,
+    apGained, coinsGained,
     levelsGained, levelUp ? current_level : 0,
     xp, xp,
   );

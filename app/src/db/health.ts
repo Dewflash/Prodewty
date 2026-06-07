@@ -23,6 +23,7 @@ export type RestorativeActivity = {
   physical_restore: number;
   mental_restore: number;
   is_default: number;
+  used: number;
 };
 
 // ─── Decay rates (% per day) ─────────────────────────────────────────────────
@@ -53,7 +54,7 @@ export function getHealthState(): HealthState {
 
 export function getRestorativeActivities(): RestorativeActivity[] {
   return db.getAllSync<RestorativeActivity>(
-    'SELECT * FROM restorative_activities ORDER BY is_default DESC, xp_cost ASC',
+    'SELECT * FROM restorative_activities WHERE is_active = 1 ORDER BY is_default DESC, xp_cost ASC',
   );
 }
 
@@ -65,6 +66,26 @@ export function addRestorativeActivity(
     `INSERT INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore)
      VALUES (?, ?, ?, ?, ?, ?)`,
     name.trim(), description.trim() || null, xpCost, emotional, physical, mental,
+  );
+}
+
+// Deletes a restore activity from the active list. Ones that have been used to
+// restore before are archived (kept for Past History, can no longer be selected);
+// never-used ones are purged outright.
+export function deleteRestorativeActivity(id: number): 'archived' | 'purged' | 'not_found' {
+  const activity = db.getFirstSync<{ used: number }>('SELECT used FROM restorative_activities WHERE id = ?', id);
+  if (!activity) return 'not_found';
+  if (activity.used === 1) {
+    db.runSync('UPDATE restorative_activities SET is_active = 0 WHERE id = ?', id);
+    return 'archived';
+  }
+  db.runSync('DELETE FROM restorative_activities WHERE id = ?', id);
+  return 'purged';
+}
+
+export function getPastHistoryRestorativeActivities(): RestorativeActivity[] {
+  return db.getAllSync<RestorativeActivity>(
+    'SELECT * FROM restorative_activities WHERE is_active = 0 AND used = 1 ORDER BY name ASC',
   );
 }
 
@@ -96,16 +117,6 @@ function _applyHealthDecay(): void {
     emotional, physical, mental, sqlNow(), critical,
   );
 
-  // HP restoration/depletion based on minimum health level
-  const minHealth = Math.min(emotional, physical, mental);
-  if (minHealth < 30) {
-    const penalty = minHealth < 10 ? -10 : minHealth < 20 ? -5 : -2;
-    db.runSync(`UPDATE rpg_state SET hp = MAX(0, hp + ?) WHERE id = 1`, Math.floor(penalty * daysPassed));
-  } else if (minHealth >= 50) {
-    const restore = minHealth >= 70 ? 5 : 2;
-    db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, Math.floor(restore * daysPassed));
-  }
-
   triggerCurrencyRefresh();
   // Trigger death check only when a bar first reaches 0 (wasn't already critical)
   if (critical && !wasCritical) {
@@ -114,24 +125,26 @@ function _applyHealthDecay(): void {
 }
 
 export function applyLoggingHealthBoost(
-  isPhysical: boolean, isRecreational: boolean, today: string,
-): void { try { _applyLoggingHealthBoost(isPhysical, isRecreational, today); } catch {} }
+  isPhysical: boolean, isRecreational: boolean, isCommunal: boolean, today: string,
+): void { try { _applyLoggingHealthBoost(isPhysical, isRecreational, isCommunal, today); } catch {} }
 function _applyLoggingHealthBoost(
-  isPhysical: boolean, isRecreational: boolean, today: string,
+  isPhysical: boolean, isRecreational: boolean, isCommunal: boolean, today: string,
 ): void {
   const h = getHealthState();
   const physical  = isPhysical     ? Math.min(100, h.physical  + 5) : h.physical;
   const mental    = isRecreational ? Math.min(100, h.mental    + 5) : h.mental;
+  const emotional = isCommunal     ? Math.min(100, h.emotional + 5) : h.emotional;
 
   db.runSync(
     `UPDATE health_state SET
        physical = ?,
        mental = ?,
+       emotional = ?,
        last_any_log = ?,
        last_physical_log = CASE WHEN ? = 1 THEN ? ELSE last_physical_log END,
        last_recreational_log = CASE WHEN ? = 1 THEN ? ELSE last_recreational_log END
      WHERE id = 1`,
-    physical, mental,
+    physical, mental, emotional,
     today,
     isPhysical ? 1 : 0, today,
     isRecreational ? 1 : 0, today,
@@ -171,6 +184,8 @@ export function purchaseRestoration(
     activity.xp_cost,
   );
 
+  db.runSync('UPDATE restorative_activities SET used = 1 WHERE id = ?', activityId);
+
   triggerCurrencyRefresh();
   return 'ok';
 }
@@ -189,17 +204,17 @@ export function getHealthXPMultiplier(): number {
   return 1.03;
 }
 
-export type HealthTier = { label: string; xpMult: string; hpEffect: string };
+export type HealthTier = { label: string; xpMult: string };
 
 export function getHealthTier(minHealth: number): HealthTier {
-  if (minHealth <= 0)  return { label: 'Depleted', xpMult: '0.93×', hpEffect: '−20 HP/day' };
-  if (minHealth < 10)  return { label: 'Critical',  xpMult: '0.94×', hpEffect: '−10 HP/day' };
-  if (minHealth < 20)  return { label: 'Danger',    xpMult: '0.95×', hpEffect: '−5 HP/day'  };
-  if (minHealth < 30)  return { label: 'Weakened',  xpMult: '0.96×', hpEffect: '−2 HP/day'  };
-  if (minHealth < 50)  return { label: 'Worn',      xpMult: '0.98×', hpEffect: 'Neutral'     };
-  if (minHealth < 70)  return { label: 'Stable',    xpMult: '1.01×', hpEffect: '+2 HP/day'   };
-  if (minHealth < 90)  return { label: 'Strong',    xpMult: '1.02×', hpEffect: '+5 HP/day'   };
-  return                      { label: 'Peak',      xpMult: '1.03×', hpEffect: '+5 HP/day'   };
+  if (minHealth <= 0)  return { label: 'Depleted', xpMult: '0.93×' };
+  if (minHealth < 10)  return { label: 'Critical', xpMult: '0.94×' };
+  if (minHealth < 20)  return { label: 'Danger',   xpMult: '0.95×' };
+  if (minHealth < 30)  return { label: 'Weakened', xpMult: '0.96×' };
+  if (minHealth < 50)  return { label: 'Worn',     xpMult: '0.98×' };
+  if (minHealth < 70)  return { label: 'Stable',   xpMult: '1.01×' };
+  if (minHealth < 90)  return { label: 'Strong',   xpMult: '1.02×' };
+  return                      { label: 'Peak',     xpMult: '1.03×' };
 }
 
 // Called on each mood log submission — mood/energy/productivity shift the health bars

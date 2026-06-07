@@ -4,17 +4,56 @@
 
 ---
 
+## Status Tracker
+
+### Done
+- Phase 1A: XP two-phase formula, category weights, level curve, multiplier tightening, health decay (30/20%), health-tier XP multipliers, weekly boost, formula-based dungeon/quest XP, coin system (mood/rank/level-up), drop tables E–Legend, rarity renamed Chromatic → Legendary
+- HP system rebuild: removed HP-regen-from-XP and health-tier HP delta from code; added player-tier-from-level mapping (F–Legend, indices 1–10); `failDungeon()` now computes damage via `33 × tier_diff` (flat 33 at/below player tier); stale UI strings in `index.tsx` / `insights.tsx` / `game.tsx` (health tier table, info-sheet text, dungeon-fail HP description, fail-dungeon confirm alert) updated to match
+- **Phase 1B — Full wipe/reset**: `performFullReset()` (schema.ts) wipes all user-data tables (logs, quests, inventory, dungeon runs, habits, moods, categories, recharge activities, dungeon_unlocks), keeps `dungeons` (game content), resets `rpg_state`/`health_state` to fresh-start defaults (Level 1, 0/450 XP, HP 100, MP 100, all currencies zero, health bars 100%), and re-seeds personal-build defaults (10 categories, 15 recharge activities, 6 moods). Wired into Settings → Danger Zone, replacing the old activity-log-only wipe.
+- ~~**Phase 1B — Mood deletion**: `custom_moods.used` column (migration v33) flags a mood the moment it's activated via `setCurrentMood`; `deleteCustomMood()` soft-deletes (`is_active = 0`) and blocks if `used = 1`.~~ — **Superseded** (see "Mood deletion + Past History" entry below): used moods are no longer blocked from deletion, they archive instead.
+- **Phase 1B — Info tab updates**: confirmed already complete from the HP rebuild pass — health tier multipliers, decay rates, and HP-removed text in `index.tsx`/`insights.tsx` all match this doc; drop tables render live from `DROP_TABLE` so they're always in sync.
+- **Phase 1B — Dungeon unlock system (mechanism)**: `dungeon_unlocks` table (migration v33) persists early-unlocked ranks; `isDungeonRankUnlocked()` checks natural-unlock-by-level OR early-unlock; `earlyUnlockDungeonRank()` spends Spendable XP (one-time, permanent) per the §11.6 cost table. Purchase UI lives in the **Store → GAME tab** ("Dungeon Rank Unlocks" list, per-rank status + early-unlock button) — the in-game Game Guide info sheet just points players there. **Note:** only E-rank dungeons exist as content right now (5 seeded) — the gating is fully wired but has no visible effect on D–Legend until that dungeon content is created (deliberately deferred — see Next).
+- **Phase 1B — Cosmetic store purchases**: `purchaseCosmetic('standard' | 'premium')` sells a redeemable "Cosmetic Token" inventory entry for 5,000 / 10,000 coins (exact pricing from §6). Actual cosmetic content/visuals are still undesigned — tokens are a functional coin sink and placeholder to redeem against once content exists. Surfaced in Store → Global tab.
+- **Category management pass (post-1B)**: added `is_communal` flag (migration v34) — a third per-category logging boost alongside `is_physical`/`is_recreational`, granting +5 Emotional health on log (mirrors the existing +5 Physical/+5 Mental pattern, see §3.3). Replaced the 1–5 weight picker with a horizontal 1–20 scroller matching the formula's actual clamp range (`Math.max(1, Math.min(20, weight))`), and added info-icon explainers next to "Weight" (in the New Activity Tag sheet) and "Duration" (in the Log screen) describing how each affects XP, including the 20-minute default applied when duration is left blank.
+- **Attribute-driven stat gain (replaces hardcoded auto-gain)**: migration v35 adds `{attribute}_auto` columns to `rpg_state`; `grantAttributeStatGain()` directly adds +1 to the stat matching a logged category's chosen `attribute`, on every single log — see §9.3 for full details and the pacing-shift note (confirmed deliberate). Removed the old `logCount`/`totalActivityCount`-based thresholds entirely. Added an info icon next to "STATUS WINDOW" in the Game tab explaining both AP-allocation and activity-gain stat sources.
+- **Category deletion + Past History**: `deleteCategory()` now archives categories that have been logged against (`is_active = 0`, kept visible in a read-only "Past History" viewer — name/weight/attribute) and purges never-used ones outright (`DELETE FROM categories`). This replaces the originally-planned hard delete-block for used categories.
+- **Activity-row controls + Manage/delete UI (CategoryGrid polish)**: `CategoryGrid` is now a `forwardRef` exposing `openPastHistory`/`showWeightInfo`/`openManage`, so the Log screen's "Activity" section header carries an info icon (weight explainer), an archive icon (Past History viewer), and a settings/gear icon — all on the same row as the "Activity" label, to the right of it. The gear opens a "Manage Activities" list (mirrors `MoodSettingsSheet`'s mood list) with a trash icon per tag — the actually-discoverable way to delete activities (the long-press-to-delete from the prior pass remains but isn't the primary affordance). Replaced the 1–20 weight-pill scroller with a drag slider (`@react-native-community/slider`, added this pass) showing the live numeric value. Added an info icon next to "Attribute (for Game)" in the New Activity Tag sheet explaining that logging the activity grants +1 directly to that stat — and added the same explanation to the "Activity Effects — How it works" info sheet on the Journal tab (which also had a stale "weights (1–5)" line, now corrected to "1–20").
+- **Restore (recharge) activity deletion + Past Restore**: migration v36 adds `used`/`is_active` columns to `restorative_activities` (mirrors categories/moods exactly). `purchaseRestoration()` now flags `used = 1` on first redemption. New `deleteRestorativeActivity()` archives used ones (`is_active = 0`, viewable read-only) and purges never-used ones outright; `getRestorativeActivities()` now filters to `is_active = 1`; new `getPastHistoryRestorativeActivities()` powers the viewer. UI on the Recharge tab: a "Past Restore" button sits beside the "Restore" section heading (opens an archive viewer showing name, restore amounts, and XP cost as last saved), and each `RestoreCard` carries a small trash icon next to its name for direct deletion — confirm alert notes archival for used ones.
+- **Mood deletion + Past History**: reworked `deleteCustomMood()` to mirror the category pattern above — used moods (`used = 1`) now archive (`is_active = 0`) instead of being blocked with `'in_use'`; never-used moods purge outright (`DELETE FROM custom_moods`). Added `getPastHistoryMoods()` (`WHERE is_active = 0 AND used = 1`). UI: the "used" badge / blocking alert in `MoodSettingsSheet` is gone — delete now always proceeds, with a confirm alert noting archival for used moods. A "Past History" archive-icon button sits next to the mood-card's info icon on the Journal tab, opening a viewer listing each archived mood's name, colour swatch, passive effect, XP change, and MP rate exactly as last saved.
+- **MP regen + dungeon MP-spend drop boost + mood XP/MP modifiers wired live (migration v37)**: `applyMpRegen()` (rpg.ts) gives MP a real 50/day natural regen, mood-modified by `mp_rate` (±50/day), running on every `checkState()` — see §17.1. The dungeon entry overlay gained a "Use MP" slider (0 → current MP, default 0, info icon explainer) that spends MP on embark and boosts item-drop luck via `rollDrop(rank, mpUsed)` — `bonus = mpUsed × 0.001` added to the lowest drop tier, which equally lowers the no-drop chance — see §17.2. `MoodSettingsSheet` gained a real numeric "XP change" field (±10%, `+`/`−` toggle) alongside a restructured "MP Rate" field (re-capped ±100 → ±50, same toggle); both are now stored in `custom_moods` (new `xp_change` column) and mechanically real: `getMoodXPMultiplier()` scales every `applyXP()` grant by `1 + xp_change/100` — see §1.5.
+
+### Next / planned (not yet implemented)
+- Dungeon content for D–Legend ranks — needed before the unlock system has any visible effect (names/flavor/objectives not specified anywhere; explicitly held off creating placeholder content during 1B per user direction)
+- Actual cosmetic content/visuals — pricing is implemented (§6) but what a "cosmetic" actually looks like/does is still undefined
+
+### To do before Phase 2 — pre-existing tsc errors (not caused by HP work)
+- ~~`history.tsx`~~ — fixed: removed 3 stale `|| log.category` fallbacks (categories now live solely in the `categories` JSON array, parsed via `parseCategories`) and deleted the dead `danger: colors.danger` entry sitting inside the `StyleSheet.create()` object
+- ~~`insights-feed.tsx`~~ — fixed: deleted the file; it was orphaned (imported nonexistent `getInsights`/`Insight` from `src/db/logs.ts`, likely a leftover from the `getRevelations`/`Revelation` rename) and unreachable — nothing routed to `/insights-feed`
+- ~~`DeathScreen.tsx`~~ — fixed: retyped `STAT_ICON` in `src/constants/stats.ts` from `Record<StatKey, string>` to `Record<StatKey, ComponentProps<typeof Feather>['name']>` so it satisfies `Feather`'s `name` prop union
+- Remaining: `suitup.tsx` errors (`Rarity`/`RARITY_COLOR`/`RARITY_BG` not found) — left untouched, this is the demo/dead screen already slated for full replacement in Phase 2 (see `demo_and_customisation` notes)
+
+### Phase 2 (deferred)
+- Dormant/cosmetic-only systems: equipment stat buffs, consumable buff application, Anima coin multiplier repurposing — see ⚠️ Critical Findings and §16 (mood passives `xp_change`/`mp_rate` and the MP system are now wired, see §1.5/§17)
+- Suitup screen replacement (currently demo/dead code — see `demo_and_customisation` notes)
+
+---
+
 ## ⚠️ Critical Findings (Not Yet Wired)
 
-### 1. Custom Mood Passive Effects are cosmetic only
-The mood states (driven, burnout, relapsed, etc.) show flavour text like "+10% XP gain" or "−20% XP". **None of this actually runs.** The `passive_effect` column is stored and displayed, but nothing in the XP formula reads it. The `mp_rate` column is the same — stored, shown in the settings sheet, never applied. The only real mood effect on XP is the 1–10 slider rating on each log.
+### 1. ~~Custom Mood Passive Effects are cosmetic only~~ — RESOLVED for `xp_change`/`mp_rate` (migration v37)
+~~`passive_effect` flavour text, `xp_change`, and `mp_rate` were all stored and displayed but never read by game logic.~~ **`xp_change` and `mp_rate` are now fully wired** — see §17.1 and §1.5 below:
+- `xp_change` (±10%, custom `+`/`−` toggle in `MoodSettingsSheet`): applied as a multiplier inside `applyXP()` itself — `getMoodXPMultiplier()` reads the active mood's `xp_change` and scales every XP grant by `1 + xp_change/100`. Because `applyXP` is the single funnel for all XP sources (activity logs, mood/journal logs, dungeon clears, quests, habits), this one hook covers everything uniformly.
+- `mp_rate` (±50/day, same toggle pattern): additive on top of the 50/day MP regen baseline — see §17.1.
 
-**Impact:** Players see "driven = +10% XP" and believe it matters. It doesn't.
+The free-text `passive_effect` flavour string itself remains cosmetic/display-only (it's user-authored prose, not a structured value a formula could read) — only the two numeric fields beside it (`xp_change`, `mp_rate`) are now mechanically real.
 
 ### 2. Equipment stat buffs are cosmetic only
 Items in inventory have a stat bonus value (e.g. "+5 STR"). Equipping an item writes `is_equipped = 1` to the DB and the game shows the bonus in the item card. But `getComputedStats()` in `game.ts` only adds AP allocations + lifetime-log auto-gains. It never reads equipped items or active consumable buffs. The `active_buffs` table is written to when a consumable is used but nothing ever reads it to modify a stat.
 
 **Impact:** All stat bonuses from equipment and consumables are purely visual.
+
+### 3. ~~Custom category `attribute` field is cosmetic only~~ — RESOLVED (migration v35)
+~~Was stored but never read; auto-gain was keyed off hardcoded category-name matches instead.~~ **Now fully wired** — see §9.3. Every activity log directly grants +1 to the stat matching its category's chosen `attribute`, stored in new `{attribute}_auto` columns on `rpg_state`. The picker now does exactly what it visually implies.
 
 ---
 
@@ -23,6 +62,8 @@ Items in inventory have a stat bonus value (e.g. "+5 STR"). Equipping an item wr
 ### 1.1 Activity Log XP
 
 **Two-phase sessionXP formula (Phase 1A):**
+
+If `duration_mins` is left blank (null/undefined), it defaults to **20 minutes** for XP purposes (`xpEngine.ts` → `dur = input.duration_mins ?? 20`) — not 0.
 
 ```
 a           = 3.5 + 0.04 × weight           [weight 1–20]
@@ -92,6 +133,19 @@ Mood log XP does NOT pass through the `calculateXP` formula — it's a flat valu
 ### 1.4 XP Blocked When Dead
 `applyXP()` returns early without modifying anything if `isInDeathState()` is true (HP ≤ 0 or any health bar = 0).
 
+### 1.5 Active Mood XP Modifier (±10%)
+Inside `applyXP(xp)`, after the death-state check, the raw XP is scaled by `getMoodXPMultiplier()`:
+
+```
+mult = 1 + (activeMood.xp_change / 100)     // xp_change ∈ [−10, +10]
+xp   = max(1, round(xp × mult))
+```
+
+This runs *inside* `applyXP` — the single funnel every XP source passes through (activity logs,
+mood/journal logs, dungeon clears, quests, habit completions, revival quests) — so a mood's
+"XP change" passive uniformly scales all XP gain while it's active, not just activity logs.
+Set via the `+`/`−` toggle next to the "XP change" field in `MoodSettingsSheet` (capped ±10%).
+
 ---
 
 ## 2. Level System
@@ -107,7 +161,7 @@ XP to next level = ceil((7.5 × level + 435) / 10) × 10
 | 1 | 450 |
 | 2 | 460 |
 | 5 | 480 |
-| 10 | 520 |
+| 10 | 510 |
 | 20 | 590 |
 | 50 | 810 |
 | 100 | 1,190 |
@@ -132,8 +186,8 @@ XP to next level = ceil((7.5 × level + 435) / 10) × 10
 | Grandmaster | 75 |
 | Shadow Monarch | 100 |
 
-### 2.4 HP Regen on XP Grant — SCRAPPED (Phase 2)
-XP no longer restores HP. The `hpRegen = floor(xp × 0.1)` line remains dormant in `applyXP()` — to be removed in Phase 2. Health tiers also no longer affect HP per day (see §3.2).
+### 2.4 HP Regen on XP Grant — Removed
+XP no longer restores HP. The `hpRegen = floor(xp × 0.1)` line has been removed from `applyXP()`. Health tiers also no longer affect HP per day (see §3.2). HP now changes only via dungeon fail damage and the Critical HP Boost store item — see §4.
 
 ---
 
@@ -160,7 +214,7 @@ Max days_passed capped at 30. Skip if < ~1 hour since last update.
 
 ### 3.2 Health Tiers → XP Multiplier
 
-Based on the **lowest** of the 3 bars. HP daily delta — **scrapped** (Phase 2 removal).
+Based on the **lowest** of the 3 bars. Health tiers affect XP only — they no longer move HP (the old HP daily delta has been removed; see §4).
 
 | Tier | Min bar | XP multiplier |
 |---|---|---|
@@ -178,10 +232,11 @@ Based on the **lowest** of the 3 bars. HP daily delta — **scrapped** (Phase 2 
 | Action | Effect |
 |---|---|
 | Log any activity | Resets emotional inactivity clock (prevents emotional −5%/day bonus decay) |
-| Log a physical-flagged category | +5% Physical (capped at 100%) |
-| Log a recreational-flagged category | +5% Mental (capped at 100%) |
+| Log a physical-flagged category | +5 Physical (capped at 100) |
+| Log a recreational-flagged category | +5 Mental (capped at 100) |
+| Log a communal-flagged category | +5 Emotional (capped at 100) |
 
-Physical / recreational flags are per-category, set when creating a category.
+Physical / recreational / communal flags are per-category, set when creating a category (`is_physical`, `is_recreational`, `is_communal` columns; communal added in migration v34). This is the only way activity logging — as opposed to mood logging — can raise the Emotional bar.
 
 ### 3.4 Mood Log Health Effects (runs on every mood log submit)
 
@@ -230,12 +285,57 @@ Mental delta = mood-part + prod-part. Examples:
 
 - Starting: 100 / 100 (hp / hp_max)
 - Gain: Store item only — Critical HP Boost (+30 HP, 100 coins, requires HP ≤ 30)
-- Loss: Dungeon fail — see Phase 2 damage formula below (not yet implemented)
+- Loss: Dungeon fail — tier-difference damage formula below
 - Death trigger: HP ≤ 0
+- HP no longer changes from XP grants or from health bar levels (see §2.4, §3.2) — dungeons are the only source of HP loss, the store the only source of HP gain besides revival quests.
 
-**Scrapped mechanics (not in code):** XP → HP regen (`floor(xp × 0.1)`), health tier HP daily delta. See §2.4 and §3.2.
+### Player Tier (derived from level)
 
-**Phase 2 (not implemented):** Dungeon fail damage = `33 × max(1, tier_diff)` where tier_diff = dungeon tier index − player tier index (E=1…Legend=10). At or below player tier: flat 33 damage.
+10 clean brackets of 10 levels. Adds an "F" tier below E (rather than reusing/duplicating a rarity name) so the scale stays unambiguous against item rarities and dungeon ranks:
+
+| Level Range | Player Tier | Tier Index |
+|---|---|---|
+| 1–10 | F | 1 |
+| 11–20 | E | 2 |
+| 21–30 | D | 3 |
+| 31–40 | C | 4 |
+| 41–50 | B | 5 |
+| 51–60 | A | 6 |
+| 61–70 | S | 7 |
+| 71–80 | SS | 8 |
+| 81–90 | SSS | 9 |
+| 91–100 | Legend | 10 |
+
+Dungeon ranks (E…Legend, 9 ranks) map to indices 2–10 on this same scale — "F" only ever appears as a player tier, never a dungeon rank.
+
+### Dungeon Fail Damage Formula
+
+```
+tier_diff = dungeon_tier_index − player_tier_index
+
+if tier_diff <= 0:
+    damage = 33                  (flat — dungeon at or below player tier)
+if tier_diff > 0:
+    damage = 33 × tier_diff
+```
+
+No cap on max damage. HP is floored at 0.
+
+### Damage Reference (examples)
+
+| Player tier | Dungeon tier | Tier diff | HP loss |
+|---|---|---|---|
+| F | F | 0 | 33 |
+| F | D | 2 | 66 |
+| F | A | 5 | 165 |
+| F | Legend | 9 | 297 |
+| D | F | −1 | 33 (flat) |
+| D | D | 0 | 33 |
+| D | A | 3 | 99 |
+| A | S | 1 | 33 |
+| A | Legend | 4 | 132 |
+
+> Attempting a dungeon far above your tier is extremely punishing — a level-1 player failing a Legend dungeon loses 297 HP, instantly hitting 0 from full HP.
 
 ---
 
@@ -251,6 +351,11 @@ Mental delta = mood-part + prod-part. Examples:
 **Revival quests** restore zero bars (and HP if at 0) by `quest.hp_restore %`, award 15 XP.
 
 **Ignoring death** (`death_acknowledged = 1`) dismisses the screen but the death state persists — XP still blocked.
+
+**Open questions (not yet defined):**
+- Revival quest `hp_restore %` — exact value not yet set
+- Whether multiple revival quests can be active/stacked at once, or only one at a time
+- Whether the 100 HP cap can ever be raised (e.g. progression milestones)
 
 ---
 
@@ -275,8 +380,12 @@ Mental delta = mood-part + prod-part. Examples:
 | Item | Cost | Effect |
 |---|---|---|
 | Streak Freeze | 50 coins | +1 streak freeze (banked, auto-uses on 2-day gap) |
-| MP Boost | 75 coins | +25 MP (MP mechanic not active — see ⚠️) |
+| MP Boost | 75 coins | +25 MP — spend it before a dungeon run to boost item-drop luck, see §17.2 |
 | Critical HP Boost | 100 coins | +30 HP (only purchasable if HP ≤ 30) |
+| Standard Cosmetic | 5,000 coins | Grants a redeemable "Standard Cosmetic Token" — content/visuals not yet designed |
+| Premium Cosmetic | 10,000 coins | Grants a redeemable "Premium Cosmetic Token" — content/visuals not yet designed |
+
+Cosmetic pricing implemented exactly per spec — saving targets: ~10/8 days (standard) and ~20/16 days (premium) at ordinary/deliberate daily coin-earn rates. The tokens are a functional coin sink placeholder; what an actual cosmetic looks like / does is still undefined.
 
 ---
 
@@ -314,17 +423,19 @@ Each stat = **AP layer** + **Auto-gain layer**. Equipment bonuses are NOT applie
 total_stat = ap_allocation + auto_gain
 ```
 
-### 9.3 Auto-Gain Thresholds (from all-time activity log count)
+### 9.3 Activity Gain — attribute-driven (replaces the old hardcoded auto-gain)
 
-| Stat | Category | Threshold |
-|---|---|---|
-| STR (Strength) | Workout | +1 per 5 logs |
-| STA (Stamina) | Workout | +1 per 7 logs |
-| AGI (Agility) | Admin | +1 per 7 logs |
-| FOC (Focus) | Coding | +1 per 5 logs |
-| WIS (Wisdom) | Study + Reading + Devotion | +1 per 5 combined |
-| SPR (Resilience) | Journal + Devotion | +1 per 5 combined |
-| PER (Perception) | Any activity | +1 per 15 total |
+**Implemented (migration v35, replacing the prior name-matched thresholds):** every activity log directly grants **+1** to the stat matching that category's chosen `attribute` — stored permanently in a new `{attribute}_auto` column on `rpg_state` (e.g. `strength_auto`, `focus_auto`, `per_stat_auto`). `grantAttributeStatGain()` in `game.ts` looks up the logged category's `attribute` and increments the matching column by 1, once per log (activity logs take exactly one category — §1.1).
+
+```
+total_stat = ap_allocation (rpg_state.{stat}, spent via AP) + activity_gain (rpg_state.{attribute}_auto, earned via logging)
+```
+
+This makes the `attribute` picker **fully functional** — no longer cosmetic (superseding the Critical Finding #3 note below, which described the old behavior). Tag a custom category "Boxing" with attribute `strength`, and every log of it now adds +1 STR directly — immediately, every single time, no thresholds.
+
+**Pacing note:** this is a significant speed-up versus the old per-5/per-7/per-15-log thresholds — stats now grow roughly 5–15× faster from logging alone. This was an explicit, confirmed design choice (not a balance oversight).
+
+~~Old system (removed):~~ auto-gain used to be keyed off hardcoded category-name string matches (Workout → STR/STA, Coding → FOC, Admin → AGI, Study+Reading+Devotion → WIS, Journal+Devotion → SPR, any activity → PER) at thresholds like "+1 per 5 logs". `logCount()`/`totalActivityCount()` helpers and the live-computed thresholds were deleted from `getComputedStats()`.
 
 ---
 
@@ -342,7 +453,7 @@ total_stat = ap_allocation + auto_gain
 | S | #A855F7 |
 | SS | #EF4444 |
 | SSS | #FFD700 |
-| Chromatic | #FFFFFF |
+| Legendary | #FFFFFF |
 
 ### 10.2 Stat Bonus (stat_buff field)
 
@@ -379,11 +490,11 @@ Using a consumable writes a timed entry to `active_buffs` (1 hour expiry).
 | D | D 30%, C 15%, B 7.5%, A 0.5% | 47% |
 | C | C 30%, B 15%, A 7.5%, S 0.5% | 47% |
 | B | B 30%, A 15%, S 7.5%, SS 0.5% | 47% |
-| A | A 20%, S 22.5%, SS 10%, SSS 0.5% | 47% |
+| A | A 30%, S 15%, SS 7.5%, SSS 0.5% | 47% |
 | S | A 20%, S 22.5%, SS 10%, SSS 0.5% | 47% |
-| SS | S 22.5%, SS 22.5%, SSS 4.9%, Chromatic 0.1% | 50% |
-| SSS | S 15%, SS 20%, SSS 10.35%, Chromatic 0.25% | 54.4% |
-| Legend | S 10%, SS 30%, SSS 12.5%, Chromatic 0.5% | 47% |
+| SS | S 22.5%, SS 22.5%, SSS 4.9%, Legendary 0.1% | 50% |
+| SSS | S 15%, SS 20%, SSS 10.35%, Legendary 0.25% | 54.4% |
+| Legend | S 10%, SS 30%, SSS 12.5%, Legendary 0.5% | 47% |
 
 ### 11.4 Item Slot by Dungeon Category
 
@@ -398,6 +509,41 @@ Using a consumable writes a timed entry to `active_buffs` (1 hour expiry).
 ### 11.5 Cooldown
 
 Cooldown per dungeon (stored in `dungeons.cooldown_hours`). Currently 2 minutes in dev build.
+
+### 11.6 Unlock System
+
+Players naturally unlock dungeon ranks as they level up. Spendable XP can buy early access to a higher rank before reaching its natural unlock level (one-time per rank, then permanently accessible).
+
+**Implemented:** gating mechanism is fully wired (`isDungeonRankUnlocked`, `earlyUnlockDungeonRank`, persisted in `dungeon_unlocks`) and surfaced as a "Dungeon Rank Unlocks" list **in the Store → GAME tab** (per-rank status + early-unlock button, paid in Spendable XP). The Game Guide info sheet now only informs players that early unlocks are purchasable in the Store — it no longer hosts the purchase UI itself. **Not yet meaningful in the UI:** only E-rank dungeons exist as content (5 seeded) — D through Legend have no dungeon definitions yet, so the gating has nothing to gate until that content is created.
+
+**Natural unlock levels:**
+
+| Dungeon Rank | Natural unlock |
+|---|---|
+| E | Level 1 |
+| D | Level 10 |
+| C | Level 25 |
+| B | Level 40 |
+| A | Level 60 |
+| S | Level 75 |
+| SS | Level 85 |
+| SSS | Level 95 |
+| Legend | Level 100 |
+
+**Early unlock — Spendable XP cost:**
+
+| Dungeon Rank | XP cost |
+|---|---|
+| D | 50 |
+| C | 100 |
+| B | 175 |
+| A | 250 |
+| S | 375 |
+| SS | 625 |
+| SSS | 1,000 |
+| Legend | 1,500 |
+
+> Costs are intentionally low — the grind is in the runs and drop rates, not the unlock.
 
 ---
 
@@ -424,6 +570,10 @@ Runs on game tab reload. Produces at most 3 new quests.
 ### 12.3 Status Flow
 
 ```
+
+
+
+
 pending → accepted → completed
 pending → skipped  (re-evaluated on next generation run)
 pending → deleted  (permanent, never reappears)
@@ -492,10 +642,52 @@ The 1–10 mood/energy/productivity sliders on each log **do** affect XP (via mo
 
 ## 17. MP (Mana Points)
 
-- Stored on rpg_state (0 by default, seeds show 40).
-- Boosted by store item: +25 for 75 coins.
-- `mp_rate` on custom moods would modify it — but is not applied.
-- **Nothing currently consumes or reads MP for gameplay.** Fully dormant.
+- Stored on `rpg_state.mp` (0–100, clamped). Boosted by store item: +25 for 75 coins.
+
+### 17.1 Natural Regeneration
+`applyMpRegen()` (rpg.ts) — daily-tick pattern mirroring `applyHealthDecay`, driven by
+`rpg_state.last_mp_regen` (migration v37). Runs on every `checkState()` (app open / focus):
+
+```
+daysPassed = min((now − last_mp_regen) / 1 day, 30)     // capped at 30 days
+dailyRate  = 50 + activeMood.mp_rate                     // baseline 50/day, mood-modified
+delta      = round(dailyRate × daysPassed)
+mp         = clamp(mp + delta, 0, 100)
+```
+
+The active custom mood's `mp_rate` (±50/day, set via `MoodSettingsSheet`) is additive on top
+of the 50/day baseline — this is what gives the previously-cosmetic `mp_rate` field a real effect.
+
+### 17.2 Spending MP — Dungeon Drop-Luck Boost
+Before starting a dungeon timer, the entry overlay shows a "Use MP" slider (range 0 → current
+MP balance, default 0). The chosen amount is deducted from `rpg_state.mp` the moment the timer
+starts (win or lose — it's a luck investment, not a guarantee) and persisted on the run
+(`dungeon_runs.mp_used`, migration v37).
+
+`rollDrop(rank, mpUsed)` (game.ts) applies the spend as a flat percentage-point bonus to the
+gate's lowest (most common) drop tier:
+
+```
+bonus = mpUsed × 0.001        // mp_used × 0.1 percentage points, as a fraction
+table[0].chance += bonus      // raises lowest-tier chance...
+                              // ...and equally lowers no-drop, since no_drop = 1 − Σ(table chances)
+```
+
+**Example (E-rank gate):** spending 100 MP adds +0.10 (10 percentage points) to the E-tier
+chance — 30% → 40% — which simultaneously drops the no-drop chance from 47% → 37%, exactly
+mirroring the dual effect described when this was speced.
+
+### 17.3 Dependency Chain
+```
+checkState() (app open/focus)
+  → applyMpRegen() — 50/day baseline + active mood's mp_rate, clamped [0,100]
+
+Dungeon entry overlay
+  → "Use MP" slider (0 → current MP) → handleStartTimer()
+      → startDungeon(dungeonId, mpUsed) — deducts mp, persists dungeon_runs.mp_used
+      → submitDungeonClear(runId, dungeon)
+          → rollDrop(dungeon.rank, mpUsed) — bonus = mpUsed × 0.001 to lowest tier / no-drop
+```
 
 ---
 

@@ -133,7 +133,7 @@ function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete
   const [expanded, setExpanded] = useState(false);
   const [editing,  setEditing]  = useState(false);
   const cats    = parseCategories(log.categories);
-  const primary = cats[0] || log.category || '—';
+  const primary = cats[0] || '—';
   const catColor = catColors[primary] ?? colors.border;
 
   function toggle() {
@@ -211,7 +211,7 @@ function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete
 
 function DungeonCard({ log, catColors }: { log: ActivityLog; catColors: Record<string, string> }) {
   const cats    = parseCategories(log.categories);
-  const primary = cats[0] || log.category || '—';
+  const primary = cats[0] || '—';
   const catColor = catColors[primary] ?? colors.border;
   return (
     <View style={cd.dungeonCard}>
@@ -237,7 +237,7 @@ function DungeonCard({ log, catColors }: { log: ActivityLog; catColors: Record<s
 
 function QuestCard({ log, catColors }: { log: ActivityLog; catColors: Record<string, string> }) {
   const cats    = parseCategories(log.categories);
-  const primary = cats[0] || log.category || '—';
+  const primary = cats[0] || '—';
   const catColor = catColors[primary] ?? colors.border;
   return (
     <View style={cd.questCard}>
@@ -359,8 +359,6 @@ const cd = StyleSheet.create({
   sdText:  { flex:1, fontFamily:fonts.ui.medium,    fontSize:fontSize.sm, color:colors.danger },
   sdNoted: { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted, marginRight:4 },
   sdTime:  { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted },
-
-  danger: colors.danger,
 });
 
 // ─── Bible note card (shown in Bible toggle view) ────────────────────────────
