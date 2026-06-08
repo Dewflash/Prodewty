@@ -1,8 +1,8 @@
 import { db } from './schema';
-import { getRPGState, applyXP } from './rpg';
+import { getRPGState, applyXP, DUNGEON_NATURAL_UNLOCK_LEVEL, materializeDungeonRight } from './rpg';
 import { getHealthState } from './health';
 import { sessionXP } from '../services/xpEngine';
-import { sqlNow, pad } from '../utils/date';
+import { sqlNow, pad, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
 import type { Rarity } from '../constants/rarity';
@@ -84,6 +84,7 @@ export type DungeonClearResult = {
   itemDropped: string | null;
   itemRarity: Rarity | null;
   itemSlotType: string | null;
+  keyDropped: string | null;
 };
 
 // ─── Rarity drop system ───────────────────────────────────────────────────────
@@ -138,17 +139,22 @@ function getDungeonFailDamage(dungeonRank: string, playerLevel: number): number 
   return tierDiff <= 0 ? 33 : 33 * tierDiff;
 }
 
+// ─── Game Access Gate ────────────────────────────────────────────────────────
+// The Game tab itself is locked until the player reaches level 11 — below that,
+// tapping the tab shows a popup instead of navigating in.
+
+export const MIN_GAME_LEVEL = 11;
+
+export function isGameUnlocked(): boolean {
+  return getRPGState().current_level >= MIN_GAME_LEVEL;
+}
+
 // ─── Dungeon Unlock System (MECHANICS.md §11.6) ──────────────────────────────
-// E is always unlocked. D–Legend unlock naturally at the listed level, or early
-// via a one-time Spendable XP purchase (persisted in dungeon_unlocks, permanent).
-
-const DUNGEON_NATURAL_UNLOCK_LEVEL: Record<string, number> = {
-  E: 1, D: 10, C: 25, B: 40, A: 60, S: 75, SS: 85, SSS: 95, Legend: 100,
-};
-
-const DUNGEON_EARLY_UNLOCK_COST: Record<string, number> = {
-  D: 50, C: 100, B: 175, A: 250, S: 375, SS: 625, SSS: 1000, Legend: 1500,
-};
+// Clean every-10-levels progression starting at the Lv.11 Game-access gate
+// (see isGameUnlocked/MIN_GAME_LEVEL) — so E unlocks the instant the Game does,
+// and no player ever sees an empty dungeon list. D–Legend unlock naturally at
+// the listed level, or early by purchasing the rank's "Right" (see Rights & Keys
+// below) — both paths are persisted in dungeon_unlocks, permanent.
 
 function isRankEarlyUnlocked(rank: string): boolean {
   return !!db.getFirstSync<{ rank: string }>('SELECT rank FROM dungeon_unlocks WHERE rank = ?', rank);
@@ -159,29 +165,94 @@ export function isDungeonRankUnlocked(rank: string, playerLevel: number): boolea
   return isRankEarlyUnlocked(rank);
 }
 
-export function getEarlyUnlockCost(rank: string): number | null {
-  return DUNGEON_EARLY_UNLOCK_COST[rank] ?? null;
-}
-
 export function getDungeonUnlockInfo(rank: string): {
-  unlocked: boolean; naturalLevel: number; earlyCost: number | null;
+  unlocked: boolean; naturalLevel: number; rightCost: number | null;
 } {
   const { current_level } = getRPGState();
   return {
     unlocked: isDungeonRankUnlocked(rank, current_level),
     naturalLevel: DUNGEON_NATURAL_UNLOCK_LEVEL[rank] ?? 1,
-    earlyCost: getEarlyUnlockCost(rank),
+    rightCost: getDungeonRightPrice(rank),
   };
 }
 
-export function earlyUnlockDungeonRank(rank: string): 'ok' | 'already_unlocked' | 'insufficient_xp' | 'no_cost_defined' {
+// ─── Dungeon Rights & Keys (MECHANICS.md §11.6 — replaces simple early-unlock) ──
+// "Right" = a permanent, non-usable writ of passage that grants lasting access to
+// a dungeon rank — bought early from the Shop (5× a Key's price, in Spendable XP)
+// OR auto-granted the instant a player naturally levels into that rank (see
+// applyXP in rpg.ts). Owning one removes it from the Shop and materializes it as
+// a flavor inventory item (category='game', item_type='dungeon_right').
+//
+// "Key" = a consumable that — once the daily dungeon-rotation engine exists (see
+// memory log: deferred alongside quest-generation) — generates an extra gate of
+// its tier with a random expiry (1–10 days standard, 1–3 days for S-rank+). For
+// now it's purchasable and drops from dungeon clears; its "use" effect is stubbed.
+
+const DUNGEON_KEY_PRICE: Record<string, number> = {
+  D: 50, C: 100, B: 175, A: 250, S: 375, SS: 625, SSS: 1000, Legend: 1500,
+};
+
+const HIGH_TIER_RANKS = ['S', 'SS', 'SSS', 'Legend'];
+
+export function getDungeonKeyPrice(rank: string): number | null {
+  return DUNGEON_KEY_PRICE[rank] ?? null;
+}
+
+export function getDungeonRightPrice(rank: string): number | null {
+  const keyPrice = DUNGEON_KEY_PRICE[rank];
+  return keyPrice != null ? keyPrice * 5 : null;
+}
+
+export function dungeonKeyItemName(rank: string): string {
+  return `${rank}-Tier Dungeon Key`;
+}
+
+function dungeonKeyExpiryRangeText(rank: string): string {
+  return HIGH_TIER_RANKS.includes(rank) ? '1–3 days' : '1–10 days';
+}
+
+export function dungeonKeyDescription(rank: string): string {
+  return `Consume to generate an extra ${rank}-rank dungeon gate. The generated gate expires after a random ${dungeonKeyExpiryRangeText(rank)}.`;
+}
+
+export function purchaseDungeonRight(rank: string): 'ok' | 'already_owned' | 'insufficient_xp' | 'no_cost_defined' {
   const { current_level, spendable_xp } = getRPGState();
-  if (isDungeonRankUnlocked(rank, current_level)) return 'already_unlocked';
-  const cost = getEarlyUnlockCost(rank);
+  if (isDungeonRankUnlocked(rank, current_level)) return 'already_owned';
+  const cost = getDungeonRightPrice(rank);
   if (cost === null) return 'no_cost_defined';
   if ((spendable_xp ?? 0) < cost) return 'insufficient_xp';
   db.runSync('UPDATE rpg_state SET spendable_xp = spendable_xp - ? WHERE id = 1', cost);
   db.runSync('INSERT OR IGNORE INTO dungeon_unlocks (rank) VALUES (?)', rank);
+  materializeDungeonRight(rank);
+  triggerCurrencyRefresh();
+  return 'ok';
+}
+
+// Drops/grants a Key into inventory, stacking onto an existing one if present.
+export function grantDungeonKey(rank: string, qty: number = 1): void {
+  try {
+    const name = dungeonKeyItemName(rank);
+    const existing = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM inventory WHERE category = 'game' AND item_type = 'dungeon_key' AND item_name = ?`, name,
+    );
+    if (existing) {
+      db.runSync(`UPDATE inventory SET quantity = quantity + ? WHERE id = ?`, qty, existing.id);
+    } else {
+      db.runSync(
+        `INSERT INTO inventory (item_name, category, item_type, description, quantity) VALUES (?, 'game', 'dungeon_key', ?, ?)`,
+        name, dungeonKeyDescription(rank), qty,
+      );
+    }
+  } catch {}
+}
+
+export function purchaseDungeonKey(rank: string): 'ok' | 'insufficient_xp' | 'no_cost_defined' {
+  const { spendable_xp } = getRPGState();
+  const cost = getDungeonKeyPrice(rank);
+  if (cost === null) return 'no_cost_defined';
+  if ((spendable_xp ?? 0) < cost) return 'insufficient_xp';
+  db.runSync('UPDATE rpg_state SET spendable_xp = spendable_xp - ? WHERE id = 1', cost);
+  grantDungeonKey(rank);
   triggerCurrencyRefresh();
   return 'ok';
 }
@@ -484,7 +555,7 @@ export function completeRevivalQuest(quest: RevivalQuest): void {
   }
 
   // Log the revival activity
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   try {
     db.runSync(
       `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
@@ -564,6 +635,7 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
   let itemDropped: string | null = null;
   let itemRarity: Rarity | null = null;
   let itemSlotType: string | null = null;
+  let keyDropped: string | null = null;
 
   const mpUsed = db.getFirstSync<{ mp_used: number }>(
     'SELECT mp_used FROM dungeon_runs WHERE id = ?', runId,
@@ -582,6 +654,12 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
         `Dropped from ${dungeon.name} (${dungeon.rank}-rank gate).`,
       );
     } catch {}
+  }
+
+  // Keys drop ~15% of the time on a clear, of the cleared gate's own rank.
+  if (Math.random() < 0.15) {
+    keyDropped = dungeonKeyItemName(dungeon.rank);
+    grantDungeonKey(dungeon.rank);
   }
 
   const now = sqlNow();
@@ -606,10 +684,10 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
   try { applyXP(xpEarned); } catch {}
   addGameLog(
     'dungeon_win',
-    `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}`,
+    `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}${keyDropped ? ` Found: ${keyDropped}.` : ''}`,
   );
 
-  return { xpEarned, coinsEarned, itemDropped, itemRarity, itemSlotType };
+  return { xpEarned, coinsEarned, itemDropped, itemRarity, itemSlotType, keyDropped };
 }
 
 export function failDungeon(runId: number, dungeon: Dungeon): void {

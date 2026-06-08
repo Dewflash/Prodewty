@@ -26,7 +26,7 @@ export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo }: {
   return (
     <Pressable
       onPress={!onCooldown ? onTap : undefined}
-      style={[dc.card, isActiveRun && { borderColor: colors.primary }]}
+      style={[dc.card, { borderColor: rankColor, backgroundColor: `${rankColor}14` }, isActiveRun && { borderColor: colors.primary }]}
     >
       <Text style={[dc.rankLabel, { color: rankColor }]}>{dungeon.rank}-RANK GATE</Text>
       <Text style={dc.name}>{dungeon.name}</Text>

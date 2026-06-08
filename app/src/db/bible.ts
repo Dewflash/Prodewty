@@ -1,5 +1,5 @@
 import { db } from './schema';
-import { sqlNow } from '../utils/date';
+import { sqlNow, localDateStr } from '../utils/date';
 import { applyXP } from './rpg';
 import { getSetting } from './settings';
 
@@ -41,7 +41,7 @@ export function getNoteById(id: number): BibleNote | null {
 
 // Creates a blank placeholder note, returns its ID. No XP awarded yet.
 export function createNote(): number {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   const now = sqlNow();
   const result = db.runSync(
     `INSERT INTO bible_notes (title, content, log_date, created_at, updated_at, xp_awarded)

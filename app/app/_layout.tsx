@@ -19,6 +19,7 @@ import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { getDeathCause, type DeathCause } from '../src/db/game';
 import { applyHealthDecay } from '../src/db/health';
 import { DeathScreen } from '../src/components/DeathScreen';
+import { RANK_COLOR } from '../src/components/game/DungeonCard';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
@@ -36,8 +37,11 @@ export default function RootLayout() {
 
   const [deathCause,    setDeathCause]    = useState<DeathCause>(null);
   const [levelUpLevel,  setLevelUpLevel]  = useState<number | null>(null);
+  const [levelUpReward, setLevelUpReward] = useState<{ ap: number; coins: number }>({ ap: 0, coins: 0 });
   const [gemBanner,     setGemBanner]     = useState(false);
+  const [rightToast,    setRightToast]    = useState<string[] | null>(null);
   const bannerY = useRef(new Animated.Value(-80)).current;
+  const rightToastY = useRef(new Animated.Value(-80)).current;
   const pathname    = usePathname();
   const pathnameRef = useRef(pathname);
   useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
@@ -50,6 +54,15 @@ export default function RootLayout() {
       Animated.delay(2800),
       Animated.timing(bannerY, { toValue: -80, duration: 300, useNativeDriver: true }),
     ]).start(() => setGemBanner(false));
+  }
+
+  function triggerRightToast(ranks: string[]) {
+    setRightToast(ranks);
+    Animated.sequence([
+      Animated.spring(rightToastY, { toValue: 0, useNativeDriver: true, tension: 80, friction: 10 }),
+      Animated.delay(3200),
+      Animated.timing(rightToastY, { toValue: -80, duration: 300, useNativeDriver: true }),
+    ]).start(() => setRightToast(null));
   }
 
   useEffect(() => {
@@ -78,6 +91,8 @@ export default function RootLayout() {
       playSound('levelup');
       hapticSuccess();
       setLevelUpLevel(rpg.level_up_pending);
+      setLevelUpReward({ ap: rpg.level_up_ap_gained ?? 0, coins: rpg.level_up_coins_gained ?? 0 });
+      if (rpg.level_up_right_rank) triggerRightToast(rpg.level_up_right_rank.split(','));
       clearLevelUpPending();
     }
   }
@@ -121,6 +136,23 @@ export default function RootLayout() {
         </Animated.View>
       )}
 
+      {rightToast && (() => {
+        const lead = rightToast[rightToast.length - 1];
+        const accent = RANK_COLOR[lead] ?? colors.primary;
+        const label = rightToast.length > 1
+          ? `${rightToast.slice(0, -1).join(', ')} & ${lead}-Rank dungeons are now permanently accessible`
+          : `${lead}-Rank dungeons are now permanently accessible`;
+        return (
+          <Animated.View style={[gb.banner, { borderColor: accent, top: 112, transform: [{ translateY: rightToastY }] }]}>
+            <Text style={[gb.gem, { color: accent }]}>⛩</Text>
+            <View style={gb.text}>
+              <Text style={gb.title}>{rightToast.length > 1 ? 'Gates Unlocked' : 'Gate Unlocked'}</Text>
+              <Text style={gb.sub}>{label}</Text>
+            </View>
+          </Animated.View>
+        );
+      })()}
+
       {/* Level-up celebration modal */}
       <Modal visible={levelUpLevel !== null} transparent animationType="fade">
         <View style={lv.overlay}>
@@ -128,7 +160,7 @@ export default function RootLayout() {
             <Text style={lv.title}>LEVEL UP</Text>
             <Text style={lv.level}>LVL {levelUpLevel}</Text>
             <View style={lv.divider} />
-            <Text style={lv.reward}>+10 AP earned</Text>
+            <Text style={lv.reward}>+{levelUpReward.ap} AP · +{levelUpReward.coins} Coins earned</Text>
             <Text style={lv.sub}>Allocate AP in the Game tab to raise your stats.</Text>
             <Pressable style={lv.btn} onPress={() => setLevelUpLevel(null)}>
               <Text style={lv.btnTxt}>CONTINUE</Text>

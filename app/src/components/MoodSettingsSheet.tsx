@@ -51,9 +51,17 @@ export function MoodSettingsSheet({ visible, currentMood, onClose }: Props) {
 
   function save() {
     try {
-      const xpMag = Math.min(10, Math.max(0, parseInt(xpChange, 10) || 0));
+      const xpMag = Math.max(0, parseInt(xpChange, 10) || 0);
+      if (xpMag > 10) {
+        Alert.alert('XP change too large', 'XP change must be between 0% and ±10%.');
+        return;
+      }
       const xpFinal = xpSign === '-' ? -xpMag : xpMag;
-      const mpMag = Math.min(50, Math.max(0, parseInt(mpRate, 10) || 0));
+      const mpMag = Math.max(0, parseInt(mpRate, 10) || 0);
+      if (mpMag > 50) {
+        Alert.alert('MP rate too large', 'MP rate must be between 0 and ±50 per day.');
+        return;
+      }
       const mpFinal = mpSign === '-' ? -mpMag : mpMag;
       db.runSync(
         `INSERT INTO custom_moods (name, color, passive_effect, mp_rate, xp_change) VALUES (?,?,?,?,?)

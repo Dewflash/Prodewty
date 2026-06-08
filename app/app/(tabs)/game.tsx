@@ -619,6 +619,14 @@ export default function GameScreen() {
                 ) : (
                   <Text style={ov.fieldVal}>None</Text>
                 )}
+                {clearResult.keyDropped ? (
+                  <>
+                    <Text style={ov.fieldLabel}>BONUS DROP</Text>
+                    <Text style={[ov.fieldVal, { color: RANK_COLOR[selectedDungeon.rank] ?? colors.textMuted }]}>
+                      {clearResult.keyDropped}
+                    </Text>
+                  </>
+                ) : null}
               </>
             ) : (
               <Text style={[ov.fieldVal, { color: '#EF4444' }]}>HP −20</Text>

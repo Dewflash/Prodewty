@@ -10,6 +10,7 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { db } from '../src/db/schema';
+import { localDateStr } from '../src/utils/date';
 
 type Milestone = { id: number; date: string; title: string };
 
@@ -17,7 +18,7 @@ const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() { return localDateStr(); }
 function fmtDate(d: string) {
   const dt = new Date(d + 'T12:00:00');
   return `${dt.getDate()} ${MONTHS_SHORT[dt.getMonth()]} ${dt.getFullYear()}`;

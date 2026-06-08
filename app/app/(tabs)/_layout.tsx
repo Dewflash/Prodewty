@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Tabs } from 'expo-router';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet, Alert } from 'react-native';
 import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
@@ -8,7 +8,7 @@ import { fonts } from '../../src/theme/typography';
 import { GlobalCurrencyBar } from '../../src/components/GlobalCurrencyBar';
 import { playSound } from '../../src/services/audio';
 import { hapticLight } from '../../src/utils/haptics';
-import { getPendingQuests, getAcceptedQuests } from '../../src/db/game';
+import { getPendingQuests, getAcceptedQuests, isGameUnlocked, MIN_GAME_LEVEL } from '../../src/db/game';
 import { onCurrencyRefresh } from '../../src/db/currencySignal';
 
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
@@ -95,6 +95,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="shield" focused={focused} />,
           tabBarBadge: questBadge,
           tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 10 },
+        }}
+        listeners={{
+          tabPress: (e) => {
+            if (!isGameUnlocked()) {
+              e.preventDefault();
+              Alert.alert('Locked', `Unlockable only at level ${MIN_GAME_LEVEL}.`);
+            }
+          },
         }}
       />
       <Tabs.Screen name="stats"           options={{ href: null }} />

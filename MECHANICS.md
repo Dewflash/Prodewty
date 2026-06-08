@@ -12,7 +12,7 @@
 - **Phase 1B — Full wipe/reset**: `performFullReset()` (schema.ts) wipes all user-data tables (logs, quests, inventory, dungeon runs, habits, moods, categories, recharge activities, dungeon_unlocks), keeps `dungeons` (game content), resets `rpg_state`/`health_state` to fresh-start defaults (Level 1, 0/450 XP, HP 100, MP 100, all currencies zero, health bars 100%), and re-seeds personal-build defaults (10 categories, 15 recharge activities, 6 moods). Wired into Settings → Danger Zone, replacing the old activity-log-only wipe.
 - ~~**Phase 1B — Mood deletion**: `custom_moods.used` column (migration v33) flags a mood the moment it's activated via `setCurrentMood`; `deleteCustomMood()` soft-deletes (`is_active = 0`) and blocks if `used = 1`.~~ — **Superseded** (see "Mood deletion + Past History" entry below): used moods are no longer blocked from deletion, they archive instead.
 - **Phase 1B — Info tab updates**: confirmed already complete from the HP rebuild pass — health tier multipliers, decay rates, and HP-removed text in `index.tsx`/`insights.tsx` all match this doc; drop tables render live from `DROP_TABLE` so they're always in sync.
-- **Phase 1B — Dungeon unlock system (mechanism)**: `dungeon_unlocks` table (migration v33) persists early-unlocked ranks; `isDungeonRankUnlocked()` checks natural-unlock-by-level OR early-unlock; `earlyUnlockDungeonRank()` spends Spendable XP (one-time, permanent) per the §11.6 cost table. Purchase UI lives in the **Store → GAME tab** ("Dungeon Rank Unlocks" list, per-rank status + early-unlock button) — the in-game Game Guide info sheet just points players there. **Note:** only E-rank dungeons exist as content right now (5 seeded) — the gating is fully wired but has no visible effect on D–Legend until that dungeon content is created (deliberately deferred — see Next).
+- ~~**Phase 1B — Dungeon unlock system (mechanism)**: `dungeon_unlocks` table (migration v33) persists early-unlocked ranks; `isDungeonRankUnlocked()` checks natural-unlock-by-level OR early-unlock; `earlyUnlockDungeonRank()` spends Spendable XP...~~ — **Superseded** by the Rights & Keys system (Phase D follow-up section 2, see §11.6): `earlyUnlockDungeonRank` is gone, replaced by `purchaseDungeonRight`/`purchaseDungeonKey`, and the Shop now shows separate Right/Key cards instead of a single "Dungeon Rank Unlocks" list. The `dungeon_unlocks` table itself persists unchanged. **Note:** only E-rank dungeons exist as content right now (5 seeded) — the gating is fully wired but has no visible effect on D–Legend until that dungeon content is created (deliberately deferred — see Next).
 - **Phase 1B — Cosmetic store purchases**: `purchaseCosmetic('standard' | 'premium')` sells a redeemable "Cosmetic Token" inventory entry for 5,000 / 10,000 coins (exact pricing from §6). Actual cosmetic content/visuals are still undesigned — tokens are a functional coin sink and placeholder to redeem against once content exists. Surfaced in Store → Global tab.
 - **Category management pass (post-1B)**: added `is_communal` flag (migration v34) — a third per-category logging boost alongside `is_physical`/`is_recreational`, granting +5 Emotional health on log (mirrors the existing +5 Physical/+5 Mental pattern, see §3.3). Replaced the 1–5 weight picker with a horizontal 1–20 scroller matching the formula's actual clamp range (`Math.max(1, Math.min(20, weight))`), and added info-icon explainers next to "Weight" (in the New Activity Tag sheet) and "Duration" (in the Log screen) describing how each affects XP, including the 20-minute default applied when duration is left blank.
 - **Attribute-driven stat gain (replaces hardcoded auto-gain)**: migration v35 adds `{attribute}_auto` columns to `rpg_state`; `grantAttributeStatGain()` directly adds +1 to the stat matching a logged category's chosen `attribute`, on every single log — see §9.3 for full details and the pacing-shift note (confirmed deliberate). Removed the old `logCount`/`totalActivityCount`-based thresholds entirely. Added an info icon next to "STATUS WINDOW" in the Game tab explaining both AP-allocation and activity-gain stat sources.
@@ -21,6 +21,13 @@
 - **Restore (recharge) activity deletion + Past Restore**: migration v36 adds `used`/`is_active` columns to `restorative_activities` (mirrors categories/moods exactly). `purchaseRestoration()` now flags `used = 1` on first redemption. New `deleteRestorativeActivity()` archives used ones (`is_active = 0`, viewable read-only) and purges never-used ones outright; `getRestorativeActivities()` now filters to `is_active = 1`; new `getPastHistoryRestorativeActivities()` powers the viewer. UI on the Recharge tab: a "Past Restore" button sits beside the "Restore" section heading (opens an archive viewer showing name, restore amounts, and XP cost as last saved), and each `RestoreCard` carries a small trash icon next to its name for direct deletion — confirm alert notes archival for used ones.
 - **Mood deletion + Past History**: reworked `deleteCustomMood()` to mirror the category pattern above — used moods (`used = 1`) now archive (`is_active = 0`) instead of being blocked with `'in_use'`; never-used moods purge outright (`DELETE FROM custom_moods`). Added `getPastHistoryMoods()` (`WHERE is_active = 0 AND used = 1`). UI: the "used" badge / blocking alert in `MoodSettingsSheet` is gone — delete now always proceeds, with a confirm alert noting archival for used moods. A "Past History" archive-icon button sits next to the mood-card's info icon on the Journal tab, opening a viewer listing each archived mood's name, colour swatch, passive effect, XP change, and MP rate exactly as last saved.
 - **MP regen + dungeon MP-spend drop boost + mood XP/MP modifiers wired live (migration v37)**: `applyMpRegen()` (rpg.ts) gives MP a real 50/day natural regen, mood-modified by `mp_rate` (±50/day), running on every `checkState()` — see §17.1. The dungeon entry overlay gained a "Use MP" slider (0 → current MP, default 0, info icon explainer) that spends MP on embark and boosts item-drop luck via `rollDrop(rank, mpUsed)` — `bonus = mpUsed × 0.001` added to the lowest drop tier, which equally lowers the no-drop chance — see §17.2. `MoodSettingsSheet` gained a real numeric "XP change" field (±10%, `+`/`−` toggle) alongside a restructured "MP Rate" field (re-capped ±100 → ±50, same toggle); both are now stored in `custom_moods` (new `xp_change` column) and mechanically real: `getMoodXPMultiplier()` scales every `applyXP()` grant by `1 + xp_change/100` — see §1.5.
+- **Phase D follow-up, section 2 (migrations v38/v39)** — full spec shipped in one pass:
+  - **Dungeon natural-unlock remap + Game access gate**: ranks now unlock on a clean every-10-levels cadence `{E:11..Legend:91}` (was the old uneven `{E:1..Legend:100}`); the Game tab itself is now gated behind `MIN_GAME_LEVEL = 11` (`isGameUnlocked()`), with an "Unlockable only at level 11" alert on tap below that level — see §11.6.
+  - **Rights & Keys system** replaces the old simple `earlyUnlockDungeonRank` flow — permanent "Right" items (bought for 5× Key price or auto-granted on natural level-up, materialized via `materializeDungeonRight`/surfaced via a dedicated "Gate Unlocked" toast) and consumable "Key" items (purchasable + ~15% drop chance from gate clears, generation effect stubbed pending the deferred rotation engine). Separate Shop cards for each (never bundled), `RANK_COLOR`-tinted `DungeonCard` borders/backgrounds, and Rights/Keys now surface in the inventory ribbon's new Game segment — see §11.6.
+  - **Level-up modal now shows real AP+Coins** (was hardcoded "+10 AP earned") via transient `level_up_ap_gained`/`level_up_coins_gained` fields — see §2.2.
+  - **Mood field validation hardened**: `MoodSettingsSheet` now hard-blocks (alert + refuse to save) XP-change magnitude > 10 or MP-rate magnitude > 50, instead of silently clamping.
+  - **MP regen now keys off *yesterday's* logged mood**: new `activity_logs.mood_name` column + chip-selector wired into the daily log form; `_applyMpRegen` looks up the prior day's named mood via `getLoggedMoodName()` rather than the live sticky `current_mood`.
+  - **Timezone sweep completed**: every remaining `toISOString().split('T')[0]` call site (rpg.ts, logs.ts, game.ts, bible.ts, milestones.tsx, index.tsx, history.tsx, log.tsx) converted to the local-calendar-day-correct `localDateStr()` — closes out the known UTC-vs-local streak/date-boundary risk noted in the prior MP-regen pass.
 
 ### Next / planned (not yet implemented)
 - Dungeon content for D–Legend ranks — needed before the unlock system has any visible effect (names/flavor/objectives not specified anywhere; explicitly held off creating placeholder content during 1B per user direction)
@@ -172,6 +179,10 @@ XP to next level = ceil((7.5 × level + 435) / 10) × 10
 |---|---|
 | AP (Ability Points) | +10 per level gained |
 | Coins | level × 10 per level gained (e.g. level-up to 5 → +50 coins) |
+
+The level-up modal (`app/_layout.tsx`) displays the actual AP+Coins granted (read from the transient `level_up_ap_gained`/`level_up_coins_gained` fields populated by `applyXP`, paired with `level_up_pending` and cleared together by `clearLevelUpPending()`).
+
+If the level-up also crosses a dungeon rank's natural-unlock threshold, the auto-granted "Right" does **not** appear on the level-up modal — it surfaces via a separate "Gate Unlocked — {RANK}-Rank dungeons are now permanently accessible" toast (reads `level_up_right_rank`, animates in independently of the gem banner). See §11.6 for the Rights & Keys system.
 
 ### 2.3 Titles
 
@@ -510,40 +521,50 @@ Using a consumable writes a timed entry to `active_buffs` (1 hour expiry).
 
 Cooldown per dungeon (stored in `dungeons.cooldown_hours`). Currently 2 minutes in dev build.
 
-### 11.6 Unlock System
+### 11.6 Unlock System — Rights & Keys
 
-Players naturally unlock dungeon ranks as they level up. Spendable XP can buy early access to a higher rank before reaching its natural unlock level (one-time per rank, then permanently accessible).
+Players naturally unlock dungeon ranks as they level up. The Game itself is gated behind **Level 11** (`MIN_GAME_LEVEL`/`isGameUnlocked()` in game.ts — tapping the Game tab below this level shows "Unlockable only at level 11"), and ranks now unlock on a clean every-10-levels cadence starting there, so E becomes available the instant the Game does.
 
-**Implemented:** gating mechanism is fully wired (`isDungeonRankUnlocked`, `earlyUnlockDungeonRank`, persisted in `dungeon_unlocks`) and surfaced as a "Dungeon Rank Unlocks" list **in the Store → GAME tab** (per-rank status + early-unlock button, paid in Spendable XP). The Game Guide info sheet now only informs players that early unlocks are purchasable in the Store — it no longer hosts the purchase UI itself. **Not yet meaningful in the UI:** only E-rank dungeons exist as content (5 seeded) — D through Legend have no dungeon definitions yet, so the gating has nothing to gate until that content is created.
-
-**Natural unlock levels:**
+**Natural unlock levels** (`DUNGEON_NATURAL_UNLOCK_LEVEL`, canonical copy lives in rpg.ts and is re-exported to game.ts to avoid a circular import with `applyXP`):
 
 | Dungeon Rank | Natural unlock |
 |---|---|
-| E | Level 1 |
-| D | Level 10 |
-| C | Level 25 |
-| B | Level 40 |
-| A | Level 60 |
-| S | Level 75 |
-| SS | Level 85 |
-| SSS | Level 95 |
-| Legend | Level 100 |
+| E | Level 11 |
+| D | Level 21 |
+| C | Level 31 |
+| B | Level 41 |
+| A | Level 51 |
+| S | Level 61 |
+| SS | Level 71 |
+| SSS | Level 81 |
+| Legend | Level 91 |
 
-**Early unlock — Spendable XP cost:**
+**Right** — a permanent, non-usable writ of passage that grants lasting access to a dungeon rank. Either:
+1. **Bought early** from the Shop (Store → GAME → "Dungeon Rights") for **5× the rank's Key price**, paid in Spendable XP — `purchaseDungeonRight()`/`getDungeonRightPrice()` in game.ts, persisted in `dungeon_unlocks`; or
+2. **Auto-granted** the instant a level-up crosses a rank's natural-unlock threshold — detected inline in `applyXP` (rpg.ts), which calls `materializeDungeonRight()`. **Crucial asymmetry vs. purchases**: a level-up grant is never partial — if a single XP jump crosses *multiple* thresholds at once (e.g. a big catch-up grant takes someone from level 50 straight to 95, crossing A/S/SS/SSS), **every** crossed rank's Right is granted, not just the highest. Buying a Right, by contrast, unlocks *only* the specific tier purchased — there's no "buy SSS, get the lower ones free."
 
-| Dungeon Rank | XP cost |
-|---|---|
-| D | 50 |
-| C | 100 |
-| B | 175 |
-| A | 250 |
-| S | 375 |
-| SS | 625 |
-| SSS | 1,000 |
-| Legend | 1,500 |
+Either path materializes a permanent inventory item (`category='game'`, `item_type='dungeon_right'`, name `"{RANK}-Tier Dungeon Right"`, colored via `RANK_COLOR`) and removes the rank from the Shop's Rights list (`getDungeonUnlockInfo().unlocked`). Auto-grants surface via a dedicated "Gate(s) Unlocked" toast in `app/_layout.tsx` (separate from the level-up modal — see §2.2) — listing every newly-accessible rank from that jump, comma-separated in the transient `level_up_right_rank` field (e.g. `"A,S,SS,SSS"`), colored to the highest rank reached.
 
-> Costs are intentionally low — the grind is in the runs and drop rates, not the unlock.
+> E needs no Right purchase path — it unlocks at exactly `MIN_GAME_LEVEL` (11), so no player can ever reach the Game before E is already accessible.
+
+**Key** — a consumable, `category='game'`/`item_type='dungeon_key'`, name `"{RANK}-Tier Dungeon Key"`. Purchasable from the Shop (Store → GAME → "Dungeon Keys", priced per the table below) and drops at a **~15% chance from clearing a gate of that same rank** (`submitDungeonClear` in game.ts, surfaced as a "Bonus Drop" on the clear screen). Using one is meant to generate an extra gate of its rank with a random expiry — **this consumption/generation step is intentionally stubbed** pending the daily dungeon-rotation engine (see Known Gaps below); the item exists, is purchasable, and drops, but "use" has no effect yet.
+
+**Right/Key Spendable-XP pricing** (`DUNGEON_KEY_PRICE` in game.ts — Right price = Key price × 5):
+
+| Dungeon Rank | Key cost | Right cost |
+|---|---|---|
+| D | 50 | 250 |
+| C | 100 | 500 |
+| B | 175 | 875 |
+| A | 250 | 1,250 |
+| S | 375 | 1,875 |
+| SS | 625 | 3,125 |
+| SSS | 1,000 | 5,000 |
+| Legend | 1,500 | 7,500 |
+
+> Costs are intentionally low — the grind is in the runs and drop rates, not the unlock. E has neither a Key nor a Right price (see above).
+
+**Known gap — daily dungeon-rotation engine (deferred, separately scoped):** the dungeon list is still a static seeded set grouped by rank — there is no daily-generation/expiry/rotation mechanic, so Keys can't yet generate extra gates and natural gates don't show expiry countdowns. Building this requires a new `dungeon_instances`-style table, a daily generation job (rule: 5× current-highest-unlocked-rank + 1× each rank below it), and a real Key-consumption flow. Logged in memory (`project_phase_d_followup.md`, item G) for a dedicated design pass — do not improvise it inline.
 
 ---
 

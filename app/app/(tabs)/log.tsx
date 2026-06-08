@@ -21,6 +21,7 @@ import { createActivityLog, upsertMoodLog, getMoodLogForDate } from '../../src/d
 import { getRPGState, setCurrentMood, isInDeathState, getCustomMoods, MOOD_FALLBACK_COLORS, type CustomMood } from '../../src/db/rpg';
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { localDateStr } from '../../src/utils/date';
 
 type LogMoodState = string;
 
@@ -29,7 +30,7 @@ type LogMode = 'daily' | 'weekly' | 'other';
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() { return localDateStr(); }
 function getDaysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate(); }
 function getFirstDayOffset(y: number, m: number) { return (new Date(y, m - 1, 1).getDay() + 6) % 7; }
 function padded(n: number) { return String(n).padStart(2, '0'); }
@@ -192,6 +193,7 @@ export default function LogScreen() {
         if (moodChanged || hasJournal) {
           const r = upsertMoodLog({
             log_date: selectedDate,
+            mood_name: currentMoodState,
             mood_rating: mood!,
             energy_rating: energy!,
             productivity_rating: productivity!,

@@ -1,4 +1,5 @@
 import { db } from './schema';
+import { localDateStr } from '../utils/date';
 import { calculateXP } from '../services/xpEngine';
 import { applyXP, getWeeklyBoostMult, activateWeeklyBoost } from './rpg';
 import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
@@ -18,6 +19,7 @@ export type ActivityLog = {
   week_start: string | null;
   categories: string;     // JSON array
   description: string | null; // note/title for activity
+  mood_name: string | null;   // active named mood at time of logging
   mood_rating: number | null;
   energy_rating: number | null;
   productivity_rating: number | null;
@@ -43,6 +45,7 @@ export type ActivityLogInput = {
 
 export type MoodLogInput = {
   log_date: string;
+  mood_name?: string;       // active named mood at time of logging — sourced for yesterday's-mood MP regen lookup
   mood_rating: number;
   energy_rating: number;
   productivity_rating: number;
@@ -94,7 +97,7 @@ export function getLogsForMonth(year: number, month: number): ActivityLog[] {
 export function getRecentLogs(days: number, entryType?: 'activity' | 'mood'): ActivityLog[] {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = localDateStr(cutoff);
   if (entryType) {
     return db.getAllSync<ActivityLog>(
       "SELECT * FROM activity_logs WHERE COALESCE(log_date, date(created_at)) >= ? AND entry_type = ? ORDER BY log_date DESC",
@@ -221,12 +224,14 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
 
     db.runSync(
       `UPDATE activity_logs SET
+         mood_name = COALESCE(?, mood_name),
          mood_rating = ?, energy_rating = ?, productivity_rating = ?,
          journal_entry = ?,
          what_went_well = COALESCE(NULLIF(?, ''), what_went_well),
          what_to_improve = COALESCE(NULLIF(?, ''), what_to_improve),
          xp_awarded = xp_awarded + ?
        WHERE id = ?`,
+      input.mood_name ?? null,
       input.mood_rating, input.energy_rating, input.productivity_rating,
       newJournal,
       input.what_went_well?.trim() ?? '',
@@ -245,11 +250,11 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
 
   db.runSync(
     `INSERT INTO activity_logs
-       (category, description, log_type, entry_type, log_date,
+       (category, description, log_type, entry_type, log_date, mood_name,
         mood_rating, energy_rating, productivity_rating, journal_entry,
         what_went_well, what_to_improve, categories, xp_awarded)
-     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
-    input.log_date,
+     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
+    input.log_date, input.mood_name ?? null,
     input.mood_rating, input.energy_rating, input.productivity_rating,
     input.journal_entry?.trim() || null,
     input.what_went_well?.trim() || null,
@@ -328,7 +333,7 @@ export function getCategoryEffects(): CategoryEffect[] {
   try {
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - 1);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const cutoffStr = localDateStr(cutoff);
 
     // Query 1: mood logs for the past year
     const allMoods = db.getAllSync<{ log_date: string; mood_rating: number; energy_rating: number }>(
@@ -412,7 +417,7 @@ export function getActivityTimeStats(period: 'week' | 'month' | 'year'): Activit
   const days = period === 'week' ? 7 : period === 'month' ? 30 : 365;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = localDateStr(cutoff);
   return db.getAllSync<ActivityTimeStat>(
     `SELECT json_extract(categories, '$[0]') as category,
             SUM(COALESCE(duration_mins, 0)) as total_mins,

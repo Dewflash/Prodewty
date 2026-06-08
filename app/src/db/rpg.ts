@@ -39,6 +39,9 @@ export type RPGState = {
   last_self_destruct: string | null;
   current_mood: string;
   level_up_pending: number;
+  level_up_ap_gained: number;
+  level_up_coins_gained: number;
+  level_up_right_rank: string | null;
   death_acknowledged: number;
   // v14
   gems: number;
@@ -107,7 +110,7 @@ export function getWeeklyBoostMult(): number {
       'SELECT weekly_boost_until FROM rpg_state WHERE id = 1',
     );
     if (!row?.weekly_boost_until) return 1.0;
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     return row.weekly_boost_until >= today ? 1.05 : 1.0;
   } catch { return 1.0; }
 }
@@ -116,7 +119,7 @@ export function activateWeeklyBoost(): void {
   try {
     const until = new Date();
     until.setDate(until.getDate() + 7);
-    const untilStr = until.toISOString().split('T')[0];
+    const untilStr = localDateStr(until);
     db.runSync('UPDATE rpg_state SET weekly_boost_until = ? WHERE id = 1', untilStr);
   } catch {}
 }
@@ -126,7 +129,7 @@ export function checkStreakFreeze(): void {
   try {
     const state = getRPGState();
     if (!state.last_active_date) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     if (state.last_active_date >= today) return;
     const daysMissed = Math.floor(
       (new Date(today).getTime() - new Date(state.last_active_date).getTime()) / 86400000,
@@ -135,7 +138,7 @@ export function checkStreakFreeze(): void {
     if (daysMissed === 2 && (state.streak_freezes ?? 0) > 0) {
       // Consume freeze and back-date last_active_date to yesterday so next
       // applyXP call sees diff=1 and extends the streak instead of resetting it.
-      const yesterday = new Date(new Date(today).getTime() - 86400000).toISOString().split('T')[0];
+      const yesterday = localDateStr(new Date(Date.now() - 86400000));
       db.runSync(
         'UPDATE rpg_state SET streak_freezes = streak_freezes - 1, last_active_date = ? WHERE id = 1',
         yesterday,
@@ -208,6 +211,18 @@ function getMoodByName(name: string): CustomMood | null {
   } catch { return null; }
 }
 
+// Looks up the named mood logged against a given calendar date (most recent
+// entry that day with a mood_name set) — sourced from the daily-log mood selector.
+function getLoggedMoodName(dateStr: string): string | null {
+  try {
+    const row = db.getFirstSync<{ mood_name: string | null }>(
+      `SELECT mood_name FROM activity_logs WHERE log_date = ? AND mood_name IS NOT NULL ORDER BY created_at DESC LIMIT 1`,
+      dateStr,
+    );
+    return row?.mood_name ?? null;
+  } catch { return null; }
+}
+
 // Active mood's passive XP modifier — applied as a multiplier inside applyXP()
 // so it covers every XP source uniformly (activity logs, mood/journal, dungeon loot, quests, habits).
 export function getMoodXPMultiplier(): number {
@@ -233,7 +248,11 @@ function _applyMpRegen(): void {
   const daysPassed = Math.min((now.getTime() - new Date(last).getTime()) / 86400000, 30);
   if (daysPassed < 0.042) return; // skip if < ~1 hour
 
-  const mood = getMoodByName(state.current_mood);
+  // MP regen reflects *yesterday's* logged mood, not today's — e.g. yesterday's
+  // "terrible" (mp_rate -50) zeroes out today's grant: 50 - 50 = 0.
+  const yesterday = localDateStr(new Date(Date.now() - 86400000));
+  const yesterdayMoodName = getLoggedMoodName(yesterday);
+  const mood = yesterdayMoodName ? getMoodByName(yesterdayMoodName) : null;
   const dailyRate = MP_REGEN_PER_DAY + (mood?.mp_rate ?? 0);
   const delta = Math.round(dailyRate * daysPassed);
   if (delta === 0) return;
@@ -283,7 +302,41 @@ export function getCustomMoods(): CustomMood[] {
 }
 
 export function clearLevelUpPending(): void {
-  db.runSync(`UPDATE rpg_state SET level_up_pending = 0 WHERE id = 1`);
+  db.runSync(`UPDATE rpg_state SET level_up_pending = 0, level_up_ap_gained = 0, level_up_coins_gained = 0, level_up_right_rank = NULL WHERE id = 1`);
+}
+
+// ─── Dungeon Rights (MECHANICS.md §11.6 Rights & Keys) ───────────────────────
+// Single source of truth for natural-unlock levels — game.ts imports this
+// rather than duplicating it, since applyXP (here) needs it to auto-grant
+// the permanent "Right" item the instant a player crosses an unlock threshold.
+export const DUNGEON_NATURAL_UNLOCK_LEVEL: Record<string, number> = {
+  E: 11, D: 21, C: 31, B: 41, A: 51, S: 61, SS: 71, SSS: 81, Legend: 91,
+};
+
+export function dungeonRightItemName(rank: string): string {
+  return `${rank}-Tier Dungeon Right`;
+}
+
+export function ownsDungeonRight(rank: string): boolean {
+  try {
+    return !!db.getFirstSync(
+      `SELECT id FROM inventory WHERE category = 'game' AND item_type = 'dungeon_right' AND item_name = ?`,
+      dungeonRightItemName(rank),
+    );
+  } catch { return false; }
+}
+
+// Materializes the permanent, non-usable "Right" item the instant a rank becomes
+// owned (early purchase OR natural level-up) — idempotent.
+export function materializeDungeonRight(rank: string): void {
+  try {
+    if (ownsDungeonRight(rank)) return;
+    db.runSync(
+      `INSERT INTO inventory (item_name, category, item_type, description, quantity) VALUES (?, 'game', 'dungeon_right', ?, 1)`,
+      dungeonRightItemName(rank),
+      `A permanent writ of passage — grants lasting access to ${rank}-rank dungeon gates.`,
+    );
+  } catch {}
 }
 
 export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; state: RPGState } {
@@ -312,7 +365,7 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   const title = titleForLevel(current_level);
 
   // Streak update
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   let { streak_days } = state;
   if (state.last_active_date === today) {
     // no change
@@ -330,6 +383,19 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   const startLevel = current_level - levelsGained;
   for (let lvl = startLevel + 1; lvl <= current_level; lvl++) coinsGained += lvl * 10;
 
+  // Auto-grant a dungeon "Right" for EVERY natural-unlock threshold crossed in this
+  // jump — level-up grants are never partial (unlike purchases, which grant exactly
+  // the rank bought). Surfaced via a separate toast (not the level-up page) listing
+  // every newly-accessible rank, stored comma-separated in level_up_right_rank.
+  const rightRanks: string[] = [];
+  if (levelUp) {
+    for (const [rank, lvl] of Object.entries(DUNGEON_NATURAL_UNLOCK_LEVEL)) {
+      if (lvl > startLevel && lvl <= current_level) rightRanks.push(rank);
+    }
+    for (const rank of rightRanks) materializeDungeonRight(rank);
+  }
+  const rightRanksStr = rightRanks.length ? rightRanks.join(',') : null;
+
   db.runSync(
     `UPDATE rpg_state SET
        current_level = ?, total_xp = ?, xp_to_next_level = ?,
@@ -337,6 +403,9 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
        ap = COALESCE(ap, 0) + ?,
        coins = COALESCE(coins, 0) + ?,
        level_up_pending = CASE WHEN ? > 0 THEN ? ELSE level_up_pending END,
+       level_up_ap_gained    = CASE WHEN ? > 0 THEN ? ELSE level_up_ap_gained END,
+       level_up_coins_gained = CASE WHEN ? > 0 THEN ? ELSE level_up_coins_gained END,
+       level_up_right_rank   = CASE WHEN ? > 0 THEN ? ELSE level_up_right_rank END,
        spendable_xp    = COALESCE(spendable_xp, 0) + ?,
        total_xp_earned = COALESCE(total_xp_earned, 0) + ?
      WHERE id = 1`,
@@ -344,6 +413,9 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
     title, streak_days, today,
     apGained, coinsGained,
     levelsGained, levelUp ? current_level : 0,
+    levelsGained, apGained,
+    levelsGained, coinsGained,
+    levelsGained, rightRanksStr,
     xp, xp,
   );
   try {

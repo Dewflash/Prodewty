@@ -7,7 +7,10 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg';
-import { purchaseHPBoost, purchaseCosmetic, getDungeonUnlockInfo, earlyUnlockDungeonRank } from '../src/db/game';
+import {
+  purchaseHPBoost, purchaseCosmetic, getDungeonUnlockInfo,
+  purchaseDungeonRight, purchaseDungeonKey, getDungeonKeyPrice, dungeonKeyDescription,
+} from '../src/db/game';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { db } from '../src/db/schema';
 import { playSound, switchBGM } from '../src/services/audio';
@@ -48,19 +51,36 @@ export default function StoreScreen() {
 
   function reload() { setRpg(getRPGState()); }
 
-  function handleEarlyUnlock(rank: string) {
+  function handleBuyRight(rank: string) {
     const info = getDungeonUnlockInfo(rank);
-    if (info.earlyCost === null) return;
+    if (info.rightCost === null) return;
     Alert.alert(
-      `Unlock ${rank}-rank gates early?`,
-      `Spend ${info.earlyCost} Spendable XP to permanently unlock ${rank}-rank gates now, ahead of the natural Level ${info.naturalLevel} unlock.`,
+      `Buy ${rank}-Tier Dungeon Right?`,
+      `Spend ${info.rightCost} Spendable XP for a permanent writ of passage — ${rank}-rank gates become accessible now, ahead of the natural Level ${info.naturalLevel} unlock.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Unlock', onPress: () => {
-          const result = earlyUnlockDungeonRank(rank);
-          if (result === 'insufficient_xp') { Alert.alert('Not enough Spendable XP', `Need ${info.earlyCost} spendable XP.`); return; }
-          if (result === 'already_unlocked') { Alert.alert('Already unlocked'); return; }
-          if (result === 'ok') { playSound('purchaseinstore'); reload(); Alert.alert('Unlocked', `${rank}-rank gates are now permanently accessible.`); }
+        { text: 'Buy', onPress: () => {
+          const result = purchaseDungeonRight(rank);
+          if (result === 'insufficient_xp') { Alert.alert('Not enough Spendable XP', `Need ${info.rightCost} spendable XP.`); return; }
+          if (result === 'already_owned') { Alert.alert('Already owned'); return; }
+          if (result === 'ok') { playSound('purchaseinstore'); reload(); Alert.alert('Right Granted', `${rank}-rank gates are now permanently accessible.`); }
+        }},
+      ],
+    );
+  }
+
+  function handleBuyKey(rank: string) {
+    const cost = getDungeonKeyPrice(rank);
+    if (cost === null) return;
+    Alert.alert(
+      `Buy ${rank}-Tier Dungeon Key?`,
+      `Spend ${cost} Spendable XP. ${dungeonKeyDescription(rank)}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Buy', onPress: () => {
+          const result = purchaseDungeonKey(rank);
+          if (result === 'insufficient_xp') { Alert.alert('Not enough Spendable XP', `Need ${cost} spendable XP.`); return; }
+          if (result === 'ok') { playSound('purchaseinstore'); reload(); Alert.alert('Purchased', `${rank}-Tier Dungeon Key added to your inventory.`); }
         }},
       ],
     );
@@ -166,23 +186,40 @@ export default function StoreScreen() {
 
         {section === 'game' && (
           <View style={s.unlockSection}>
-            <Text style={s.unlockTitle}>DUNGEON RANK UNLOCKS</Text>
-            <Text style={s.unlockHint}>Higher-rank gates open naturally as you level up — or unlock any rank early, permanently, by spending Spendable XP.</Text>
+            <Text style={s.unlockTitle}>DUNGEON RIGHTS</Text>
+            <Text style={s.unlockHint}>A Right is a permanent writ of passage — gates open naturally as you level up, or buy a rank's Right early, permanently, with Spendable XP.</Text>
             {DUNGEON_RANKS.map(rank => {
               const info = getDungeonUnlockInfo(rank);
+              if (info.unlocked) return null;
               return (
                 <View key={rank} style={s.unlockRow}>
                   <Text style={[s.unlockRank, { color: RANK_COLOR[rank] ?? colors.textMuted }]}>{rank}</Text>
-                  {info.unlocked ? (
-                    <Text style={s.unlockStatusOk}>Unlocked</Text>
-                  ) : (
-                    <>
-                      <Text style={s.unlockStatus}>Lv {info.naturalLevel} · or {info.earlyCost} spendable XP</Text>
-                      <Pressable style={s.unlockBtn} onPress={() => handleEarlyUnlock(rank)}>
-                        <Text style={s.unlockBtnTxt}>Unlock</Text>
-                      </Pressable>
-                    </>
-                  )}
+                  <Text style={s.unlockStatus}>Lv {info.naturalLevel} · or {info.rightCost} spendable XP</Text>
+                  <Pressable style={s.unlockBtn} onPress={() => handleBuyRight(rank)}>
+                    <Text style={s.unlockBtnTxt}>Buy Right</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+            {DUNGEON_RANKS.every(rank => getDungeonUnlockInfo(rank).unlocked) && (
+              <Text style={s.unlockStatusOk}>All ranks unlocked.</Text>
+            )}
+          </View>
+        )}
+
+        {section === 'game' && (
+          <View style={s.unlockSection}>
+            <Text style={s.unlockTitle}>DUNGEON KEYS</Text>
+            <Text style={s.unlockHint}>Consumable. Generates an extra gate of that rank with a random expiry window — drops from gate clears too.</Text>
+            {DUNGEON_RANKS.filter(rank => getDungeonKeyPrice(rank) !== null).map(rank => {
+              const cost = getDungeonKeyPrice(rank);
+              return (
+                <View key={rank} style={s.unlockRow}>
+                  <Text style={[s.unlockRank, { color: RANK_COLOR[rank] ?? colors.textMuted }]}>{rank}</Text>
+                  <Text style={s.unlockStatus}>{cost} spendable XP</Text>
+                  <Pressable style={s.unlockBtn} onPress={() => handleBuyKey(rank)}>
+                    <Text style={s.unlockBtnTxt}>Buy Key</Text>
+                  </Pressable>
                 </View>
               );
             })}

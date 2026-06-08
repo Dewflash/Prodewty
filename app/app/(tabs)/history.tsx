@@ -14,6 +14,7 @@ import {
   updateSelfDestructNotes, type ActivityLog,
 } from '../../src/db/logs';
 import { db } from '../../src/db/schema';
+import { localDateStr } from '../../src/utils/date';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { playSound, switchBGM } from '../../src/services/audio';
@@ -23,7 +24,7 @@ const MONTHS       = ['January','February','March','April','May','June','July','
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY_LABELS   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-function todayStr()                    { return new Date().toISOString().split('T')[0]; }
+function todayStr()                    { return localDateStr(); }
 function getDaysInMonth(y:number,m:number){ return new Date(y,m,0).getDate(); }
 function getFirstDayOffset(y:number,m:number){ return (new Date(y,m-1,1).getDay()+6)%7; }
 function dateStr(y:number,m:number,d:number){ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }

@@ -1193,6 +1193,21 @@ function runMigrations() {
     try { db.execSync(`UPDATE custom_moods SET mp_rate = MAX(-50, MIN(50, mp_rate))`); } catch {}
     db.execSync('PRAGMA user_version = 37');
   }
+
+  if (version < 38) {
+    // Per-entry mood-name logging — lets MP regen look up *yesterday's* named mood.
+    try { db.execSync(`ALTER TABLE activity_logs ADD COLUMN mood_name TEXT`); } catch {}
+    db.execSync('PRAGMA user_version = 38');
+  }
+
+  if (version < 39) {
+    // Level-up reward display (AP+Coins) + separate Dungeon-Right-grant toast —
+    // transient fields paired with level_up_pending, cleared together on ack.
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN level_up_ap_gained INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN level_up_coins_gained INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN level_up_right_rank TEXT`); } catch {}
+    db.execSync('PRAGMA user_version = 39');
+  }
 }
 
 // ─── Full Wipe / Reset (Phase 1B §1) ─────────────────────────────────────────

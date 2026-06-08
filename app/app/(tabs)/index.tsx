@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { db } from '../../src/db/schema';
+import { localDateStr } from '../../src/utils/date';
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
@@ -91,7 +92,7 @@ function buildDailyData(logs: ActivityLog[], days: number): DayData[] {
   for (const l of logs) { const d = resolveDate(l); (byDate[d] ??= []).push(l); }
   return Array.from({ length: days }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
-    const key = d.toISOString().split('T')[0];
+    const key = localDateStr(d);
     const ls = byDate[key] ?? [];
     const ms = ls.find(l => l.entry_type === 'mood') ?? ls.find(l => l.mood_rating !== null);
     return { date: key, mood: ms?.mood_rating ?? null, energy: ms?.energy_rating ?? null, prod: ms?.productivity_rating ?? null, xp: ls.reduce((s, l) => s + l.xp_awarded, 0) };
@@ -103,7 +104,7 @@ function buildWeeklyData(logs: ActivityLog[]): DayData[] {
   for (const l of logs) {
     const d = new Date(resolveDate(l) + 'T12:00:00');
     const mon = new Date(d); mon.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
-    const key = mon.toISOString().split('T')[0];
+    const key = localDateStr(mon);
     (byWeek[key] ??= []).push(l);
   }
   return Object.keys(byWeek).sort().slice(-52).map(key => {
@@ -334,7 +335,7 @@ export default function ProgressScreen() {
       // ── Deferred: heavy reads run after animation frame so navigation stays smooth ──
       const task = InteractionManager.runAfterInteractions(() => {
         if (!active) return;
-        const today  = new Date().toISOString().split('T')[0];
+        const today  = localDateStr();
         const all    = getLogs();
         const days   = period === 'week' ? 7 : 30;
         const recent = getRecentLogs(period === 'year' ? 365 : days);
