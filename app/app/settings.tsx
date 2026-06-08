@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, View, Text, TextInput, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Alert, View, Text, TextInput, StyleSheet, ScrollView, Pressable, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
+import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
@@ -27,11 +28,17 @@ export default function SettingsScreen() {
     return init;
   });
 
+  const [personalization, setPersonalization] = useState(() => isPersonalizationEnabled());
   const [bibleXP, setBibleXP] = useState(() => getSetting('bible_xp', '50'));
   const [currency, setCurrency] = useState(() => getSetting('finance_currency', '$') || '$');
 
   const bibleXPRef = useRef(bibleXP);
   const currencyRef = useRef(currency);
+
+  function togglePersonalization(value: boolean) {
+    setSetting('personalization_enabled', value ? '1' : '0');
+    setPersonalization(value);
+  }
 
   function handleSelect(zone: string, index: number) {
     setBGMSelection(zone, index);

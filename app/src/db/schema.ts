@@ -1212,7 +1212,80 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 40');
   }
+
+  if (version < 41) {
+    // Phase B — adaptive quest engine (rules-based weighted scoring, recomputed weekly).
+    // Singleton row mirrors rpg_state/health_state/onboarding_answers — stores the last
+    // Player Snapshot run so the 7-day recompute gate has something to check against,
+    // plus the snapshot itself (JSON blob, same pattern as onboarding_answers.answers)
+    // so both the quest engine and (later) Insights can read it without recomputing.
+    db.execSync(`CREATE TABLE IF NOT EXISTS quest_engine_state (
+      id               INTEGER PRIMARY KEY DEFAULT 1,
+      last_snapshot_at TEXT,
+      snapshot         TEXT NOT NULL DEFAULT '{}'
+    )`);
+    db.execSync(`INSERT OR IGNORE INTO quest_engine_state (id) VALUES (1)`);
+
+    // Quest phrasing bank — the engine selects a row matching the desired kind/tier
+    // and fills {category}/{minutes} placeholders. Keeps phrasing editable as data
+    // rather than buried in code, same rationale as DEFAULT_CATEGORIES/DEFAULT_RESTORATIVE.
+    db.execSync(`CREATE TABLE IF NOT EXISTS quest_templates (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind                 TEXT NOT NULL,
+      title_template       TEXT NOT NULL,
+      description_template TEXT NOT NULL,
+      is_default           INTEGER NOT NULL DEFAULT 1
+    )`);
+
+    for (const t of DEFAULT_QUEST_TEMPLATES) {
+      db.runSync(
+        `INSERT OR IGNORE INTO quest_templates (kind, title_template, description_template, is_default)
+         VALUES (?, ?, ?, 1)`,
+        t.kind, t.title, t.desc,
+      );
+    }
+
+    db.execSync('PRAGMA user_version = 41');
+  }
+
+  if (version < 42) {
+    // Phase C — Insights. Generated suggestions persist here so the feed has memory:
+    // dismissed ones don't keep resurfacing, accepted ones don't double-fire. `payload`
+    // is a JSON blob carrying whatever the suggestion needs to act on accept (e.g. the
+    // source category name + inherited traits for a new-category proposal) — same
+    // "structured JSON blob" convention as onboarding_answers.answers / activity_logs.categories.
+    db.execSync(`CREATE TABLE IF NOT EXISTS insight_suggestions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind         TEXT NOT NULL,
+      title        TEXT NOT NULL,
+      description  TEXT NOT NULL,
+      payload      TEXT NOT NULL DEFAULT '{}',
+      status       TEXT NOT NULL DEFAULT 'pending',
+      generated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      resolved_at  TEXT
+    )`);
+
+    db.execSync('PRAGMA user_version = 42');
+  }
 }
+
+// Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
+// / DEFAULT_RESTORATIVE / DROP_TABLE. {category} and {minutes} get filled in by the engine.
+const DEFAULT_QUEST_TEMPLATES: { kind: string; title: string; desc: string }[] = [
+  // maintain — keep a habit you already have going
+  { kind: 'maintain',    title: 'Keep up: {category}',                desc: 'Log a {category} session this week — same pace as usual.' },
+  { kind: 'maintain',    title: 'Log: {category}',                     desc: "You haven't logged {category} recently. Pick it back up this week." },
+  // stretch — push a habit slightly further than your usual
+  { kind: 'stretch',     title: 'Push further: {category}',            desc: "You've been steady with {category} — try going for {minutes} min this time." },
+  { kind: 'stretch',     title: 'Level up your {category}',            desc: 'Your consistency has earned this: aim for {minutes} min of {category} this week.' },
+  // discovery — something logged as created/tracked but rarely actually logged
+  { kind: 'discovery',   title: 'Revisit: {category}',                 desc: "You've set up {category} but haven't logged it much — give it another go this week." },
+  // restorative — injected when mood/health signals run low
+  { kind: 'restorative', title: 'Take a breather',                     desc: 'Things have felt heavy lately — spend a little time on something restorative for you.' },
+  { kind: 'restorative', title: 'Recharge first',                      desc: "No pressure to push hard right now — a short {category} session to recharge counts too." },
+  // mood_repair — gently themed toward positive states when mood's been low for a while
+  { kind: 'mood_repair', title: 'Something for you: {category}',       desc: 'A small {category} session, just for the enjoyment of it — no targets attached.' },
+];
 
 // ─── Full Wipe / Reset (Phase 1B §1) ─────────────────────────────────────────
 // Wipes all user-generated data back to a fresh-start state and re-seeds the

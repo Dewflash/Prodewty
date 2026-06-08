@@ -5,6 +5,7 @@ import { sessionXP } from '../services/xpEngine';
 import { sqlNow, pad, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
+import { getOrRefreshSnapshot, drawQuestCandidates, fillTemplate } from './questEngine';
 import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -780,36 +781,20 @@ export function getAcceptedQuests(): Quest[] {
 
 export function generateQuests(): void {
   try {
-    const candidates = db.getAllSync<{ category: string; times: number }>(
-      `SELECT json_extract(categories, '$[0]') as category, count(*) as times
-       FROM activity_logs
-       WHERE entry_type = 'activity'
-         AND log_date >= date('now', '-28 days')
-         AND json_extract(categories, '$[0]') IS NOT NULL
-       GROUP BY category
-       HAVING times >= 2
-         AND category NOT IN (
-           SELECT json_extract(categories, '$[0]')
-           FROM activity_logs
-           WHERE entry_type = 'activity'
-             AND log_date >= date('now', '-7 days')
-         )
-       ORDER BY times DESC
-       LIMIT 3`,
-    );
+    const snapshot = getOrRefreshSnapshot();
+    const drawn = drawQuestCandidates(snapshot);
 
     const existing = db.getAllSync<{ category: string }>(
       "SELECT category FROM quests WHERE status IN ('pending','accepted')",
     ).map(r => r.category);
 
-    for (const { category } of candidates) {
-      if (existing.includes(category)) continue;
+    for (const candidate of drawn) {
+      if (existing.includes(candidate.category)) continue;
+      const { title, description, stat_hint } = fillTemplate(candidate);
       db.runSync(
-        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status)
-         VALUES (?, ?, ?, 'weekly', 30, 'pending')`,
-        `Log: ${category}`,
-        `You haven't logged ${category} recently. Complete a ${category} session.`,
-        category,
+        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status, stat_hint)
+         VALUES (?, ?, ?, 'weekly', 30, 'pending', ?)`,
+        title, description, candidate.category, stat_hint,
       );
     }
 
