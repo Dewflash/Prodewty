@@ -45,7 +45,6 @@ export type RPGState = {
   death_acknowledged: number;
   // v14
   gems: number;
-  revival_count?: number;
   // v15
   vigor: number;
   last_vigor_date: string | null;

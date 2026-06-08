@@ -538,7 +538,7 @@ export function completeRevivalQuest(quest: RevivalQuest): void {
   const health = getHealthState();
   const restore = quest.hp_restore;
 
-  db.runSync(`UPDATE rpg_state SET death_acknowledged = 0, revival_count = revival_count + 1 WHERE id = 1`);
+  db.runSync(`UPDATE rpg_state SET death_acknowledged = 0 WHERE id = 1`);
 
   // Restore HP if at 0 (covers: HP death ignored then health bar death triggers)
   if ((rpg.hp ?? 100) <= 0) {
@@ -567,6 +567,59 @@ export function completeRevivalQuest(quest: RevivalQuest): void {
   addGameLog('quest_complete', `Revival quest completed: ${quest.title}. HP restored.`);
   // XP is awarded after restoration so isInDeathState() returns false
   try { applyXP(15); } catch {}
+}
+
+// ─── Revival Potion ───────────────────────────────────────────────────────────
+// A real consumable: instantly restores +15 to whichever HP/health bars are at 0,
+// the same dynamic as a revival quest, but skips the timed objective, the
+// activity_logs entry, and the XP award — it's the no-quest shortcut.
+
+const REVIVAL_POTION_NAME    = 'Revival Potion';
+const REVIVAL_POTION_RESTORE = 15;
+
+export function getRevivalPotionCount(): number {
+  try {
+    const row = db.getFirstSync<{ quantity: number }>(
+      `SELECT quantity FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = ?`,
+      REVIVAL_POTION_NAME,
+    );
+    return row?.quantity ?? 0;
+  } catch { return 0; }
+}
+
+export function useRevivalPotion(): 'ok' | 'none' {
+  const item = db.getFirstSync<{ id: number; quantity: number }>(
+    `SELECT id, quantity FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = ?`,
+    REVIVAL_POTION_NAME,
+  );
+  if (!item || item.quantity <= 0) return 'none';
+
+  const rpg     = getRPGState();
+  const health  = getHealthState();
+  const restore = REVIVAL_POTION_RESTORE;
+
+  db.runSync(`UPDATE rpg_state SET death_acknowledged = 0 WHERE id = 1`);
+
+  if ((rpg.hp ?? 100) <= 0) {
+    db.runSync(`UPDATE rpg_state SET hp = MIN(hp_max, hp + ?) WHERE id = 1`, restore);
+  }
+
+  const barParts: string[] = [];
+  if (health.emotional <= 0) barParts.push(`emotional = ${restore}`);
+  if (health.physical  <= 0) barParts.push(`physical  = ${restore}`);
+  if (health.mental    <= 0) barParts.push(`mental    = ${restore}`);
+  if (barParts.length > 0) {
+    try { db.runSync(`UPDATE health_state SET ${barParts.join(', ')} WHERE id = 1`); } catch {}
+  }
+
+  if (item.quantity <= 1) {
+    db.runSync(`DELETE FROM inventory WHERE id = ?`, item.id);
+  } else {
+    db.runSync(`UPDATE inventory SET quantity = quantity - 1 WHERE id = ?`, item.id);
+  }
+
+  addGameLog('quest_complete', 'Revival Potion used. HP restored.');
+  return 'ok';
 }
 
 // ─── Dungeons ─────────────────────────────────────────────────────────────────

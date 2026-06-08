@@ -462,8 +462,9 @@ function runMigrations() {
   }
 
   if (version < 14) {
-    // rpg_state: gems currency + revival counter
+    // rpg_state: gems currency
     try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN gems INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // revival_count was added here and later scrapped (dead — never read by any UI/gating logic); column left in place for existing DBs, no longer referenced
     try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN revival_count INTEGER NOT NULL DEFAULT 0`); } catch {}
 
     // Custom moods table — seeded with the 6 defaults

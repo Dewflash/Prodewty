@@ -30,9 +30,18 @@ function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
 function purchaseRevivalPotion(): 'ok' | 'insufficient_coins' {
   try {
     const rpg = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id=1')!;
-    if ((rpg.coins ?? 0) < 150) return 'insufficient_coins';
-    db.runSync(`UPDATE rpg_state SET coins = coins - 150, revival_count = revival_count + 1 WHERE id = 1`);
-    db.runSync(`INSERT OR IGNORE INTO inventory (item_name, category, item_type, description) VALUES ('Revival Potion','global','consumable','Consumed on purchase — revival counted.')`) ;
+    if ((rpg.coins ?? 0) < 500) return 'insufficient_coins';
+    db.runSync(`UPDATE rpg_state SET coins = coins - 500 WHERE id = 1`);
+    const existing = db.getFirstSync<{ id: number }>(
+      `SELECT id FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = 'Revival Potion'`,
+    );
+    if (existing) {
+      db.runSync(`UPDATE inventory SET quantity = quantity + 1 WHERE id = ?`, existing.id);
+    } else {
+      db.runSync(
+        `INSERT INTO inventory (item_name, category, item_type, description, quantity) VALUES ('Revival Potion','global','consumable','Use from the death screen to instantly restore +15 to HP and/or any health bars at 0 — skips the revival quest.', 1)`,
+      );
+    }
     return 'ok';
   } catch { return 'insufficient_coins'; }
 }
@@ -106,15 +115,15 @@ export default function StoreScreen() {
 
   const nonGameItems: Item[] = [
     {
-      key: 'freeze', icon: 'shield', name: 'Streak Freeze', cost: 50,
+      key: 'freeze', icon: 'shield', name: 'Streak Freeze', cost: 300,
       desc: 'Protect your streak for one missed day. Auto-activates.',
       owned: (rpg?.streak_freezes ?? 0) > 0 ? `${rpg!.streak_freezes} owned` : undefined,
-      onBuy: () => buy(50, purchaseStreakFreeze, 'Streak Freeze'),
+      onBuy: () => buy(300, purchaseStreakFreeze, 'Streak Freeze'),
     },
     {
-      key: 'mp', icon: 'zap', name: 'MP Boost', cost: 75,
+      key: 'mp', icon: 'zap', name: 'MP Boost', cost: 200,
       desc: 'Instantly restores +25 MP.',
-      onBuy: () => buy(75, purchaseMPBoost, 'MP Boost'),
+      onBuy: () => buy(200, purchaseMPBoost, 'MP Boost'),
     },
     {
       key: 'cosmetic-standard', icon: 'star', name: 'Standard Cosmetic', cost: 5_000,
@@ -136,9 +145,9 @@ export default function StoreScreen() {
       onBuy: () => buy(100, purchaseHPBoost, 'Critical HP Boost'),
     },
     {
-      key: 'revival', icon: 'refresh-cw', name: 'Revival Potion', cost: 150,
-      desc: 'Counts as one revival — increases your Toll without requiring a revival quest.',
-      onBuy: () => buy(150, purchaseRevivalPotion, 'Revival Potion'),
+      key: 'revival', icon: 'refresh-cw', name: 'Revival Potion', cost: 500,
+      desc: 'On the death screen, instantly restores +15 to HP and/or any health bars at 0 — skips the revival quest.',
+      onBuy: () => buy(500, purchaseRevivalPotion, 'Revival Potion'),
     },
   ];
 

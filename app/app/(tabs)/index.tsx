@@ -134,6 +134,9 @@ const BADGES = [
   { id:'str_7',   name:'Week Warrior', desc:'7-day streak'       },
   { id:'str_14',  name:'2 Weeks',      desc:'14-day streak'      },
   { id:'str_30',  name:'Month',        desc:'30-day streak'      },
+  { id:'str_50',  name:'Iron Resolve', desc:'50-day streak'      },
+  { id:'str_100', name:'Unbroken',     desc:'100-day streak'     },
+  { id:'str_182', name:'Half Year',    desc:'182-day streak'     },
   { id:'mood_10', name:'Best Day',     desc:'Mood 10'            },
   { id:'nrg_10',  name:'Full Power',   desc:'Energy 10'          },
   { id:'prd_10',  name:'Peak Focus',   desc:'Productivity 10'    },
@@ -147,6 +150,7 @@ function earnedBadges(logs: ActivityLog[], streak: number) {
   if (n>=20) e.add('log_20'); if (n>=50) e.add('log_50'); if (n>=100) e.add('log_100');
   if (streak>=3) e.add('str_3'); if (streak>=7) e.add('str_7');
   if (streak>=14) e.add('str_14'); if (streak>=30) e.add('str_30');
+  if (streak>=50) e.add('str_50'); if (streak>=100) e.add('str_100'); if (streak>=182) e.add('str_182');
   if (logs.some(l => l.mood_rating===10)) e.add('mood_10');
   if (logs.some(l => l.energy_rating===10)) e.add('nrg_10');
   if (logs.some(l => l.productivity_rating===10)) e.add('prd_10');
@@ -291,7 +295,6 @@ export default function ProgressScreen() {
   const [moodHistoryVisible, setMoodHistoryVisible] = useState(false);
   const [pastMoods, setPastMoods] = useState<CustomMood[]>([]);
   const [deathCount, setDeathCount] = useState(0);
-  const [revivalCount, setRevivalCount] = useState(0);
   const [questCount, setQuestCount] = useState(0);
   const [dungeonClearCount, setDungeonClearCount] = useState(0);
   const [vigorCount, setVigorCount] = useState(0);
@@ -324,7 +327,6 @@ export default function ProgressScreen() {
       setCustomMoods(getCustomMoods());
       setSdCount(rpg.self_destruct_count ?? 0);
       setVigorCount(rpg.vigor ?? 0);
-      setRevivalCount(rpg.revival_count ?? 0);
       setHealth(h);
       setHealthTierLabel(getHealthTier(Math.min(h.emotional, h.physical, h.mental)).label);
       setShowRevival(isInDeathState() && (rpg.death_acknowledged ?? 0) === 1);

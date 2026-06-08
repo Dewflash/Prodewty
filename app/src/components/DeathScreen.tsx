@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated, Modal, ScrollView, Alert } from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { Feather } from '@expo/vector-icons';
 import {
   handleDeath, acknowledgeDeathIgnore, getRevivalQuests, completeRevivalQuest,
+  getRevivalPotionCount, useRevivalPotion,
   type DeathCause, type RevivalQuest,
 } from '../db/game';
 import { getRPGState } from '../db/rpg';
@@ -37,6 +38,7 @@ export function DeathScreen({ cause, onResolve }: Props) {
   // Death state — read once when quests load, used across all phases
   const [isHPDead,       setIsHPDead]       = useState(false);
   const [zeroHealthBars, setZeroHealthBars] = useState<StatBar[]>([]);
+  const [potionCount,    setPotionCount]    = useState(0);
 
   // What was actually restored (read before completeRevivalQuest runs)
   const [didRestoreHP,   setDidRestoreHP]   = useState(false);
@@ -60,6 +62,7 @@ export function DeathScreen({ cause, onResolve }: Props) {
       if (health.physical  <= 0) bars.push('physical');
       if (health.mental    <= 0) bars.push('mental');
       setZeroHealthBars(bars);
+      setPotionCount(getRevivalPotionCount());
     } catch {}
     shakeAnim.setValue(0);
     Animated.sequence([
@@ -105,6 +108,22 @@ export function DeathScreen({ cause, onResolve }: Props) {
   }
 
   function handleIgnore() { acknowledgeDeathIgnore(); onResolve(); }
+
+  function handleUsePotion() {
+    if (potionCount <= 0) return;
+    Alert.alert(
+      'Use Revival Potion?',
+      `Count: ${potionCount}\n\nInstantly restores +15 to HP and/or any health bars at 0 — same as a revival quest's reward, minus the quest itself.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: () => {
+          const result = useRevivalPotion();
+          if (result === 'none') { Alert.alert('No potions left'); return; }
+          onResolve();
+        }},
+      ],
+    );
+  }
 
   function handleSelectQuest(quest: RevivalQuest) { setSelectedQuest(quest); setPhase('entry'); }
 
@@ -156,6 +175,16 @@ export function DeathScreen({ cause, onResolve }: Props) {
             </View>
             <Pressable style={s.revivalBtn} onPress={() => setPhase('list')}>
               <Text style={s.revivalTxt}>PERFORM REVIVAL QUEST</Text>
+            </Pressable>
+            <Pressable
+              style={[s.potionBtn, potionCount <= 0 && s.potionBtnDisabled]}
+              onPress={handleUsePotion}
+              disabled={potionCount <= 0}
+            >
+              <Feather name="refresh-cw" size={14} color={potionCount > 0 ? colors.textPrimary : colors.textMuted} />
+              <Text style={[s.potionTxt, potionCount <= 0 && s.potionTxtDisabled]}>
+                USE REVIVAL POTION{potionCount > 0 ? ` (${potionCount})` : ''}
+              </Text>
             </Pressable>
             <Pressable style={s.ignoreBtn} onPress={handleIgnore}>
               <Text style={s.ignoreTxt}>Ignore — continue without XP</Text>
@@ -338,6 +367,10 @@ const s = StyleSheet.create({
 
   revivalBtn: { width: '100%', borderWidth: 1, borderColor: colors.danger, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
   revivalTxt: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.danger, letterSpacing: 2 },
+  potionBtn:  { width: '100%', flexDirection: 'row', gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', justifyContent: 'center' },
+  potionBtnDisabled: { opacity: 0.4 },
+  potionTxt:  { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.textPrimary, letterSpacing: 2 },
+  potionTxtDisabled: { color: colors.textMuted },
   ignoreBtn:  { paddingVertical: spacing.sm },
   ignoreTxt:  { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted },
 

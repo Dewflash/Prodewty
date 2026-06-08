@@ -177,6 +177,7 @@ export default function RechargeScreen() {
   const [pastActivities, setPastActivities] = useState<RestorativeActivity[]>([]);
   const [infoModal, setInfoModal] = useState(false);
   const [snapshotInfoModal, setSnapshotInfoModal] = useState(false);
+  const [restoreInfoModal, setRestoreInfoModal] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyHealthStats | null>(null);
 
   const [newName, setNewName] = useState('');
@@ -236,13 +237,23 @@ export default function RechargeScreen() {
 
   function handleAddCustom() {
     if (!newName.trim()) return;
-    addRestorativeActivity(
-      newName, newDesc,
-      parseInt(newCost, 10) || 50,
-      parseFloat(newEmotional) || 0,
-      parseFloat(newPhysical) || 0,
-      parseFloat(newMental) || 0,
-    );
+    const cost = parseInt(newCost, 10) || 0;
+    if (cost < 20) {
+      Alert.alert('XP cost too low', 'Minimum XP cost for a restorative activity is 20.');
+      return;
+    }
+    const emotional = parseFloat(newEmotional) || 0;
+    const physical  = parseFloat(newPhysical)  || 0;
+    const mental    = parseFloat(newMental)    || 0;
+    if (emotional > 20 || physical > 20 || mental > 20) {
+      Alert.alert('Restore amount too high', 'No single restore amount (Emotional/Physical/Mental) can exceed 20%.');
+      return;
+    }
+    if (emotional + physical + mental > 50) {
+      Alert.alert('Combined restore too high', 'Emotional + Physical + Mental restore combined cannot exceed 50% for one activity.');
+      return;
+    }
+    addRestorativeActivity(newName, newDesc, cost, emotional, physical, mental);
     setNewName(''); setNewDesc(''); setNewCost('50');
     setNewEmotional('0'); setNewPhysical('0'); setNewMental('0');
     setAddModal(false);
@@ -329,6 +340,9 @@ export default function RechargeScreen() {
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionHeading}>Restore</Text>
+            <TouchableOpacity onPress={() => setRestoreInfoModal(true)} style={s.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="info" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
             <Pressable onPress={openPastHistory} style={s.pastRestoreBtn}>
               <Feather name="archive" size={12} color={colors.textMuted} />
               <Text style={s.pastRestoreBtnText}>Past Restore</Text>
@@ -399,6 +413,20 @@ export default function RechargeScreen() {
         </Pressable>
       </Modal>
 
+      {/* Restore section info modal */}
+      <Modal visible={restoreInfoModal} transparent animationType="slide">
+        <Pressable style={s.sheetOverlay} onPress={() => setRestoreInfoModal(false)}>
+          <Pressable style={s.infoSheet} onPress={() => {}}>
+            <View style={s.handle} />
+            <Text style={s.infoSheetTitle}>Restore — How it works</Text>
+            <View style={s.infoDivider} />
+            <Text style={s.infoSheetText}>Spend Spendable XP to restore your Emotional/Physical/Mental health bars. Build your own list — name it, describe it, and set both the XP cost and the restore amounts to whatever fits your real-life routine.</Text>
+            <Text style={s.infoSheetText}>Minimum XP cost per activity is 20 — keeps restoration a deliberate trade-off, not a free top-up.</Text>
+            <Text style={s.infoSheetText}>No single restore amount (Emotional/Physical/Mental) can exceed 20%, and the three combined can't exceed 50% — keeps any one custom activity from trivialising recovery.</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Add custom activity modal */}
       <Modal visible={addModal} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.kbAvoid}>
@@ -412,6 +440,7 @@ export default function RechargeScreen() {
             <TextInput style={s.input} placeholder="XP cost" placeholderTextColor={colors.textMuted}
               keyboardType="numeric" value={newCost} onChangeText={setNewCost} />
             <Text style={s.sheetSubLabel}>Restore amounts (%)</Text>
+            <Text style={s.restoreCapHint}>Max 20% per bar · combined max 50% · min XP cost 20</Text>
             <View style={s.restoreRow}>
               {[
                 { label: 'Emotional', val: newEmotional, set: setNewEmotional },
@@ -549,6 +578,7 @@ const s = StyleSheet.create({
   },
   sheetTitle: { fontFamily: fonts.ui.semibold, fontSize: fontSize.md, color: colors.textPrimary },
   sheetSubLabel: { fontFamily: fonts.ui.medium, fontSize: fontSize.sm, color: colors.textMuted },
+  restoreCapHint: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.border, marginTop: -2 },
   input: {
     borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
     padding: spacing.md, fontFamily: fonts.ui.regular, fontSize: fontSize.base,
