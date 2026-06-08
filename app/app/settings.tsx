@@ -55,34 +55,33 @@ export default function SettingsScreen() {
     currencyRef.current = clean;
   }
 
-  async function handleFullReset() {
+  async function confirmAndWipe(archiveHistory: boolean) {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Confirm full wipe & reset',
+        fallbackLabel: 'Use passcode',
+        disableDeviceFallback: false,
+      });
+      if (result.success) {
+        performFullReset(archiveHistory);
+        triggerCurrencyRefresh();
+        router.replace('/onboarding');
+      } else {
+        Alert.alert('Cancelled', 'Authentication failed — nothing was wiped.');
+      }
+    } catch {
+      Alert.alert('Error', 'Biometric authentication unavailable on this device.');
+    }
+  }
+
+  function handleFullReset() {
     Alert.alert(
-      'Full wipe & reset',
-      'This permanently deletes ALL progress — logs, quests, inventory, dungeon history, habits, custom moods, categories, recharge activities — and resets your character to Level 1 with full health. Game content (dungeons) is kept and personal-build defaults are re-seeded.\n\nThis cannot be undone.\n\nAuthenticate to confirm.',
+      'Keep your activity history?',
+      'You can keep your existing logs as a read-only archive (browsable in History, never editable) or delete them for good. Everything else — categories, moods, restoratives, quests, inventory, dungeon progress — gets wiped either way, and your character resets to Level 1.\n\nThis cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Authenticate & Wipe',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: 'Confirm full wipe & reset',
-                fallbackLabel: 'Use passcode',
-                disableDeviceFallback: false,
-              });
-              if (result.success) {
-                performFullReset();
-                triggerCurrencyRefresh();
-                Alert.alert('Done', 'Everything has been wiped. You are starting fresh at Level 1.');
-              } else {
-                Alert.alert('Cancelled', 'Authentication failed — nothing was wiped.');
-              }
-            } catch {
-              Alert.alert('Error', 'Biometric authentication unavailable on this device.');
-            }
-          },
-        },
+        { text: 'Delete it all', style: 'destructive', onPress: () => confirmAndWipe(false) },
+        { text: 'Archive my history', onPress: () => confirmAndWipe(true) },
       ],
     );
   }
@@ -160,6 +159,14 @@ export default function SettingsScreen() {
             autoCapitalize="none"
           />
         </View>
+
+        {/* ── Quest Preferences ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>QUESTS</Text>
+        <Text style={s.sectionHint}>Edit the answers that shape your starting categories, restoratives, and quest mix. Re-derives on save. Biometric-gated.</Text>
+        <Pressable style={s.fieldCard} onPress={() => router.push('/quest-preferences')}>
+          <Text style={s.fieldLabel}>Quest Preferences</Text>
+          <Feather name="chevron-right" size={16} color={colors.textMuted} />
+        </Pressable>
 
         {/* ── Danger Zone ── */}
         <Text style={[s.sectionLabel, { marginTop: spacing.md, color: colors.danger }]}>DANGER ZONE</Text>

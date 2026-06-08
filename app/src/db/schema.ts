@@ -6,35 +6,31 @@ export const db = SQLite.openDatabaseSync('prodewty.db');
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 // Kevin's personal default profile — remove before multi-user launch and replace with onboarding flow
+// Generic Layer-1 baseline (ONBOARDING_QUEST_SPEC.md §3) — guarantees a functional,
+// non-empty app on first run regardless of what onboarding gets skipped. Tagged
+// is_baseline=1 (migration v40) so Insights/Layer-3 can later tell "generic stand-in
+// worth refining" apart from "user explicitly chose this, leave it alone." Onboarding
+// answers ADD on top of these; they never replace them.
 const DEFAULT_CATEGORIES = [
-  { name: 'Workout',  weight: 18, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
-  { name: 'News',     weight: 16, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
-  { name: 'Coding',   weight: 15, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
-  { name: 'Study',    weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
-  { name: 'Devotion', weight: 10, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
-  { name: 'Guitar',   weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
-  { name: 'Reading',  weight:  6, attribute: 'wisdom',     isPhysical: 0, isRecreational: 1 },
-  { name: 'Journal',  weight:  5, attribute: 'resilience', isPhysical: 0, isRecreational: 0 },
-  { name: 'Admin',    weight:  3, attribute: 'agility',    isPhysical: 0, isRecreational: 0 },
-  { name: 'Meditate', weight:  1, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  { name: 'Exercise', weight: 14, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
+  { name: 'Learning', weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
+  { name: 'Creative', weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  { name: 'Rest',     weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
+  { name: 'Admin',    weight:  5, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
 ];
 
+// Generic universal restoratives (Layer-1 baseline) — broadly-applicable unwind
+// activities, not tied to any one person's hobbies (those get added via onboarding/
+// personal setup instead).
 const DEFAULT_RESTORATIVE = [
   { name: 'Scroll',     desc: 'Mindless scroll session',    cost: 100, e: 10, p: 0, m: 0  },
   { name: 'Music',      desc: 'Listen to music',            cost:  80, e:  5, p: 0, m: 5  },
-  { name: 'Netflix',    desc: 'Watch a show or movie',      cost:  65, e: 10, p: 0, m: 10 },
-  { name: 'Youtube',    desc: 'Watch YouTube',              cost:  60, e:  0, p: 0, m: 10 },
-  { name: 'Game',       desc: 'Play a game',                cost:  55, e:  0, p: 0, m: 5  },
-  { name: 'Journal',    desc: 'Free-write or reflect',      cost:  50, e:  5, p: 0, m: 5  },
-  { name: 'Jam',        desc: 'Play guitar or noodle',      cost:  40, e:  5, p: 0, m: 5  },
-  { name: 'Good meal',  desc: 'Proper sit-down meal',       cost:  35, e:  5, p: 5, m: 0  },
+  { name: 'Watch something', desc: 'Watch a show or movie', cost:  65, e: 10, p: 0, m: 10 },
   { name: 'Good sleep', desc: '7–9 hours quality sleep',    cost:  30, e:  5, p: 5, m: 5  },
   { name: 'Walk',       desc: 'Outdoor or casual walk',     cost:  30, e:  0, p: 5, m: 5  },
-  { name: 'Bath',       desc: 'Shower or bath',             cost:  25, e:  5, p: 0, m: 5  },
   { name: 'Talk',       desc: 'Conversation with someone',  cost:  20, e:  5, p: 0, m: 0  },
   { name: 'Meal',       desc: 'Regular meal',               cost:  20, e:  5, p: 5, m: 0  },
   { name: 'Sleep',      desc: 'Rest or nap',                cost:  20, e:  0, p: 5, m: 5  },
-  { name: 'Pull-ups',   desc: 'Quick bodyweight set',       cost:  20, e:  0, p: 5, m: 0  },
 ];
 
 // ─── Init (called at module load — must be AFTER all consts above) ────────────
@@ -122,8 +118,7 @@ function runMigrations() {
       db.runSync(
         `INSERT OR IGNORE INTO categories (name, weight, attribute, is_default, is_physical)
          VALUES (?, ?, ?, 1, ?)`,
-        cat.name, cat.weight, cat.attribute,
-        cat.name === 'Workout' ? 1 : 0,
+        cat.name, cat.weight, cat.attribute, cat.isPhysical,
       );
     }
 
@@ -378,21 +373,13 @@ function runMigrations() {
 
     // Seed demo revival quests
     const rqs = [
-      ['Morning Sprint',  'A quick 10-minute run. Get your blood moving.', 'Workout', 25],
-      ['Cold Shower',     '3 minutes of cold water. Shock your system back online.', 'Workout', 20],
-      ['Breathwork',      '5 minutes of deep diaphragmatic breathing. Reset.', 'Devotion', 15],
+      ['Morning Sprint',  'A quick 10-minute run. Get your blood moving.', 'Exercise', 25],
+      ['Cold Shower',     '3 minutes of cold water. Shock your system back online.', 'Exercise', 20],
+      ['Breathwork',      '5 minutes of deep diaphragmatic breathing. Reset.', 'Rest', 15],
     ];
     for (const [t, d, c, h] of rqs) {
       db.runSync(`INSERT INTO revival_quests (title, description, category, hp_restore) VALUES (?, ?, ?, ?)`, t, d, c, h);
     }
-
-    // Reseed: clear existing log data and insert 30 days of realistic data
-    db.execSync(`DELETE FROM activity_logs`);
-    db.execSync(`DELETE FROM dungeon_runs`);
-    db.execSync(`DELETE FROM quests`);
-    db.execSync(`DELETE FROM quest_completions`);
-
-    try { seedRealisticData(); } catch {}
 
     db.execSync('PRAGMA user_version = 11');
   }
@@ -477,20 +464,9 @@ function runMigrations() {
       is_default    INTEGER NOT NULL DEFAULT 1,
       is_active     INTEGER NOT NULL DEFAULT 1
     )`);
-    const defaultMoods: [string, string, string, number][] = [
-      ['driven',        '#34D399', '+10% XP gain',                  10],
-      ['burnout',       '#EF4444', '−20% XP · −10% coins earned',  -20],
-      ['reminiscing',   '#A855F7', '+5% XP gain',                    5],
-      ['lonely',        '#64748B', '−5% XP gain',                   -5],
-      ['overstimulated','#F97316', '−10% XP · restlessness penalty',-8],
-      ['relapsed',      '#EF4444', '−30% XP · −15% coins earned',  -30],
-    ];
-    for (const [name, color, effect, mp] of defaultMoods) {
-      db.runSync(
-        `INSERT OR IGNORE INTO custom_moods (name, color, passive_effect, mp_rate) VALUES (?,?,?,?)`,
-        name, color, effect, mp,
-      );
-    }
+    // No seeded moods — these are deeply personal vocabulary (a generic stand-in like
+    // "driven"/"burnout" would be presumptuous). Players add their own via Mood Settings;
+    // the app functions fully with zero custom moods (mood_rating logging is separate/numeric).
 
     db.execSync('PRAGMA user_version = 14');
   }
@@ -1209,6 +1185,33 @@ function runMigrations() {
     try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN level_up_right_rank TEXT`); } catch {}
     db.execSync('PRAGMA user_version = 39');
   }
+
+  if (version < 40) {
+    // Onboarding — raw Q1-Q8 answers (single source of truth that categories/moods/
+    // restoratives get DERIVED from; not generated-once-and-discarded — this is what
+    // makes "retain on reset," "redo," and the Quest Preferences page all work off
+    // the same table). JSON blob mirrors the existing activity_logs.categories pattern.
+    db.execSync(`CREATE TABLE IF NOT EXISTS onboarding_answers (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      answers TEXT NOT NULL DEFAULT '{}',
+      completed_at TEXT,
+      updated_at TEXT
+    )`);
+
+    // Read-only history archive (reset-flow bonus option) — nullable, existing rows
+    // default to NULL ("current era"); tagging via UPDATE replaces DELETE on archive-reset
+    try { db.execSync(`ALTER TABLE activity_logs ADD COLUMN archived_at TEXT`); } catch {}
+
+    // Marks generic Layer-1 baseline categories so Insights/Layer-3 can later tell
+    // "generic stand-in worth refining" apart from "user explicitly chose this, leave it"
+    try { db.execSync(`ALTER TABLE categories ADD COLUMN is_baseline INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // The rows seeded by DEFAULT_CATEGORIES (migration v2, is_default=1) ARE the
+    // generic Layer-1 baseline — tag them retroactively so Insights/Layer-3 can
+    // distinguish "stand-in worth refining" from "user explicitly added this"
+    try { db.execSync(`UPDATE categories SET is_baseline = 1 WHERE is_default = 1`); } catch {}
+
+    db.execSync('PRAGMA user_version = 40');
+  }
 }
 
 // ─── Full Wipe / Reset (Phase 1B §1) ─────────────────────────────────────────
@@ -1216,9 +1219,20 @@ function runMigrations() {
 // personal-build defaults (categories, recharge activities, custom moods).
 // `dungeons` (game content) and `dungeon_unlocks` early-unlock progress are
 // intentionally NOT both treated the same: dungeons are kept, unlocks are wiped.
-export function performFullReset(): void {
+// `archiveHistory: true` tags existing activity_logs as a read-only "previous era"
+// (archived_at = now) instead of deleting them — ONBOARDING_QUEST_SPEC.md §9 bonus option.
+// Either way, a true blank slate follows: rpg_state/health_state/categories/moods/
+// restoratives are wiped, and onboarding_answers.completed_at is cleared (raw answers
+// are KEPT so the onboarding re-run can offer "retain your previous answers").
+export function performFullReset(archiveHistory: boolean = false): void {
+  if (archiveHistory) {
+    try { db.execSync(`UPDATE activity_logs SET archived_at = datetime('now') WHERE archived_at IS NULL`); } catch {}
+  } else {
+    try { db.execSync(`DELETE FROM activity_logs`); } catch {}
+  }
+
   const wipeTables = [
-    'activity_logs', 'quests', 'quest_completions',
+    'quests', 'quest_completions',
     'inventory', 'active_buffs', 'bible_notes',
     'game_logs', 'dungeon_runs',
     'habit_completions', 'habits',
@@ -1237,251 +1251,18 @@ export function performFullReset(): void {
   db.runSync(`DELETE FROM health_state WHERE id = 1`);
   db.runSync(`INSERT INTO health_state (id) VALUES (1)`);
 
-  // ── Re-seed personal-build defaults ──
+  // A full reset is a true blank slate — custom_moods/categories/restorative_activities
+  // are wiped and left empty. The onboarding flow re-populates them (it auto-triggers
+  // on the next launch because the account is now objectively empty).
   db.execSync(`DELETE FROM custom_moods`);
-  const defaultMoods: [string, string, string, number][] = [
-    ['driven',        '#34D399', '+10% XP gain',                  10],
-    ['burnout',       '#EF4444', '−20% XP · −10% coins earned',  -20],
-    ['reminiscing',   '#A855F7', '+5% XP gain',                    5],
-    ['lonely',        '#64748B', '−5% XP gain',                   -5],
-    ['overstimulated','#F97316', '−10% XP · restlessness penalty',-8],
-    ['relapsed',      '#EF4444', '−30% XP · −15% coins earned',  -30],
-  ];
-  for (const [name, color, effect, mp] of defaultMoods) {
-    db.runSync(`INSERT INTO custom_moods (name, color, passive_effect, mp_rate) VALUES (?,?,?,?)`, name, color, effect, mp);
-  }
-
   db.execSync(`DELETE FROM categories`);
-  const defaultCategories: { name: string; weight: number; attribute: string; isPhysical: number; isRecreational: number }[] = [
-    { name: 'Workout',  weight: 18, attribute: 'strength',   isPhysical: 1, isRecreational: 0 },
-    { name: 'News',     weight: 16, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
-    { name: 'Coding',   weight: 15, attribute: 'focus',      isPhysical: 0, isRecreational: 0 },
-    { name: 'Study',    weight: 12, attribute: 'wisdom',     isPhysical: 0, isRecreational: 0 },
-    { name: 'Devotion', weight: 10, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
-    { name: 'Guitar',   weight:  8, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
-    { name: 'Reading',  weight:  6, attribute: 'wisdom',     isPhysical: 0, isRecreational: 1 },
-    { name: 'Journal',  weight:  5, attribute: 'resilience', isPhysical: 0, isRecreational: 0 },
-    { name: 'Admin',    weight:  3, attribute: 'agility',    isPhysical: 0, isRecreational: 0 },
-    { name: 'Meditate', weight:  1, attribute: 'resilience', isPhysical: 0, isRecreational: 1 },
-  ];
-  for (const cat of defaultCategories) {
-    db.runSync(
-      `INSERT INTO categories (name, weight, attribute, is_default, is_physical, is_recreational) VALUES (?, ?, ?, 1, ?, ?)`,
-      cat.name, cat.weight, cat.attribute, cat.isPhysical, cat.isRecreational,
-    );
-  }
-
   db.execSync(`DELETE FROM restorative_activities`);
-  const defaultRestorative = [
-    { name: 'Scroll',     desc: 'Mindless scroll session',    cost: 100, e: 10, p: 0, m: 0  },
-    { name: 'Music',      desc: 'Listen to music',            cost:  80, e:  5, p: 0, m: 5  },
-    { name: 'Netflix',    desc: 'Watch a show or movie',      cost:  65, e: 10, p: 0, m: 10 },
-    { name: 'Youtube',    desc: 'Watch YouTube',              cost:  60, e:  0, p: 0, m: 10 },
-    { name: 'Game',       desc: 'Play a game',                cost:  55, e:  0, p: 0, m: 5  },
-    { name: 'Journal',    desc: 'Free-write or reflect',      cost:  50, e:  5, p: 0, m: 5  },
-    { name: 'Jam',        desc: 'Play guitar or noodle',      cost:  40, e:  5, p: 0, m: 5  },
-    { name: 'Good meal',  desc: 'Proper sit-down meal',       cost:  35, e:  5, p: 5, m: 0  },
-    { name: 'Good sleep', desc: '7–9 hours quality sleep',    cost:  30, e:  5, p: 5, m: 5  },
-    { name: 'Walk',       desc: 'Outdoor or casual walk',     cost:  30, e:  0, p: 5, m: 5  },
-    { name: 'Bath',       desc: 'Shower or bath',             cost:  25, e:  5, p: 0, m: 5  },
-    { name: 'Talk',       desc: 'Conversation with someone',  cost:  20, e:  5, p: 0, m: 0  },
-    { name: 'Meal',       desc: 'Regular meal',               cost:  20, e:  5, p: 5, m: 0  },
-    { name: 'Sleep',      desc: 'Rest or nap',                cost:  20, e:  0, p: 5, m: 5  },
-    { name: 'Pull-ups',   desc: 'Quick bodyweight set',       cost:  20, e:  0, p: 5, m: 0  },
-  ];
-  for (const a of defaultRestorative) {
-    db.runSync(
-      `INSERT INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      a.name, a.desc, a.cost, a.e, a.p, a.m,
-    );
-  }
+
+  // Clear completion (not the raw answers) — this is what re-arms the onboarding
+  // trigger while preserving "retain your previous answers" for the re-run (§9).
+  try { db.runSync(`UPDATE onboarding_answers SET completed_at = NULL WHERE id = 1`); } catch {}
 }
 
-function seedRealisticData() {
-  const now = new Date();
-
-  function dateFor(daysAgo: number): string {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-  }
-  function tsFor(daysAgo: number, hour = 8): string {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, hour, 0, 0);
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:00:00`;
-  }
-
-  type Entry = {
-    daysAgo: number; hour?: number;
-    type: 'mood' | 'activity' | 'dungeon' | 'quest';
-    category?: string; cats?: string[];
-    desc?: string; duration?: number;
-    mood?: number; energy?: number; prod?: number;
-    xp: number; well?: string; revelation?: string;
-  };
-
-  const schedule: Entry[] = [
-    // 30 days ago
-    { daysAgo:30, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
-    { daysAgo:30, type:'activity', category:'Workout', cats:['Workout'], desc:'Morning run — 5km', duration:45, xp:52 },
-    // 29
-    { daysAgo:29, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:29, type:'activity', category:'Coding', cats:['Coding'], desc:'Personal project', duration:90, xp:65 },
-    // 28
-    { daysAgo:28, type:'mood',     mood:6, energy:6, prod:7, xp:20 },
-    { daysAgo:28, type:'activity', category:'Study', cats:['Study'], desc:'Clean Code — ch 3', duration:60, xp:48,
-      well:'Got through 3 chapters', revelation:'Single responsibility matters more than I thought' },
-    // 27 — no log
-    // 26
-    { daysAgo:26, type:'mood',     mood:7, energy:8, prod:8, xp:20 },
-    { daysAgo:26, type:'activity', category:'Workout', cats:['Workout'], desc:'HIIT session', duration:30, xp:38 },
-    { daysAgo:26, type:'activity', hour:10, category:'Devotion', cats:['Devotion'], desc:'Morning devotion', duration:20, xp:28 },
-    // 25
-    { daysAgo:25, type:'mood',     mood:8, energy:8, prod:8, xp:35, well:'Really productive day', revelation:'Start with the hardest task first' },
-    { daysAgo:25, type:'activity', category:'Coding', cats:['Coding'], desc:'Built new feature', duration:120, xp:78 },
-    // 24
-    { daysAgo:24, type:'mood',     mood:6, energy:5, prod:6, xp:20 },
-    { daysAgo:24, type:'activity', category:'Reading', cats:['Reading'], desc:'Atomic Habits — ch 7-9', duration:45, xp:42 },
-    // 23
-    { daysAgo:23, type:'mood',     mood:5, energy:5, prod:5, xp:20 },
-    { daysAgo:23, type:'activity', category:'Admin', cats:['Admin'], desc:'Finances and emails', duration:30, xp:25 },
-    // 22
-    { daysAgo:22, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:22, type:'activity', category:'Journal', cats:['Journal'], desc:'Weekly reflection', duration:25, xp:32,
-      well:'Recognised a bad habit', revelation:"Stop saying 'just' — it undermines what you are doing" },
-    // 21 — no log
-    // 20
-    { daysAgo:20, type:'mood',     mood:8, energy:8, prod:9, xp:20 },
-    { daysAgo:20, type:'activity', category:'Workout', cats:['Workout'], desc:'5km run + stretching', duration:50, xp:55 },
-    // 19
-    { daysAgo:19, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:19, type:'activity', category:'Coding', cats:['Coding'], desc:'Refactored database layer', duration:80, xp:60 },
-    // 18 — with dungeon completion
-    { daysAgo:18, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
-    { daysAgo:18, type:'activity', category:'Study', cats:['Study'], desc:'CS fundamentals', duration:60, xp:48 },
-    { daysAgo:18, hour:14, type:'dungeon', category:'Workout', cats:['Workout'], desc:"E-Rank Gate: Hunter's Run", duration:30, xp:45 },
-    // 17
-    { daysAgo:17, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
-    { daysAgo:17, type:'activity', category:'Devotion', cats:['Devotion'], desc:'Bible study — Proverbs 3', duration:25, xp:30,
-      revelation:'Trust in the Lord with all your heart' },
-    // 16
-    { daysAgo:16, type:'mood',     mood:8, energy:8, prod:8, xp:35 },
-    { daysAgo:16, type:'activity', category:'Workout', cats:['Workout'], desc:'Strength training — full body', duration:60, xp:62 },
-    // 15 — quest completion
-    { daysAgo:15, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:15, hour:11, type:'quest', category:'Journal', cats:['Journal'], desc:'Log: Journal', xp:30 },
-    // 14 — no log
-    // 13
-    { daysAgo:13, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
-    { daysAgo:13, type:'activity', category:'Reading', cats:['Reading'], desc:'The Power of Habit — finish', duration:45, xp:42 },
-    // 12
-    { daysAgo:12, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
-    { daysAgo:12, type:'activity', category:'Workout', cats:['Workout'], desc:'10km run', duration:60, xp:62, well:'New personal record' },
-    // 11
-    { daysAgo:11, type:'mood',     mood:7, energy:6, prod:7, xp:20 },
-    { daysAgo:11, type:'activity', category:'Study', cats:['Study'], desc:'Data structures review', duration:90, xp:68 },
-    // 10
-    { daysAgo:10, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
-    { daysAgo:10, type:'activity', category:'Journal', cats:['Journal'], desc:'Reflection on last 2 weeks', duration:30, xp:38,
-      revelation:"I lose focus when I don't set clear goals the night before" },
-    { daysAgo:10, hour:10, type:'activity', category:'Devotion', cats:['Devotion'], desc:'Morning prayer', duration:15, xp:22 },
-    // 9 — dungeon completion
-    { daysAgo:9, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:9, type:'activity', category:'Coding', cats:['Coding'], desc:'Game tab implementation', duration:120, xp:78 },
-    { daysAgo:9, hour:14, type:'dungeon', category:'Study', cats:['Study'], desc:'E-Rank Gate: Intel Report', duration:30, xp:45 },
-    // 8
-    { daysAgo:8, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
-    { daysAgo:8, type:'activity', category:'Workout', cats:['Workout'], desc:'Sprint intervals', duration:35, xp:40 },
-    // --- LAST 7 DAYS (Journal and Devotion absent → triggers quests) ---
-    // 7
-    { daysAgo:7, type:'mood',     mood:6, energy:6, prod:7, xp:20 },
-    { daysAgo:7, type:'activity', category:'Coding', cats:['Coding'], desc:'Bug fixes and testing', duration:90, xp:65 },
-    // 6
-    { daysAgo:6, type:'mood',     mood:7, energy:7, prod:7, xp:20 },
-    { daysAgo:6, type:'activity', category:'Study', cats:['Study'], desc:'Algorithm prep', duration:60, xp:48 },
-    // 5
-    { daysAgo:5, type:'mood',     mood:7, energy:8, prod:8, xp:20 },
-    { daysAgo:5, type:'activity', category:'Workout', cats:['Workout'], desc:'Gym — chest and back', duration:50, xp:55 },
-    // 4
-    { daysAgo:4, type:'mood',     mood:6, energy:6, prod:6, xp:20 },
-    { daysAgo:4, type:'activity', category:'Reading', cats:['Reading'], desc:"Man's Search for Meaning — ch 1-3", duration:40, xp:40 },
-    // 3 — no log
-    // 2
-    { daysAgo:2, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
-    { daysAgo:2, type:'activity', category:'Coding', cats:['Coding'], desc:'New feature shipped', duration:120, xp:78, well:'Feature deployed cleanly' },
-    // 1
-    { daysAgo:1, type:'mood',     mood:7, energy:7, prod:8, xp:20 },
-    { daysAgo:1, type:'activity', category:'Admin', cats:['Admin'], desc:'Weekly planning session', duration:30, xp:28 },
-    // today
-    { daysAgo:0, type:'mood',     mood:8, energy:8, prod:8, xp:20 },
-    { daysAgo:0, type:'activity', category:'Workout', cats:['Workout'], desc:'Morning run', duration:40, xp:45 },
-  ];
-
-  for (const e of schedule) {
-    const date = dateFor(e.daysAgo);
-    const ts   = tsFor(e.daysAgo, e.hour ?? (e.type === 'mood' ? 8 : 9));
-    const cats = JSON.stringify(e.cats ?? (e.category ? [e.category] : []));
-
-    if (e.type === 'mood') {
-      db.runSync(
-        `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at,
-           mood_rating, energy_rating, productivity_rating, categories, xp_awarded, what_went_well, what_to_improve)
-         VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
-        date, ts, e.mood ?? 7, e.energy ?? 7, e.prod ?? 7, e.xp, e.well ?? null, e.revelation ?? null,
-      );
-    } else {
-      db.runSync(
-        `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at,
-           categories, duration_mins, xp_awarded, mood_rating, what_went_well, what_to_improve)
-         VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
-        e.category ?? '', e.desc ?? '', e.type, date, ts,
-        cats, e.duration ?? null, e.xp, e.well ?? null, e.revelation ?? null,
-      );
-    }
-  }
-
-  // Dungeon runs for the dungeon activity log entries
-  const d1 = db.getFirstSync<{ id: number }>('SELECT id FROM dungeons WHERE name = "Hunter\'s Run" LIMIT 1')?.id
-           ?? db.getFirstSync<{ id: number }>('SELECT id FROM dungeons LIMIT 1')?.id;
-  const d2 = db.getFirstSync<{ id: number }>('SELECT id FROM dungeons WHERE name = "Intel Report" LIMIT 1')?.id
-           ?? db.getFirstSync<{ id: number }>('SELECT id FROM dungeons LIMIT 1 OFFSET 2')?.id;
-  if (d1) db.runSync(
-    `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
-     VALUES (?,?,?,'completed','win',25,0)`, d1, tsFor(18,14), tsFor(18,14),
-  );
-  if (d2) db.runSync(
-    `INSERT INTO dungeon_runs (dungeon_id, started_at, completed_at, status, result, coins_earned, hp_change)
-     VALUES (?,?,?,'completed','win',20,0)`, d2, tsFor(9,14), tsFor(9,14),
-  );
-
-  // Quest completion entry
-  db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',30,'completed')`,
-    'Log: Journal', 'Complete a journal session.', 'Journal');
-  const completedQId = db.getFirstSync<{id:number}>(`SELECT id FROM quests WHERE status='completed' AND title='Log: Journal' LIMIT 1`)?.id;
-  if (completedQId) {
-    db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?,30)`, completedQId);
-  }
-
-  // Pending quests for testing (Journal/Devotion absent in last 7 days → realistic triggers)
-  const pendingQs = [
-    ['Log: Journal',   'You haven\'t journaled in a while. Complete a journal session.',   'Journal',  30],
-    ['Log: Devotion',  'You haven\'t done devotion recently. Complete a devotion session.', 'Devotion', 30],
-    ['Log: Reading',   'Keep the reading habit alive. Log a reading session.',              'Reading',  25],
-  ];
-  for (const [t, d, c, r] of pendingQs) {
-    db.runSync(`INSERT INTO quests (title,description,category,quest_type,coin_reward,status) VALUES (?,?,?,'weekly',?,'pending')`, t, d, c, r);
-  }
-
-  // Recalculate rpg_state from seeded logs
-  const total = db.getFirstSync<{t:number}>('SELECT sum(xp_awarded) as t FROM activity_logs')?.t ?? 0;
-  let lvl = 1; let xpLeft = total;
-  while (xpLeft >= 500 + (lvl - 1) * 250) { xpLeft -= 500 + (lvl - 1) * 250; lvl++; }
-  db.runSync(
-    `UPDATE rpg_state SET total_xp=?,current_level=?,xp_to_next_level=?,
-     streak_days=12, last_active_date=date('now','localtime'),
-     coins=75, ap=?, hp=80, hp_max=100, mp=0 WHERE id=1`,
-    xpLeft, lvl, 500 + (lvl-1)*250, lvl * 10,
-  );
-}
 
 function runMigration20(): void {
   const v20 = db.getFirstSync<{ user_version: number }>('PRAGMA user_version')?.user_version ?? 0;

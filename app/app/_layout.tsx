@@ -1,4 +1,4 @@
-import { Stack, usePathname } from 'expo-router';
+import { Stack, usePathname, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, View, Text, StyleSheet, Pressable, Animated } from 'react-native';
@@ -18,6 +18,7 @@ import { registerDeathCheck } from '../src/db/deathCheckSignal';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 import { getDeathCause, type DeathCause } from '../src/db/game';
 import { applyHealthDecay } from '../src/db/health';
+import { shouldShowOnboarding } from '../src/db/onboarding';
 import { DeathScreen } from '../src/components/DeathScreen';
 import { RANK_COLOR } from '../src/components/game/DungeonCard';
 import { colors } from '../src/theme/colors';
@@ -98,6 +99,7 @@ export default function RootLayout() {
   }
 
   useEffect(() => {
+    if (shouldShowOnboarding()) { router.replace('/onboarding'); return; }
     void initAudio();
     const { gemAwarded } = checkVigor();
     if (gemAwarded) triggerGemBanner();
@@ -112,6 +114,8 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="quest-preferences" />
         <Stack.Screen name="revelations" />
         <Stack.Screen name="store" />
         <Stack.Screen name="inventory" />

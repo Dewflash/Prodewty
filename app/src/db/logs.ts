@@ -28,6 +28,7 @@ export type ActivityLog = {
   what_went_well: string | null;
   what_to_improve: string | null;
   xp_awarded: number;
+  archived_at: string | null; // set on reset-with-archive — read-only "previous era" row
 };
 
 export type ActivityLogInput = {

@@ -106,6 +106,7 @@ const em = StyleSheet.create({
 
 function MoodCard({ log, onSaved }: { log: ActivityLog; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
+  const archived = !!log.archived_at;
   return (
     <View style={cd.moodCard}>
       <View style={cd.topRow}>
@@ -116,9 +117,13 @@ function MoodCard({ log, onSaved }: { log: ActivityLog; onSaved: () => void }) {
         </View>
         <View style={cd.rightRow}>
           <Text style={cd.xp}>+{log.xp_awarded} XP</Text>
-          <Pressable onPress={() => setEditing(true)} style={cd.actionBtn}>
-            <Feather name="edit-2" size={13} color={colors.textMuted} />
-          </Pressable>
+          {archived ? (
+            <View style={cd.archivedTag}><Text style={cd.archivedTagText}>Archived</Text></View>
+          ) : (
+            <Pressable onPress={() => setEditing(true)} style={cd.actionBtn}>
+              <Feather name="edit-2" size={13} color={colors.textMuted} />
+            </Pressable>
+          )}
         </View>
       </View>
       {log.journal_entry ? <Text style={cd.journal}>{log.journal_entry}</Text> : null}
@@ -133,6 +138,7 @@ function MoodCard({ log, onSaved }: { log: ActivityLog; onSaved: () => void }) {
 function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete: () => void; catColors: Record<string, string> }) {
   const [expanded, setExpanded] = useState(false);
   const [editing,  setEditing]  = useState(false);
+  const archived = !!log.archived_at;
   const cats    = parseCategories(log.categories);
   const primary = cats[0] || '—';
   const catColor = catColors[primary] ?? colors.border;
@@ -192,13 +198,19 @@ function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete
           )}
           <View style={cd.expandedActions}>
             <Text style={cd.timeSm}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
-            <View style={{ flexDirection:'row', gap:spacing.md }}>
-              <Pressable onPress={() => setEditing(true)} style={cd.actionBtn}>
-                <Feather name="edit-2" size={13} color={colors.textMuted} />
-              </Pressable>
-              <Pressable onPress={confirmDelete} style={cd.actionBtn}>
-                <Feather name="trash-2" size={14} color={colors.danger} />
-              </Pressable>
+            <View style={{ flexDirection:'row', gap:spacing.md, alignItems: 'center' }}>
+              {archived ? (
+                <View style={cd.archivedTag}><Text style={cd.archivedTagText}>Archived — read-only</Text></View>
+              ) : (
+                <>
+                  <Pressable onPress={() => setEditing(true)} style={cd.actionBtn}>
+                    <Feather name="edit-2" size={13} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable onPress={confirmDelete} style={cd.actionBtn}>
+                    <Feather name="trash-2" size={14} color={colors.danger} />
+                  </Pressable>
+                </>
+              )}
             </View>
           </View>
         </>
@@ -344,6 +356,8 @@ const cd = StyleSheet.create({
   rightRow:    { flexDirection:'row', alignItems:'center', gap:spacing.sm },
   xp:          { fontFamily:fonts.mono.bold, fontSize:fontSize.sm, color:colors.success },
   actionBtn:   { padding:4 },
+  archivedTag: { borderWidth:1, borderColor:colors.border, borderRadius:radius.pill, paddingHorizontal:8, paddingVertical:3 },
+  archivedTagText: { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted },
   title:       { fontFamily:fonts.ui.regular, fontSize:fontSize.sm, color:colors.textPrimary },
   meta:        { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted },
   journal:     { fontFamily:fonts.ui.regular, fontSize:fontSize.sm, color:colors.textPrimary, lineHeight:20 },
