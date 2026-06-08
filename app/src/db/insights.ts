@@ -137,14 +137,13 @@ function generateNewCategorySuggestions(snapshot: PlayerSnapshot): void {
   }
 }
 
-function generateTierReadySuggestions(snapshot: PlayerSnapshot): void {
+function generateTierReadySuggestions(snapshot: PlayerSnapshot, prior: PlayerSnapshot | null): void {
   for (const cat of snapshot.categories) {
     const stretch = stretchMultiplier(cat.consistency_score);
     if (stretch < INSIGHTS_TUNING.tier_ready_threshold) continue;
 
-    // "Maxed for N consecutive cycles" — checked by looking at the prior stored
-    // snapshot's figure for the same category (cheap, no extra history table needed).
-    const { snapshot: prior } = getStoredSnapshot();
+    // "Maxed for N consecutive cycles" — compares against the snapshot from the
+    // prior cycle (captured before this cycle's refresh overwrote it in storage).
     const priorCat = prior?.categories.find(c => c.category.toLowerCase() === cat.category.toLowerCase());
     const priorStretch = priorCat ? stretchMultiplier(priorCat.consistency_score) : 0;
     if (priorStretch < INSIGHTS_TUNING.tier_ready_threshold) continue;
@@ -161,8 +160,7 @@ function generateTierReadySuggestions(snapshot: PlayerSnapshot): void {
   }
 }
 
-function generateMoodTrendSuggestions(snapshot: PlayerSnapshot): void {
-  const { snapshot: prior } = getStoredSnapshot();
+function generateMoodTrendSuggestions(snapshot: PlayerSnapshot, prior: PlayerSnapshot | null): void {
   if (!prior || prior.mood.avg_rating === null || snapshot.mood.avg_rating === null) return;
 
   const delta = snapshot.mood.avg_rating - prior.mood.avg_rating;
@@ -184,10 +182,22 @@ function generateMoodTrendSuggestions(snapshot: PlayerSnapshot): void {
 export function generateInsightSuggestions(): void {
   if (!isPersonalizationEnabled()) return;
   try {
+    // Capture the prior cycle's snapshot + timestamp BEFORE refreshing —
+    // getOrRefreshSnapshot overwrites stored state in place once the 7-day
+    // gate elapses, so this is the only chance to diff against the old cycle.
+    const { last_snapshot_at: priorAt, snapshot: prior } = getStoredSnapshot();
     const snapshot = getOrRefreshSnapshot();
+    const justRefreshed = snapshot.computed_at !== priorAt;
+
     generateNewCategorySuggestions(snapshot);
-    generateTierReadySuggestions(snapshot);
-    generateMoodTrendSuggestions(snapshot);
+    // Cycle-over-cycle comparisons only mean anything right at a cycle boundary —
+    // outside of a refresh, "prior" and "current" would be the same row, which
+    // would let a "2 consecutive cycles" check trivially pass on the very first
+    // cycle a threshold is crossed. Gate these on an actual fresh recompute.
+    if (justRefreshed) {
+      generateTierReadySuggestions(snapshot, prior);
+      generateMoodTrendSuggestions(snapshot, prior);
+    }
   } catch {}
 }
 

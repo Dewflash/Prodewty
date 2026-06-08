@@ -1,9 +1,11 @@
 # Onboarding & Adaptive Quest Engine — Working Spec
 
-Status: DESIGN DRAFT — not yet implemented. Edit freely; this is the living source of truth
-for the onboarding question bank, the interest→category lookup table, and the quest-generation
-engine. Once implementation starts, keep this in sync with the code (see CLAUDE memory
-`feedback_log_before_coding`).
+Status: **BUILT (2026-06-09)** — Phases A (onboarding), B (quest engine), and C (Insights)
+are all implemented and typechecked. This remains the living source of truth for the
+onboarding question bank, the interest→category lookup table, and the quest-generation
+engine; §11 below logs the as-built state, final tuning values, and assumptions made
+during the Phase B/C build that weren't explicitly re-confirmed with the user (see CLAUDE
+memory `feedback_log_before_coding` — keep this in sync with the code going forward).
 
 Companion reading: `MECHANICS.md` (live system docs), `LIFE_RPG_TRACKER_BLUEPRINT.md` (original vision).
 
@@ -658,3 +660,80 @@ AND ongoing light tuning (drop one interest, add another) — three asks, one su
 source of truth. **This replaces the simple redo-button design** in
 [[project_quest_engine_and_insights]] §4 — that memory should be updated to point here
 when this gets built.
+
+---
+
+## 11. AS-BUILT LOG — Phase B (quest engine) & Phase C (Insights), 2026-06-09
+
+Phase A (onboarding, §3-§10 above) was built in a prior session. Phases B and C were
+built in this session, fully delegating to the architecture agreed in
+[[project_quest_engine_and_insights]]. This section is the as-built record — final
+tuning values, file locations, and every assumption made that wasn't explicitly
+re-confirmed with the user before being coded.
+
+### Where things live
+- `src/db/questEngine.ts` — Phase B engine: `QUEST_ENGINE_TUNING`, Player Snapshot,
+  stretch function, mood rules (incl. anti-cheese), recency decay, weighted draw,
+  template fill. `game.ts:generateQuests()` now fully delegates to it.
+- `src/db/insights.ts` — Phase C engine: `INSIGHTS_TUNING`, suggestion generation
+  (new_category / tier_ready / mood_trend), personalization gate, accept/dismiss +
+  accept side-effects (Option A: real `addCategory` write on `new_category` accept).
+- `app/(tabs)/recommendations.tsx` — the Insights screen (list, accept/dismiss,
+  new-category name-entry modal, resolved-history toggle, off-state).
+- `app/settings.tsx` — "INSIGHTS" section with the reversible personalization `Switch`.
+- `src/components/TopRibbon.tsx` — flag icon now routes to `/recommendations` (was
+  `/milestones`), shows a quiet badge dot when suggestions are pending, and the
+  hamburger drawer gained an "About" entry (version + on-device privacy blurb).
+- Migrations v41 (`quest_engine_state`, `quest_templates` + `DEFAULT_QUEST_TEMPLATES`)
+  and v42 (`insight_suggestions`) in `src/db/schema.ts`.
+
+### Final tuning values (user-approved during the build, 2026-06-08/09)
+`QUEST_ENGINE_TUNING`: `recompute_interval_days: 7, consistency_window_days: 14,
+scaling_factor: 0.9, mood_low_threshold: 5, mood_high_threshold: 8,
+anti_cheese_min_high_streak: 10, anti_cheese_activity_floor: 0.3,
+mood_rule_weight_mult: 1.5, recency_decay_half_life_days: 14, candidate_pool_limit: 3`.
+Stretch-worthiness threshold in `buildCandidates`: `consistency_score >= 0.4` (user
+explicitly requested 0.4 over the initial 0.5 draft).
+
+`INSIGHTS_TUNING`: `overuse_min_logs: 6, tier_ready_threshold: 1.9,
+tier_ready_min_cycles: 2, mood_trend_min_delta: 1.0, mood_trend_min_cycles: 2`.
+
+### Bug found + fixed during the build (not a design change, a correctness fix)
+`generateTierReadySuggestions`/`generateMoodTrendSuggestions` need to compare the
+*current* Player Snapshot against the *prior cycle's* snapshot to enforce
+"N consecutive cycles." But `getOrRefreshSnapshot()` overwrites the stored snapshot
+in place the moment its 7-day gate elapses — so calling `getStoredSnapshot()` after
+it had often returned the same row as "current," making the consecutive-cycle check
+trivially true (could fire ~1 week early). Fixed by capturing the prior snapshot
++ its timestamp *before* calling `getOrRefreshSnapshot()`, and only running the
+cycle-comparison generators when `snapshot.computed_at !== priorAt` (i.e. an actual
+fresh recompute just happened — ties suggestion-generation cadence to the same
+7-day cycle boundary as the snapshot itself, which the user confirmed should "link").
+
+### Assumptions made without an explicit re-check (flag if any should change)
+1. **Personalization-gate precedence** — restructured so the Settings toggle
+   (`personalization_enabled`) is the sole, always-reversible source of truth, with
+   `q8_personalization` only seeding its *initial* value on first read. This was the
+   fix for a real bug (the original ordering would have permanently locked out anyone
+   who answered "No" at onboarding from ever turning it back on), but the precedence
+   model itself was my call, not a re-confirmed design decision.
+2. **No snapshot-history table** — the "2 consecutive cycles" check compares only
+   against the immediately-prior cycle (captured pre-refresh), not a longer rolling
+   history. Kept deliberately simple/transparent per the no-ML philosophy (§1), but
+   it does mean the comparison opportunity only exists at the exact moment a 7-day
+   refresh fires — if the user isn't in the app then, that check effectively waits
+   for the *next* boundary.
+3. **UI copy & iconography** — suggestion-kind icons (`tag` / `trending-up` /
+   `activity`), the "Acknowledge" accept-label for pure-observation suggestions
+   (`tier_ready`, `mood_trend` — which have no real side-effect besides marking
+   resolved), empty-state copy, and the About-sheet privacy blurb were all written
+   without a copy-review pass.
+4. **Kept the old ribbon sound** — `playSound('milestonetopribbon')` still fires on
+   the flag-icon press despite the destination changing; renaming felt like it would
+   require a new audio asset (out of scope for a routing swap).
+5. **Left `/milestones` route + `milestones` table orphaned** — unreachable from the
+   UI now, but not deleted; that's a more destructive cleanup than "swap the
+   destination" and wasn't asked for.
+6. **Hardcoded version string** — the About sheet shows a static `"Version 1.0.0"`
+   rather than reading `app.json`/`package.json` dynamically; no `expo-constants`
+   precedent existed in the codebase to extend.

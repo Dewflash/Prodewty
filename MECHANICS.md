@@ -570,14 +570,41 @@ Either path materializes a permanent inventory item (`category='game'`, `item_ty
 
 ## 12. Quest System
 
-### 12.1 Generation Algorithm
+### 12.1 Generation Algorithm — REPLACED 2026-06-09 by the adaptive quest engine
 
-Runs on game tab reload. Produces at most 3 new quests.
+The old static rule ("category logged ≥2× in 28 days, absent 7 days, no existing
+pending/accepted quest for it") is gone. `generateQuests()` (`game.ts`) now fully
+delegates to `src/db/questEngine.ts` — a rules-based weighted-scoring engine (NOT ML;
+same transparent/tunable philosophy as `DROP_TABLE`/`getCategoryWeight`). Full design
++ as-built log: `ONBOARDING_QUEST_SPEC.md` §11 and `[[project_quest_engine_and_insights]]`.
 
-**Condition for a quest to be generated:**
-- Category logged ≥ 2× in the last 28 days
-- Category absent from logs in the last 7 days
-- No existing pending or accepted quest for that category
+**4-stage pipeline, gated by a 7-day recompute cycle (`quest_engine_state` table):**
+1. **Player Snapshot** (`computePlayerSnapshot`/`getOrRefreshSnapshot`) — per-category
+   stats (times logged, avg duration, consistency score over a 14-day window), mood
+   distribution + streaks, behavioral signal (logged-days ratio), health trend. Shared
+   read by both the quest engine and Insights (siblings, not a pipeline).
+2. **Stretch function** (`stretchMultiplier`) — `clamp(1.1 + consistency_score × 0.9,
+   1.1, 2.0)`; sporadic logging → gentle 1.1-1.3x duration bump, strong streaks → up
+   to ~2x. A category counts as "stretch-worthy" once `consistency_score >= 0.4`.
+3. **Mood-reactive rules** (`applyMoodRules`) — ordered condition→action list: low
+   mood/emotional-health forces `restorative` quests and suppresses stretch; sustained
+   low-mood streak forces `mood_repair`; an **anti-cheese check** compares self-reported
+   mood (sustained high ratings, `high_streak_days >= 10`) against actual behavior
+   (`logged_days_ratio < 0.3`) — on mismatch, raises the difficulty floor (forces
+   stretch-tier, starves easy/discovery candidates) rather than injecting anything
+   restorative, since the "problem" here is coasting, not distress.
+4. **Weighted draw** (`buildCandidates`/`drawQuestCandidates`) — combines base category
+   weight × stretch × mood-rule multiplier × **recency decay** (`0.5^(ageDays/14)` —
+   fades a logged category's pull the longer since last logged) into a score, then a
+   ticket-based weighted-random draw without replacement (same mechanism as
+   `DROP_TABLE`). Draws up to 3 candidates (`candidate_pool_limit`); categories that
+   exist but weren't logged this window surface as gentle `discovery` material
+   (withheld during mood-repair / anti-cheese states).
+
+Quest text is composed by filling `quest_templates` rows (`{category}`/`{minutes}`
+placeholders, `DEFAULT_QUEST_TEMPLATES`, migration v41) keyed by candidate `kind`
+(`maintain` / `stretch` / `discovery` / `restorative` / `mood_repair`), picked at
+random from the matching pool — never one fixed phrasing per type.
 
 **Starter quests** — removed. Deferred to onboarding flow for multi-user launch.
 

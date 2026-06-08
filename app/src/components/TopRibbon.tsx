@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { getWeeklySummary, type WeeklySummary } from '../db/logs';
+import { getPendingCount, isPersonalizationEnabled } from '../db/insights';
 import { playSound } from '../services/audio';
 import { hapticLight } from '../utils/haptics';
 
@@ -36,7 +37,13 @@ const sh = StyleSheet.create({
 export function TopRibbon({ title }: Props) {
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [menuVisible,    setMenuVisible]    = useState(false);
+  const [aboutVisible,   setAboutVisible]   = useState(false);
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
+  const [pendingInsights, setPendingInsights] = useState(0);
+
+  useFocusEffect(useCallback(() => {
+    setPendingInsights(isPersonalizationEnabled() ? getPendingCount() : 0);
+  }, []));
 
   function openSummary() {
     setSummary(getWeeklySummary());
@@ -47,6 +54,7 @@ export function TopRibbon({ title }: Props) {
     { icon: 'book',         label: 'Bible',    hint: 'Devotion notes — each new note counts as a devotion log', onPress: () => router.push('/bible') },
     { icon: 'dollar-sign',  label: 'Finance',  hint: 'Track monthly net worth and view trends',           onPress: () => router.push('/finance') },
     { icon: 'settings',     label: 'Settings', hint: 'BGM selection and app preferences',                onPress: () => router.push('/settings') },
+    { icon: 'info',         label: 'About',    hint: 'Version info and how your data is used',          onPress: () => setAboutVisible(true) },
   ];
 
   return (
@@ -68,10 +76,11 @@ export function TopRibbon({ title }: Props) {
         {/* Centre: page name */}
         <Text style={s.title}>{title}</Text>
 
-        {/* Right: Milestones + Summary + Revelations */}
+        {/* Right: Insights + Summary + Revelations */}
         <View style={s.group}>
-          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('milestonetopribbon'); router.push('/milestones'); }}>
+          <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('milestonetopribbon'); router.push('/recommendations'); }}>
             <Feather name="flag" size={20} color={colors.textPrimary} />
+            {pendingInsights > 0 && <View style={s.badgeDot} />}
           </Pressable>
           <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); openSummary(); }}>
             <Feather name="clipboard" size={20} color={colors.textPrimary} />
@@ -107,6 +116,26 @@ export function TopRibbon({ title }: Props) {
               </Pressable>
             ))}
 
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ── About sheet ── */}
+      <Modal visible={aboutVisible} transparent animationType="slide">
+        <Pressable style={s.overlay} onPress={() => setAboutVisible(false)}>
+          <Pressable style={s.sheet} onPress={() => {}}>
+            <View style={s.handle} />
+            <Text style={s.sheetTitle}>About</Text>
+            <Text style={s.sheetSub}>Version 1.0.0</Text>
+            <View style={s.div} />
+            <Text style={s.aboutText}>
+              Everything you log stays on this device — there's no server, no account, and nothing is sent anywhere.
+            </Text>
+            <Text style={s.aboutText}>
+              Insights (the flag icon) can notice patterns in your own logs and gently suggest tweaks, but only if you've
+              turned on "Personalized suggestions" in Settings. It's off by default if you opted out during setup, and you
+              can flip it on or off at any time — no analysis happens while it's off.
+            </Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -148,6 +177,11 @@ const s = StyleSheet.create({
   },
   group: { flexDirection: 'row', gap: 10 },
   iconBtn: { padding: 6 },
+  badgeDot: {
+    position: 'absolute', top: 5, right: 5,
+    width: 7, height: 7, borderRadius: 3.5,
+    backgroundColor: colors.primary,
+  },
   title: {
     flex: 1, textAlign: 'center',
     fontFamily: fonts.ui.semibold, fontSize: fontSize.base, color: colors.textPrimary,
@@ -177,5 +211,6 @@ const s = StyleSheet.create({
   handle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.md },
   sheetTitle: { fontFamily: fonts.ui.semibold, fontSize: fontSize.lg, color: colors.textPrimary },
   sheetSub: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.sm },
+  aboutText: { fontFamily: fonts.ui.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 19, marginBottom: spacing.sm },
   div: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
 });

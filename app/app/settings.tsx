@@ -167,6 +167,19 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── Insights ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>INSIGHTS</Text>
+        <Text style={s.sectionHint}>Lets the app notice patterns in your logs — like a category that's grown into its own thing, or a habit that's plateaued — and gently suggest tweaks. Off by default if you said no during setup; flip anytime.</Text>
+        <View style={s.fieldCard}>
+          <Text style={s.fieldLabel}>Personalized suggestions</Text>
+          <Switch
+            value={personalization}
+            onValueChange={togglePersonalization}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.textPrimary}
+          />
+        </View>
+
         {/* ── Quest Preferences ── */}
         <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>QUESTS</Text>
         <Text style={s.sectionHint}>Edit the answers that shape your starting categories, restoratives, and quest mix. Re-derives on save. Biometric-gated.</Text>
