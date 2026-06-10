@@ -5,7 +5,7 @@ import { sessionXP } from '../services/xpEngine';
 import { sqlNow, pad, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
-import { getOrRefreshSnapshot, drawQuestCandidates, fillTemplate } from './questEngine';
+import { getOrRefreshSnapshot, drawQuestCandidates, fillTemplate, recommendedDurationMinutes } from './questEngine';
 import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,6 +26,9 @@ export type Dungeon = {
   objective_text: string | null;
   duration_mins: number;
   category: string;
+  time_mode: string;
+  is_generated: number;
+  expires_at: string | null;
 };
 
 export type DungeonRun = {
@@ -47,6 +50,11 @@ export type ActiveDungeonRun = {
   dungeon_name: string;
   duration_mins: number;
   objective_text: string | null;
+  category: string;
+  rank: string;
+  time_mode: string;
+  is_generated: number;
+  expires_at: string | null;
 };
 
 export type Quest = {
@@ -121,6 +129,48 @@ const DUNGEON_RANK_COIN_MULT: Record<string, number> = {
   E: 1.0, D: 1.1, C: 1.2, B: 1.3, A: 1.4, S: 1.5, SS: 1.6, SSS: 1.7, Legend: 1.8,
 };
 
+// Small extra scaling on top of the personal recommended duration (avg ×
+// stretch) — higher-rank gates ask for slightly more than your own stretch
+// goal. Only applied to 'duration'-mode dungeons (see schema.ts v43).
+const DUNGEON_RANK_DURATION_MULT: Record<string, number> = {
+  E: 0.9, D: 0.95, C: 1.0, B: 1.05, A: 1.1, S: 1.2, SS: 1.3, SSS: 1.4, Legend: 1.5,
+};
+
+// Live time-limit derivation for 'duration'-mode dungeons: recommended
+// duration for the dungeon's category (avg_duration × stretch, same formula
+// as stretch-tier quests) × the rank multiplier above. 'time_trial' dungeons
+// (fixed task + deadline, e.g. Hunter's Run — more time would make it
+// *easier*) pass through with their static seeded duration_mins untouched.
+// Key-generated gates (is_generated=1) had their duration frozen at creation
+// time (useDungeonKey) and never recompute — "this data no longer adapts to
+// player behaviour once the gate is generated."
+function withLiveDuration<T extends { duration_mins: number; category: string; rank: string; time_mode: string; is_generated: number }>(row: T): T {
+  if (row.is_generated || row.time_mode !== 'duration') return row;
+  const snapshot = getOrRefreshSnapshot();
+  const recommended = recommendedDurationMinutes(snapshot, row.category, row.duration_mins);
+  const rankMult = DUNGEON_RANK_DURATION_MULT[row.rank] ?? 1.0;
+  return { ...row, duration_mins: Math.round(recommended * rankMult) };
+}
+
+// Key-generated gates (is_generated=1) expire (expires_at). Drops any that
+// have lapsed and aren't mid-attempt — keeps the table from accumulating stale rows.
+function cleanupExpiredDungeons(): void {
+  db.runSync(
+    `DELETE FROM dungeons WHERE is_generated = 1 AND expires_at <= datetime('now', 'localtime')
+     AND id NOT IN (SELECT dungeon_id FROM dungeon_runs WHERE status = 'active')`,
+  );
+}
+
+/** "6h" / "2d" countdown for a Key-generated gate's expires_at, or null if permanent/expired. */
+export function getDungeonExpiryRemaining(expiresAt: string | null): string | null {
+  if (!expiresAt) return null;
+  const remaining = (new Date(expiresAt).getTime() - Date.now()) / 3600000;
+  if (remaining <= 0) return null;
+  if (remaining >= 24) return `${Math.ceil(remaining / 24)}d`;
+  if (remaining < 1)   return `${Math.ceil(remaining * 60)}m`;
+  return `${Math.ceil(remaining)}h`;
+}
+
 // Tier scale shared by player tiers and dungeon ranks (MECHANICS.md §4).
 // Player adds an "F" tier below E so 100 levels split into 10 clean brackets;
 // dungeon ranks (no "F") occupy indices 2–10 on the same scale.
@@ -130,6 +180,15 @@ const DUNGEON_TIER_INDEX: Record<string, number> = {
 
 function getPlayerTierIndex(level: number): number {
   return Math.min(10, Math.floor((level - 1) / 10) + 1);
+}
+
+// Reverse of DUNGEON_TIER_INDEX, plus "F" for tier 1 (levels 1-10, below the
+// Game tab unlock — MIN_GAME_LEVEL) — shown on the home XP bar's rank badge.
+const PLAYER_RANK_BY_TIER: Record<number, string> = { 1: 'F' };
+for (const [rank, idx] of Object.entries(DUNGEON_TIER_INDEX)) PLAYER_RANK_BY_TIER[idx] = rank;
+
+export function getPlayerRankLabel(level: number): string {
+  return PLAYER_RANK_BY_TIER[getPlayerTierIndex(level)] ?? 'F';
 }
 
 // Dungeon fail damage: 33 × max(1, tier_diff). At/below player tier → flat 33.
@@ -255,6 +314,53 @@ export function purchaseDungeonKey(rank: string): 'ok' | 'insufficient_xp' | 'no
   db.runSync('UPDATE rpg_state SET spendable_xp = spendable_xp - ? WHERE id = 1', cost);
   grantDungeonKey(rank);
   triggerCurrencyRefresh();
+  return 'ok';
+}
+
+// Consumes a Key, generating an extra gate of its rank — a clone of a random
+// base template (is_generated=0; the same 5 activities reused at every rank,
+// per MECHANICS.md §11.7/§11) stamped with this rank's duration/coin/drop
+// multipliers. The gate's duration_mins is computed once, here, then frozen
+// (withLiveDuration skips is_generated rows) — "this data no longer adapts to
+// player behaviour once the gate is created." Expires in 1–10 days (1–3 for
+// S+ ranks, dungeonKeyExpiryRangeText). Requires the rank's Right already be
+// owned (a Key alone doesn't grant early access — see isDungeonRankUnlocked).
+export function useDungeonKey(rank: string): 'ok' | 'no_key' | 'right_required' {
+  const { current_level } = getRPGState();
+  if (!isDungeonRankUnlocked(rank, current_level)) return 'right_required';
+
+  const keyName = dungeonKeyItemName(rank);
+  const keyRow = db.getFirstSync<{ id: number; quantity: number }>(
+    `SELECT id, quantity FROM inventory WHERE category = 'game' AND item_type = 'dungeon_key' AND item_name = ?`, keyName,
+  );
+  if (!keyRow || keyRow.quantity < 1) return 'no_key';
+
+  const template = db.getFirstSync<Dungeon>(`SELECT * FROM dungeons WHERE is_generated = 0 ORDER BY RANDOM() LIMIT 1`);
+  if (!template) return 'no_key';
+
+  let durationMins = template.duration_mins;
+  if (template.time_mode === 'duration') {
+    const snapshot = getOrRefreshSnapshot();
+    const recommended = recommendedDurationMinutes(snapshot, template.category, template.duration_mins);
+    durationMins = Math.round(recommended * (DUNGEON_RANK_DURATION_MULT[rank] ?? 1.0));
+  }
+
+  const expirySeconds = Math.round((HIGH_TIER_RANKS.includes(rank) ? 1 + Math.random() * 2 : 1 + Math.random() * 9) * 86400);
+  const expiresAt = db.getFirstSync<{ d: string }>(
+    `SELECT datetime('now', 'localtime', '+' || ? || ' seconds') as d`, expirySeconds,
+  )!.d;
+
+  db.runSync(
+    `INSERT INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, difficulty, coin_reward, item_drop_chance, item_name, item_description, objective_text, duration_mins, category, cooldown_hours, time_mode, is_generated, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    template.name, rank, template.flavor_text, template.primary_stat, template.secondary_stat,
+    template.difficulty, template.coin_reward, template.item_drop_chance, template.item_name, template.item_description,
+    template.objective_text, durationMins, template.category, template.cooldown_hours, template.time_mode, expiresAt,
+  );
+
+  if (keyRow.quantity <= 1) db.runSync(`DELETE FROM inventory WHERE id = ?`, keyRow.id);
+  else db.runSync(`UPDATE inventory SET quantity = quantity - 1 WHERE id = ?`, keyRow.id);
+
   return 'ok';
 }
 
@@ -626,7 +732,10 @@ export function useRevivalPotion(): 'ok' | 'none' {
 // ─── Dungeons ─────────────────────────────────────────────────────────────────
 
 export function getDungeons(): Dungeon[] {
-  return db.getAllSync<Dungeon>('SELECT * FROM dungeons ORDER BY id ASC');
+  cleanupExpiredDungeons();
+  return db.getAllSync<Dungeon>(
+    `SELECT * FROM dungeons WHERE is_generated = 0 OR expires_at > datetime('now', 'localtime') ORDER BY id ASC`,
+  ).map(withLiveDuration);
 }
 
 function getLastCompletedRun(dungeonId: number): DungeonRun | null {
@@ -654,13 +763,13 @@ export function getDungeonCooldownRemaining(dungeonId: number, cooldownHours: nu
   return `${Math.ceil(remaining)}h`;
 }
 
-export function startDungeon(dungeonId: number, mpUsed: number = 0): number {
+export function startDungeon(dungeonId: number, durationMins: number, mpUsed: number = 0): number {
   const now = sqlNow();
   const spend = Math.max(0, mpUsed);
   db.runSync(
-    `INSERT INTO dungeon_runs (dungeon_id, started_at, status, result, coins_earned, hp_change, completed_at, mp_used)
-     VALUES (?, ?, 'active', 'active', 0, 0, ?, ?)`,
-    dungeonId, now, now, spend,
+    `INSERT INTO dungeon_runs (dungeon_id, started_at, status, result, coins_earned, hp_change, completed_at, mp_used, duration_mins)
+     VALUES (?, ?, 'active', 'active', 0, 0, ?, ?, ?)`,
+    dungeonId, now, now, spend, durationMins,
   );
   if (spend > 0) {
     db.runSync('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1', spend);
@@ -669,15 +778,33 @@ export function startDungeon(dungeonId: number, mpUsed: number = 0): number {
   return db.getFirstSync<{ id: number }>('SELECT last_insert_rowid() as id')?.id ?? 0;
 }
 
+// Active runs return the duration_mins frozen at startDungeon() time, NOT a
+// fresh withLiveDuration() recompute — otherwise the countdown timer (and the
+// XP/log entry written on clear) could shift mid-run if the live formula's
+// inputs change while the run is in progress. Falls back to a live recompute
+// only for runs started before this column existed (duration_mins NULL).
 export function getActiveDungeonRun(): ActiveDungeonRun | null {
-  return db.getFirstSync<ActiveDungeonRun>(
-    `SELECT dr.id as run_id, dr.dungeon_id, dr.started_at,
-            d.name as dungeon_name, d.duration_mins, d.objective_text
+  const row = db.getFirstSync<ActiveDungeonRun & { run_duration_mins: number | null }>(
+    `SELECT dr.id as run_id, dr.dungeon_id, dr.started_at, dr.duration_mins as run_duration_mins,
+            d.name as dungeon_name, d.duration_mins, d.objective_text,
+            d.category, d.rank, d.time_mode, d.is_generated, d.expires_at
      FROM dungeon_runs dr
      JOIN dungeons d ON d.id = dr.dungeon_id
      WHERE dr.status = 'active'
      ORDER BY dr.id DESC LIMIT 1`,
-  ) ?? null;
+  );
+  if (!row) return null;
+  const { run_duration_mins, ...rest } = row;
+  return run_duration_mins != null ? { ...rest, duration_mins: run_duration_mins } : withLiveDuration(rest);
+}
+
+// Extra Gates (is_generated=1, from Dungeon Keys) are one-time quests — any
+// finished attempt (clear, fail, or abandon) consumes the gate, win or lose,
+// so it no longer appears under Extra Gates regardless of cooldown.
+function consumeIfGenerated(dungeon: Dungeon): void {
+  if (dungeon.is_generated) {
+    db.runSync(`DELETE FROM dungeons WHERE id = ?`, dungeon.id);
+  }
 }
 
 export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClearResult {
@@ -740,6 +867,7 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
     'dungeon_win',
     `Gate Cleared: ${dungeon.name}. +${xpEarned} XP · +${coinsEarned} coins.${itemDropped ? ` Obtained: ${itemDropped}.` : ''}${keyDropped ? ` Found: ${keyDropped}.` : ''}`,
   );
+  consumeIfGenerated(dungeon);
 
   return { xpEarned, coinsEarned, itemDropped, itemRarity, itemSlotType, keyDropped };
 }
@@ -754,15 +882,17 @@ export function failDungeon(runId: number, dungeon: Dungeon): void {
   );
   db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - ?) WHERE id = 1', damage);
   addGameLog('dungeon_fail', `Gate Failed: ${dungeon.name}. HP -${damage}.`);
+  consumeIfGenerated(dungeon);
   triggerDeathCheck();
 }
 
-export function abandonDungeon(runId: number): void {
+export function abandonDungeon(runId: number, dungeon: Dungeon): void {
   const now = sqlNow();
   db.runSync(
     `UPDATE dungeon_runs SET status = 'abandoned', result = 'abandoned', completed_at = ? WHERE id = ?`,
     now, runId,
   );
+  consumeIfGenerated(dungeon);
 }
 
 // ─── Quests ───────────────────────────────────────────────────────────────────
@@ -792,9 +922,9 @@ export function generateQuests(): void {
       if (existing.includes(candidate.category)) continue;
       const { title, description, stat_hint } = fillTemplate(candidate);
       db.runSync(
-        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status, stat_hint)
-         VALUES (?, ?, ?, 'weekly', 30, 'pending', ?)`,
-        title, description, candidate.category, stat_hint,
+        `INSERT INTO quests (title, description, category, quest_type, coin_reward, status, stat_hint, duration_mins)
+         VALUES (?, ?, ?, 'weekly', 30, 'pending', ?, ?)`,
+        title, description, candidate.category, stat_hint, candidate.minutes ?? 30,
       );
     }
 

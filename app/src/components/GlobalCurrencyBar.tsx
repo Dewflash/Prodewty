@@ -52,7 +52,6 @@ export function GlobalCurrencyBar() {
 
   useEffect(() => onCurrencyRefresh(refresh), [refresh]);
 
-  const animaColor = data.anima > 0 ? colors.success : data.anima < 0 ? colors.danger : colors.textMuted;
   const animaLabel = data.anima > 0 ? `+${data.anima}` : String(data.anima);
 
   return (
@@ -92,13 +91,13 @@ export function GlobalCurrencyBar() {
       </View>
 
       <View style={s.pair}>
-        <Feather name="heart" size={10} color="#15803D" />
-        <Text style={[s.val, { color: '#15803D' }]}>{data.vigor}</Text>
+        <Feather name="heart" size={10} color={colors.success} />
+        <Text style={[s.val, { color: colors.success }]}>{data.vigor}</Text>
       </View>
 
       <View style={s.pair}>
         <Feather name="aperture" size={10} color="#60A5FA" />
-        <Text style={[s.val, { color: animaColor }]}>{animaLabel}</Text>
+        <Text style={[s.val, { color: '#60A5FA' }]}>{animaLabel}</Text>
       </View>
     </View>
   );

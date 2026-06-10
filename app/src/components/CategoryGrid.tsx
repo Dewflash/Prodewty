@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
-import { addCategory, deleteCategory, getPastHistoryCategories, type DBCategory } from '../db/categories';
+import { addCategory, deleteCategory, getPastHistoryCategories, updateCategoryWeight, type DBCategory } from '../db/categories';
 
 type Props = {
   categories: DBCategory[];
@@ -41,6 +41,8 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
   const [modalVisible, setModalVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [manageVisible, setManageVisible] = useState(false);
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editWeight, setEditWeight] = useState(3);
   const [pastHistory, setPastHistory] = useState<DBCategory[]>([]);
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState(3);
@@ -107,7 +109,19 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
   }
 
   function openManage() {
+    setEditingCatId(null);
     setManageVisible(true);
+  }
+
+  function toggleEditWeight(cat: DBCategory) {
+    if (editingCatId === cat.id) { setEditingCatId(null); return; }
+    setEditWeight(cat.weight);
+    setEditingCatId(cat.id);
+  }
+
+  function commitEditWeight(cat: DBCategory, weight: number) {
+    updateCategoryWeight(cat.name, weight);
+    onAdded();
   }
 
   useImperativeHandle(ref, () => ({ openPastHistory, showWeightInfo, openManage }));
@@ -252,16 +266,40 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
         <Pressable style={s.overlay} onPress={() => setManageVisible(false)} />
         <View style={s.historySheet}>
           <Text style={s.sheetTitle}>Manage Activities</Text>
-          <Text style={s.subLabel}>Tap the trash icon to remove a tag. Tags you've logged before move to Past History instead of being erased.</Text>
+          <Text style={s.subLabel}>Tap the slider icon to adjust XP weight, or the trash icon to remove a tag. Tags you've logged before move to Past History instead of being erased.</Text>
           <ScrollView style={{ maxHeight: 360 }}>
             {categories.map(cat => (
-              <View key={cat.id} style={s.historyRow}>
-                <View style={[s.pillDot, { backgroundColor: cat.color || colors.primary }]} />
-                <Text style={[s.historyName, { flex: 1 }]} numberOfLines={1}>{cat.name}</Text>
-                {cat.used === 1 && <Text style={s.historyMeta}>used</Text>}
-                <Pressable onPress={() => handleDelete(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
-                  <Feather name="trash-2" size={14} color={colors.danger} />
-                </Pressable>
+              <View key={cat.id}>
+                <View style={s.historyRow}>
+                  <View style={[s.pillDot, { backgroundColor: cat.color || colors.primary }]} />
+                  <Text style={[s.historyName, { flex: 1 }]} numberOfLines={1}>{cat.name}</Text>
+                  <Text style={s.historyMeta}>w{editingCatId === cat.id ? editWeight : cat.weight}</Text>
+                  {cat.used === 1 && <Text style={s.historyMeta}>used</Text>}
+                  <Pressable onPress={() => toggleEditWeight(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
+                    <Feather name="sliders" size={14} color={editingCatId === cat.id ? (cat.color || colors.primary) : colors.textMuted} />
+                  </Pressable>
+                  <Pressable onPress={() => handleDelete(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
+                    <Feather name="trash-2" size={14} color={colors.danger} />
+                  </Pressable>
+                </View>
+                {editingCatId === cat.id && (
+                  <View style={[s.sliderRow, { paddingBottom: spacing.sm }]}>
+                    <Text style={s.sliderEdge}>1</Text>
+                    <Slider
+                      style={{ flex: 1 }}
+                      minimumValue={1}
+                      maximumValue={20}
+                      step={1}
+                      value={editWeight}
+                      onValueChange={setEditWeight}
+                      onSlidingComplete={(v) => commitEditWeight(cat, v)}
+                      minimumTrackTintColor={cat.color || colors.primary}
+                      maximumTrackTintColor={colors.border}
+                      thumbTintColor={cat.color || colors.primary}
+                    />
+                    <Text style={s.sliderEdge}>20</Text>
+                  </View>
+                )}
               </View>
             ))}
           </ScrollView>

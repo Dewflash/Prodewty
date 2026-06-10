@@ -31,7 +31,7 @@ type MoodState = string;
 
 // Soul Record permanent colors
 const BLIGHT_COLOR = '#94A3B8'; // light grey
-const VIGOR_COLOR  = '#15803D'; // dark green
+const VIGOR_COLOR  = colors.success; // matches GlobalCurrencyBar's vigor color
 const ANIMA_COLOR  = '#60A5FA'; // cool silvery blue (permanent)
 
 const TIER_COLOR: Record<string, string> = {
@@ -466,9 +466,11 @@ export default function ProgressScreen() {
                     <Text style={[s.effectTagTxt, { color: TIER_COLOR[healthTierLabel] ?? colors.textMuted }]}>{healthTierLabel}</Text>
                   </View>
                 ) : null}
-                <View style={[s.effectTag, { borderColor: moodColorFor(currentMoodState), alignSelf: 'center' }]}>
-                  <Text style={[s.effectTagTxt, { color: moodColorFor(currentMoodState) }]}>{currentMoodState}</Text>
-                </View>
+                {customMoods.some(m => m.name === currentMoodState) && (
+                  <View style={[s.effectTag, { borderColor: moodColorFor(currentMoodState), alignSelf: 'center' }]}>
+                    <Text style={[s.effectTagTxt, { color: moodColorFor(currentMoodState) }]}>{currentMoodState}</Text>
+                  </View>
+                )}
                 {(vigorCount - sdCount) < -10 && (
                   <View style={[s.effectTag, { borderColor: colors.danger }]}>
                     <Text style={[s.effectTagTxt, { color: colors.danger }]}>−20% coins</Text>
@@ -945,7 +947,7 @@ const s = StyleSheet.create({
   todayDivider: { width: 1, height: 10, backgroundColor: colors.border },
   todayDot:     { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.border },
   todayStat:    { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
-  todayXPOn:    { color: colors.success },
+  todayXPOn:    { color: colors.primary },
 
   periodRow:   { flexDirection: 'row', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, overflow: 'hidden' },
   periodBtn:   { flex: 1, paddingVertical: spacing.sm + 2, alignItems: 'center' },

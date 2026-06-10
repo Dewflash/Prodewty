@@ -157,22 +157,33 @@ export function computePlayerSnapshot(): PlayerSnapshot {
   };
 }
 
-// ─── Snapshot persistence + 7-day recompute gate ──────────────────────────────
+// ─── Snapshot persistence + recompute gate ────────────────────────────────────
 
-export function getStoredSnapshot(): { last_snapshot_at: string | null; snapshot: PlayerSnapshot | null } {
-  const row = db.getFirstSync<{ last_snapshot_at: string | null; snapshot: string }>(
-    `SELECT last_snapshot_at, snapshot FROM quest_engine_state WHERE id = 1`,
+export function getStoredSnapshot(): { last_snapshot_at: string | null; snapshot: PlayerSnapshot | null; last_snapshot_log_count: number } {
+  const row = db.getFirstSync<{ last_snapshot_at: string | null; snapshot: string; last_snapshot_log_count: number }>(
+    `SELECT last_snapshot_at, snapshot, last_snapshot_log_count FROM quest_engine_state WHERE id = 1`,
   );
-  if (!row) return { last_snapshot_at: null, snapshot: null };
+  if (!row) return { last_snapshot_at: null, snapshot: null, last_snapshot_log_count: 0 };
   let snapshot: PlayerSnapshot | null = null;
   try { snapshot = JSON.parse(row.snapshot); } catch {}
-  return { last_snapshot_at: row.last_snapshot_at, snapshot };
+  return { last_snapshot_at: row.last_snapshot_at, snapshot, last_snapshot_log_count: row.last_snapshot_log_count ?? 0 };
+}
+
+// Count of logs that feed computePlayerSnapshot() (categories/unused_categories/
+// mood/behavior). Compared against the count at last-snapshot time so that
+// getOrRefreshSnapshot() can detect "new logs since last snapshot" without
+// comparing timestamp formats — activity_logs.created_at is localtime
+// 'YYYY-MM-DD HH:MM:SS' while last_snapshot_at is an ISO UTC string.
+function countSnapshotInputLogs(): number {
+  return db.getFirstSync<{ n: number }>(
+    `SELECT count(*) as n FROM activity_logs WHERE entry_type IN ('activity','mood') AND archived_at IS NULL`,
+  )?.n ?? 0;
 }
 
 function saveSnapshot(snapshot: PlayerSnapshot): void {
   db.runSync(
-    `UPDATE quest_engine_state SET last_snapshot_at = ?, snapshot = ? WHERE id = 1`,
-    snapshot.computed_at, JSON.stringify(snapshot),
+    `UPDATE quest_engine_state SET last_snapshot_at = ?, snapshot = ?, last_snapshot_log_count = ? WHERE id = 1`,
+    snapshot.computed_at, JSON.stringify(snapshot), countSnapshotInputLogs(),
   );
 }
 
@@ -182,10 +193,15 @@ function daysSince(isoDate: string): number {
   return (Date.now() - then) / (1000 * 60 * 60 * 24);
 }
 
-/** Returns the current snapshot, recomputing it if the 7-day gate has elapsed (or none exists). */
+/**
+ * Returns the current snapshot, recomputing it if the 7-day gate has elapsed,
+ * none exists, or new activity/mood logs have been recorded since the last
+ * snapshot (e.g. backfilling several days of logs in one sitting).
+ */
 export function getOrRefreshSnapshot(): PlayerSnapshot {
-  const { last_snapshot_at, snapshot } = getStoredSnapshot();
-  if (snapshot && last_snapshot_at && daysSince(last_snapshot_at) < QUEST_ENGINE_TUNING.recompute_interval_days) {
+  const { last_snapshot_at, snapshot, last_snapshot_log_count } = getStoredSnapshot();
+  const hasNewLogs = countSnapshotInputLogs() !== last_snapshot_log_count;
+  if (snapshot && last_snapshot_at && !hasNewLogs && daysSince(last_snapshot_at) < QUEST_ENGINE_TUNING.recompute_interval_days) {
     return snapshot;
   }
   const fresh = computePlayerSnapshot();
@@ -200,6 +216,15 @@ export function getOrRefreshSnapshot(): PlayerSnapshot {
 export function stretchMultiplier(consistencyScore: number): number {
   const raw = STRETCH_MIN + consistencyScore * QUEST_ENGINE_TUNING.scaling_factor;
   return Math.round(Math.min(STRETCH_MAX, Math.max(STRETCH_MIN, raw)) * 100) / 100;
+}
+
+// Same "recommended duration" used for stretch-tier quests (avg_duration ×
+// stretch), reused as the basis for a 'duration'-mode dungeon's time limit.
+// Falls back when the player hasn't logged this category yet.
+export function recommendedDurationMinutes(snapshot: PlayerSnapshot, category: string, fallbackMinutes: number): number {
+  const cat = snapshot.categories.find(c => c.category.toLowerCase() === category.toLowerCase());
+  if (!cat || cat.avg_duration_mins <= 0) return fallbackMinutes;
+  return Math.round(cat.avg_duration_mins * stretchMultiplier(cat.consistency_score));
 }
 
 // ─── Mood-reactive rules layer ────────────────────────────────────────────────

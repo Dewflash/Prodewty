@@ -19,6 +19,13 @@ export function getCategories(): DBCategory[] {
   );
 }
 
+// Adjusts an existing category's XP weight (1-20) — covers categories created
+// during onboarding, which are seeded with a fixed weight and otherwise have
+// no UI to retune (the "New Activity" weight slider only applies at creation).
+export function updateCategoryWeight(name: string, weight: number): void {
+  db.runSync('UPDATE categories SET weight = ? WHERE name = ?', Math.max(1, Math.min(20, Math.round(weight))), name);
+}
+
 export function addCategory(
   name: string,
   weight: number,

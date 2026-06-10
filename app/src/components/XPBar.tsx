@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
+import { getPlayerRankLabel } from '../db/game';
+import { RANK_COLOR } from './game/DungeonCard';
 
 type Props = {
   level: number;
@@ -19,9 +21,43 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = fa
   const progress = Math.min(currentLevelXP / xpToNext, 1);
   const streakColor = frozen ? colors.primary : colors.success;
 
+  const rank      = getPlayerRankLabel(level);
+  const rankColor = RANK_COLOR[rank] ?? colors.textMuted;
+  const isUnranked = rank === 'F';
+
+  // Pulsing glow on the rank badge — dormant ("sad") for the unranked F tier.
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (isUnranked) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1100, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1100, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isUnranked, pulse]);
+
+  const glowOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.5] });
+  const glowScale   = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+
   return (
     <View style={styles.container}>
       <View style={styles.row}>
+        <View style={[
+          styles.rankBadge,
+          { borderColor: isUnranked ? `${rankColor}66` : rankColor },
+          !isUnranked && { shadowColor: rankColor, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+        ]}>
+          {!isUnranked && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.rankGlow, { backgroundColor: rankColor, opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
+            />
+          )}
+          <Text style={[styles.rankText, { color: isUnranked ? `${rankColor}AA` : rankColor }]}>{rank}</Text>
+        </View>
         <View style={styles.levelBadge}>
           <Text style={styles.levelText}>LVL {level}</Text>
         </View>
@@ -50,6 +86,15 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = fa
 const styles = StyleSheet.create({
   container: { gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  rankBadge: {
+    flexShrink: 0, overflow: 'hidden',
+    minWidth: 36, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: 'transparent',
+  },
+  rankGlow: { ...StyleSheet.absoluteFillObject },
+  rankText: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, letterSpacing: 1 },
   levelBadge: {
     flexShrink: 0,
     borderWidth: 1, borderColor: colors.primary, borderRadius: radius.sm,

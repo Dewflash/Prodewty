@@ -737,3 +737,251 @@ fresh recompute just happened — ties suggestion-generation cadence to the same
 6. **Hardcoded version string** — the About sheet shows a static `"Version 1.0.0"`
    rather than reading `app.json`/`package.json` dynamically; no `expo-constants`
    precedent existed in the codebase to extend.
+
+## 12. AS-BUILT LOG — Dungeon time-limit derivation, 2026-06-10
+
+**What changed**: dungeon `duration_mins` (used as both the attempt countdown
+timer and the XP-calc input — MECHANICS.md §11.7) is no longer a static seeded
+value. For most dungeons it's now derived live, every time `getDungeons()` /
+`getActiveDungeonRun()` is called (game.ts `withLiveDuration()`):
+
+```
+duration_mins = round(recommendedDurationMinutes(snapshot, dungeon.category, fallback) × DUNGEON_RANK_DURATION_MULT[dungeon.rank])
+```
+
+`recommendedDurationMinutes()` (questEngine.ts) is the exact same
+`avg_duration_mins × stretchMultiplier(consistency_score)` formula already used
+for stretch-tier quests (§1/MECHANICS.md §12.1) — same 1.1–2.0x relative cap,
+no new formula. `DUNGEON_RANK_DURATION_MULT` is a small new per-rank table
+(E=0.9 ... Legend=1.5, user-specified, updated 2026-06-10) layered on top.
+
+**The `time_mode` escape hatch (schema.ts v43)**: while designing this, the
+user pointed out that "more time = harder" only holds for activities phrased
+as "do X for N minutes." One existing E-rank dungeon, **Hunter's Run**
+("Complete a 2.4 km run before the gate closes"), is a fixed-distance task with
+a *deadline* — more time there makes it *easier*, not harder. Added
+`dungeons.time_mode TEXT NOT NULL DEFAULT 'duration'`, set to `'time_trial'`
+only for Hunter's Run. `withLiveDuration()` skips `time_trial` rows entirely —
+they keep their static seeded `duration_mins`, and rank differentiation for
+them stays in `difficulty`/`coin_reward`/drop-table only (unchanged).
+
+**Why this doesn't need revisiting when the dungeon-rotation engine (item G,
+deferred — §11.6 Known Gaps) gets built**: every `DEFAULT_QUEST_TEMPLATES` row
+(schema.ts) is phrased as "log/spend N minutes of {category}" — the quest
+engine has no fixed-task/time-trial candidate type at all. So any
+engine-generated dungeon content is automatically `'duration'`-mode-compatible.
+`time_trial` is reserved for hand-authored exceptions like Hunter's Run; if
+more get added later, just set `time_mode = 'time_trial'` on that row — no
+formula changes needed.
+
+**Assumption made**: snapshot lookup uses `getOrRefreshSnapshot()` (cheap
+no-op read unless the recompute gate trips — §14 below — same cadence as quest
+generation), not a forced recompute. "Live" therefore means "live relative to
+the current snapshot," not "recomputed from raw logs on every render."
+
+## 13. AS-BUILT LOG — Dungeon Key consumption ("Extra Gates"), 2026-06-10
+
+**What changed**: Dungeon Keys (`item_type='dungeon_key'`) were purchasable/
+droppable but unusable — "this consumption/generation step is intentionally
+stubbed" (MECHANICS.md §11.6 Known Gaps, pre-this-build). Added
+`useDungeonKey(rank)` (game.ts) + a "USE" button on Key items in
+`app/inventory.tsx` (GAME tab).
+
+**Resolves the D–Legend content gap differently than expected**: earlier in
+this session I'd flagged that using a D–Legend Key has nothing to clone, since
+only 5 E-rank templates exist. The user corrected this: **dungeon rank only
+ever applied a multiplier on top of a shared template pool** — "D is
+essentially E with the multiplier" (coin/drop tables are already keyed purely
+by `rank`, §11.1/§11.3, and §11.7's new `DUNGEON_RANK_DURATION_MULT` is the
+same idea for duration). So `useDungeonKey()` picks a random one of the 5
+base templates (`is_generated=0`) regardless of rank, clones it, and stamps
+the clone with the Key's rank — no new content needed for any rank.
+
+**Mechanism** (`useDungeonKey`, game.ts):
+1. Requires the rank's Right already owned (`isDungeonRankUnlocked`) — a Key
+   doesn't grant early rank access by itself. User's framing: "the key cannot
+   be used unless the right has been earned... if the right has been earned
+   then [the gate is] playable immediately."
+2. Picks a random base template, computes its `duration_mins` ONCE via the
+   §11.7 live formula (`recommendedDurationMinutes × DUNGEON_RANK_DURATION_MULT[rank]`,
+   or the static value unchanged for `time_mode='time_trial'` templates), then
+   freezes it — `withLiveDuration()` now also skips any row with
+   `is_generated=1`, regardless of `time_mode`. This is the "no longer adapts
+   to player behaviour once created" requirement.
+3. Sets `expires_at` via SQL `datetime('now','localtime','+N seconds')` (same
+   format as the cooldown timestamps elsewhere, so string comparison in
+   `getDungeons()`'s WHERE clause works) — 1–10 days normal, 1–3 days for
+   `HIGH_TIER_RANKS` (S/SS/SSS/Legend), per the existing
+   `dungeonKeyExpiryRangeText` copy.
+4. Consumes the Key (decrement/delete inventory row).
+
+**New schema (v44)**: `dungeons.is_generated INTEGER DEFAULT 0`,
+`dungeons.expires_at TEXT` (null = permanent). `getDungeons()` now runs
+`cleanupExpiredDungeons()` (deletes lapsed `is_generated=1` rows that aren't
+mid-attempt) and filters `is_generated=0 OR expires_at > now`.
+
+**UI**: generated gates render in a new "EXTRA GATES" section in
+`app/(tabs)/game.tsx` (separate from the rank-grouped permanent list, per
+user's choice), with a `DungeonCard` expiry badge ("EXPIRES IN 6H"/"2D") via
+new `getDungeonExpiryRemaining()`.
+
+**The `time_mode` constraint, restated for future difficulty work** (see
+MECHANICS.md §11.7 callout): `time_mode` is the permanent switch for *any*
+difficulty-scaling mechanic. `'duration'` dungeons scale via `duration_mins`
+(this build + §11.7). `'time_trial'` dungeons (Hunter's Run) must scale via a
+different, not-yet-designed axis — increasing their time limit would make them
+*easier*. If a time-trial-style `quest_templates` row is ever added, it needs
+the same tag and the same exclusion from `{minutes}`/stretch logic.
+
+**Assumption made**: "USE" is shown on every `dungeon_key` item with
+`quantity > 0` regardless of rank-unlock status — pressing it on a
+not-yet-unlocked rank shows an alert ("Right Required") rather than hiding the
+button. Felt more transparent than silently hiding a button the player may not
+understand the absence of.
+
+## 14. AS-BUILT LOG — Quest snapshot recompute on backfilled logs, 2026-06-10
+
+**The bug**: a player who backfills several days of activity logs in one
+sitting (e.g. logging the past 7 days of activity right after onboarding) saw
+no new quests/dungeons reflecting that data — `getOrRefreshSnapshot()`
+(questEngine.ts) only recomputed the Player Snapshot once
+`recompute_interval_days` (7) had elapsed since `last_snapshot_at`, regardless
+of how much new log data existed. The 7-day timer itself was a deliberate,
+user-confirmed cadence (§1) — the gap was that it was the *only* trigger.
+
+**The fix**: `getOrRefreshSnapshot()` now also recomputes immediately if the
+count of snapshot-input logs (`activity_logs` rows with
+`entry_type IN ('activity','mood') AND archived_at IS NULL`) differs from the
+count captured at the last snapshot (`quest_engine_state.last_snapshot_log_count`,
+new column, schema v46). Either condition — the 7-day timer elapsing, or the
+log count having changed (more from new logs, fewer from archiving) — triggers
+a fresh `computePlayerSnapshot()`.
+
+**Why a row-count instead of a timestamp comparison**: `activity_logs.created_at`
+is `datetime('now','localtime')` (`'YYYY-MM-DD HH:MM:SS'`, local time), while
+`last_snapshot_at`/`computed_at` are `new Date().toISOString()`
+(`'YYYY-MM-DDTHH:MM:SS.sssZ'`, UTC). Comparing these directly would require
+reconciling both the separator and timezone formats — fragile, and easy to get
+subtly wrong across DST/timezone edge cases. A plain `count(*)` of relevant logs
+sidesteps the whole problem: any insert or archive changes the count, with no
+date parsing at all.
+
+**Side effects checked**: `insights.ts`'s `generateInsightSuggestions()` reads
+`getStoredSnapshot()`/`getOrRefreshSnapshot()` and compares
+`snapshot.computed_at !== priorAt` to detect "did a recompute just happen" —
+this still works unchanged, since `computed_at`/`last_snapshot_at` formats and
+semantics are untouched; only the *trigger* for recomputing changed. The new
+`last_snapshot_log_count` field on `getStoredSnapshot()`'s return type is
+additive (destructured callers ignore it).
+
+## 15. AS-BUILT LOG — Extra Gates as one-time quests, streak freeze inventory flow, color cleanup, 2026-06-10
+
+**Extra Gates are now one-time** (§13's Key-generated `is_generated=1` gates):
+any finished attempt — clear, fail, *or* abandon — deletes the dungeon row via
+new `consumeIfGenerated()` (game.ts), called from `submitDungeonClear`,
+`failDungeon`, and `abandonDungeon` (which now also takes a `dungeon: Dungeon`
+param so it can check `is_generated`). User confirmed: "any finished attempt
+removes it" — a failed attempt still costs the HP penalty (§11.2) *and* the
+gate, no retry. Cooldown/`expires_at` no longer matter for these rows since
+they're gone immediately. See MECHANICS.md §11.5.
+
+**Streak Freeze: buy → inventory → USE to arm**. Previously
+`purchaseStreakFreeze()` directly incremented `rpg_state.streak_freezes` (the
+pool `checkStreakFreeze()` auto-consumes on a missed day) — i.e. it activated
+the instant you bought it. Now it adds/increments a `category='global',
+item_type='consumable', item_name='Streak Freeze'` inventory row (same pattern
+as Revival Potion), and a new `useStreakFreeze()` (rpg.ts) — wired to a USE
+button in `app/inventory.tsx` (Global tab) — moves one unit from inventory into
+`rpg_state.streak_freezes`. `checkStreakFreeze()` itself, and the home page's
+"Streak Freeze × N" / frozen-streak-icon display (both keyed off
+`rpg_state.streak_freezes`), are unchanged — they represent the *armed* count.
+Store's "N owned" now reads inventory quantity (`getStreakFreezeInventoryCount()`)
+instead of the armed count.
+
+**Known pre-existing inconsistency, not touched**: the Store lists Streak
+Freeze at 300 coins (`store.tsx`), but `purchaseStreakFreeze()`'s `COST`
+constant is 50 — `buy()` only gates on the displayed 300, then
+`purchaseStreakFreeze()` deducts just 50. Pre-existing, out of scope for this
+change; flagged for a future balance pass.
+
+**Color cleanup** ("usable XP" = `spendable_xp`, the Recharge-tab balance,
+`insights.tsx` `xpText`): both `spendable_xp` displays — the Recharge-tab badge
+and the "today N logs · M XP" stat above the Week/Month/Year filter on the
+Progress page (`index.tsx` `todayXPOn`) — now use `colors.primary` (the XP
+bar's fill color) instead of `colors.success`. The Recharge-tab badge's pill
+*border* (`insights.tsx` `xpBadge.borderColor`) was also switched from
+`colors.success` to `colors.primary` to match — previously only the text
+inside the oval had changed, leaving a green outline around blue text. `Vigor`
+in `GlobalCurrencyBar.tsx` (previously a hardcoded `#15803D`) now uses
+`colors.success` — the color "usable XP" used to have, freed up by the above
+change. The Soul Record block on the home page (`index.tsx`) defines its own
+`VIGOR_COLOR` constant (previously `#15803D`, same green as the old
+GlobalCurrencyBar value) — updated to `colors.success` too, so Soul Record and
+GlobalCurrencyBar show Vigor in the same color. Finally, GlobalCurrencyBar's
+Anima value text was sign-dependent (green/red/grey via a now-removed
+`animaColor` helper); Soul Record's `ANIMA_COLOR` (`#60A5FA`, a fixed silvery
+blue regardless of sign) is the source of truth for Anima's color, so
+GlobalCurrencyBar's Anima text now also uses the fixed `'#60A5FA'` — only the
+`+`/`-`/zero numeric label changes, not the color.
+
+## 16. AS-BUILT LOG — Dungeon timer freeze, rank badge, category weight editing, mood tag fix, 2026-06-10
+
+**Active dungeon runs now freeze `duration_mins` at start (schema v45)**:
+§12's `withLiveDuration()` recomputes `duration_mins` on every
+`getDungeons()`/`getActiveDungeonRun()` call, which could desync an
+in-progress attempt if the player logged another activity in that category
+before the timer ran out (returning to the Game tab triggers `reload()`).
+`startDungeon(dungeonId, durationMins, mpUsed)` (game.ts) gained a required
+`durationMins` param and now stores it on the new `dungeon_runs.duration_mins`
+column; `getActiveDungeonRun()` returns this frozen value for any
+`status='active'` run instead of a fresh `withLiveDuration()` call (falls back
+to a live recompute only if the column is `NULL`, i.e. runs started before
+v45). `app/(tabs)/game.tsx`'s reload effect changed from
+`if (activeRun && activeRunId === null)` to `if (activeRun)` — it now
+*always* resyncs `selectedDungeon`/`timerSeconds` from
+`started_at + activeRun.duration_mins` on every reload, using a `runDungeon =
+{...dungeon, duration_mins: activeRun.duration_mins}` object so the XP/log
+entry written on clear (`sessionXP(dungeon.duration_mins, ...)`, §11.1) also
+uses the frozen value — not whatever `withLiveDuration()` would derive at
+clear-time. `handleStartTimer` now passes `selectedDungeon.duration_mins`
+(the live-derived value shown when the player tapped "Start") into
+`startDungeon`, so what's frozen is exactly what the player saw before
+starting.
+
+**Player rank badge on the home XP bar**: `getPlayerRankLabel(level)` (game.ts,
+new) maps a level to its Player Tier letter via the existing
+`DUNGEON_TIER_INDEX`/§4 table, plus a new `PLAYER_RANK_BY_TIER[1] = 'F'` for
+levels 1–10 (below `MIN_GAME_LEVEL`). `XPBar` (`src/components/XPBar.tsx`) now
+renders this as a bordered badge to the left of the LVL badge, colored via
+`RANK_COLOR` (`DungeonCard.tsx`, gained a new `F: '#475569'` muted-slate
+entry). Ranked badges (E and above) get a looping pulsing glow
+(`Animated.loop`, 1.1s in/out, opacity 0.18→0.5 + scale 1→1.18); the F badge
+is deliberately dormant — no glow, and both border/text rendered at reduced
+alpha (`${rankColor}66`/`${rankColor}AA`) — "unranked" shouldn't read as an
+achievement.
+
+**Onboarding-seeded categories can now have their XP weight retuned**: new
+`updateCategoryWeight(name, weight)` (`src/db/categories.ts`, clamps 1–20)
+fixes a gap where categories created during onboarding were seeded with a
+fixed weight and had no UI to adjust it afterward (the 1–20 weight slider in
+the "New Activity" sheet only applies at creation time). `CategoryGrid`'s
+"Manage Activities" sheet (gear icon, §-prior pass) gained a sliders icon per
+row, next to the trash icon — tapping it expands an inline 1–20 drag slider
+(`@react-native-community/slider`, same component as the New Activity sheet)
+pre-filled with the category's current weight; `onSlidingComplete` calls
+`updateCategoryWeight` and reloads. The row also now shows the live/current
+weight as `w{N}` next to the `used` badge.
+
+**Effects row no longer shows a fake "driven" mood tag**: `rpg_state.current_mood`
+defaults to the placeholder string `'driven'` (schema.ts, `DEFAULT 'driven'`)
+and the personal build deliberately seeds **no** custom moods (schema.ts:468 —
+"driven"/"burnout" would be presumptuous; players add their own via Mood
+Settings). Previously, the home page's Effects row always rendered an effect
+tag for `currentMoodState` regardless of whether it corresponded to a real
+`custom_moods` row — so a fresh install (or any player who never picked a
+mood) showed a "driven" tag with a fallback color and implied passive effects
+(`MOOD_FALLBACK_PASSIVE['driven']`, display-only) that `getMoodXPMultiplier()`
+doesn't actually grant (no matching `custom_moods` row → `xp_change = 0`). The
+tag is now gated on `customMoods.some(m => m.name === currentMoodState)` —
+only moods the player has actually created (and which therefore have real
+`xp_change`/`mp_rate` effects wired, §1.5/§17.1) appear as Effects tags.

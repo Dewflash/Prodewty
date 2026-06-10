@@ -1220,9 +1220,10 @@ function runMigrations() {
     // plus the snapshot itself (JSON blob, same pattern as onboarding_answers.answers)
     // so both the quest engine and (later) Insights can read it without recomputing.
     db.execSync(`CREATE TABLE IF NOT EXISTS quest_engine_state (
-      id               INTEGER PRIMARY KEY DEFAULT 1,
-      last_snapshot_at TEXT,
-      snapshot         TEXT NOT NULL DEFAULT '{}'
+      id                       INTEGER PRIMARY KEY DEFAULT 1,
+      last_snapshot_at         TEXT,
+      snapshot                 TEXT NOT NULL DEFAULT '{}',
+      last_snapshot_log_count  INTEGER NOT NULL DEFAULT 0
     )`);
     db.execSync(`INSERT OR IGNORE INTO quest_engine_state (id) VALUES (1)`);
 
@@ -1266,6 +1267,59 @@ function runMigrations() {
     )`);
 
     db.execSync('PRAGMA user_version = 42');
+  }
+
+  if (version < 43) {
+    // Dungeon time limits become live-derived (avg_duration × stretch × rank
+    // multiplier — see questEngine.recommendedDurationMinutes / game.ts
+    // DUNGEON_RANK_DURATION_MULT) for 'duration'-mode dungeons. A handful of
+    // dungeons describe a fixed task with a deadline rather than "do this for
+    // N minutes" — for those, more time = easier, so the formula would be
+    // backwards. 'time_trial' opts a dungeon out, keeping its static
+    // duration_mins. Hunter's Run ("Complete a 2.4 km run before the gate
+    // closes") is the only one today.
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN time_mode TEXT NOT NULL DEFAULT 'duration'`); } catch {}
+    db.execSync(`UPDATE dungeons SET time_mode = 'time_trial' WHERE name = 'Hunter''s Run'`);
+
+    db.execSync('PRAGMA user_version = 43');
+  }
+
+  if (version < 44) {
+    // Dungeon Key consumption (MECHANICS.md §11.6 "Known gap"): using a Key
+    // clones a random base template (is_generated=0) into a new row stamped
+    // with the Key's rank — D-Legend reuse the same 5 templates as E, just
+    // with that rank's duration/coin/drop multipliers (no separate content
+    // needed). Generated rows are temporary (expires_at set) and have their
+    // duration_mins frozen at creation — see game.ts useDungeonKey/withLiveDuration.
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN is_generated INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN expires_at TEXT`); } catch {}
+
+    db.execSync('PRAGMA user_version = 44');
+  }
+
+  if (version < 45) {
+    // Active dungeon runs freeze duration_mins at start time (game.ts
+    // startDungeon/getActiveDungeonRun). Without this, a 'duration'-mode
+    // dungeon's live-derived duration_mins (avg_duration × stretch × rank
+    // mult, MECHANICS.md §11.7) could shift mid-run — e.g. if the player
+    // logs a new activity in that category before returning to the Game
+    // tab — desyncing the countdown timer and the XP/log entry written on
+    // clear from the duration shown when the timer started.
+    try { db.execSync(`ALTER TABLE dungeon_runs ADD COLUMN duration_mins INTEGER`); } catch {}
+
+    db.execSync('PRAGMA user_version = 45');
+  }
+
+  if (version < 46) {
+    // Lets getOrRefreshSnapshot() (questEngine.ts) detect "new logs since last
+    // snapshot" without comparing timestamp formats (activity_logs.created_at is
+    // localtime 'YYYY-MM-DD HH:MM:SS'; last_snapshot_at is an ISO UTC string) — a
+    // plain row-count of relevant logs is compared instead, so e.g. backfilling
+    // several days of logs in one sitting triggers an immediate recompute rather
+    // than waiting out the 7-day recompute_interval_days gate.
+    try { db.execSync(`ALTER TABLE quest_engine_state ADD COLUMN last_snapshot_log_count INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    db.execSync('PRAGMA user_version = 46');
   }
 }
 

@@ -6,7 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
-import { getRPGState, purchaseStreakFreeze, type RPGState } from '../src/db/rpg';
+import { getRPGState, purchaseStreakFreeze, getStreakFreezeInventoryCount, type RPGState } from '../src/db/rpg';
 import {
   purchaseHPBoost, purchaseCosmetic, getDungeonUnlockInfo,
   purchaseDungeonRight, purchaseDungeonKey, getDungeonKeyPrice, dungeonKeyDescription,
@@ -51,14 +51,18 @@ type StoreSection = 'non-game-global' | 'game';
 export default function StoreScreen() {
   const [rpg, setRpg] = useState<RPGState | null>(null);
   const [section, setSection] = useState<StoreSection>('non-game-global');
+  const [freezeCount, setFreezeCount] = useState(0);
 
   useFocusEffect(useCallback(() => { void switchBGM('store'); }, []));
-  useFocusEffect(useCallback(() => { setRpg(getRPGState()); }, []));
+  useFocusEffect(useCallback(() => { reload(); }, []));
 
   const coins = rpg?.coins ?? 0;
   const hp    = rpg?.hp ?? 100;
 
-  function reload() { setRpg(getRPGState()); }
+  function reload() {
+    setRpg(getRPGState());
+    setFreezeCount(getStreakFreezeInventoryCount());
+  }
 
   function handleBuyRight(rank: string) {
     const info = getDungeonUnlockInfo(rank);
@@ -95,7 +99,7 @@ export default function StoreScreen() {
     );
   }
 
-  function buy(cost: number, action: () => 'ok' | 'insufficient_coins' | 'hp_not_critical', label: string) {
+  function buy(cost: number, action: () => 'ok' | 'insufficient_coins' | 'hp_not_critical', label: string, successMsg?: string) {
     if (coins < cost) { Alert.alert('Not enough coins', `Need ${cost} coins.`); return; }
     Alert.alert(`Buy ${label}?`, `Spend ${cost} coins.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -106,7 +110,7 @@ export default function StoreScreen() {
         playSound('purchaseinstore');
         reload();
         triggerCurrencyRefresh();
-        Alert.alert('Purchased', `${label} applied.`);
+        Alert.alert('Purchased', successMsg ?? `${label} applied.`);
       }},
     ]);
   }
@@ -116,9 +120,9 @@ export default function StoreScreen() {
   const nonGameItems: Item[] = [
     {
       key: 'freeze', icon: 'shield', name: 'Streak Freeze', cost: 300,
-      desc: 'Protect your streak for one missed day. Auto-activates.',
-      owned: (rpg?.streak_freezes ?? 0) > 0 ? `${rpg!.streak_freezes} owned` : undefined,
-      onBuy: () => buy(300, purchaseStreakFreeze, 'Streak Freeze'),
+      desc: 'Protect your streak for one missed day. Use from Inventory to arm.',
+      owned: freezeCount > 0 ? `${freezeCount} owned` : undefined,
+      onBuy: () => buy(300, purchaseStreakFreeze, 'Streak Freeze', 'Streak Freeze added to your inventory.'),
     },
     {
       key: 'mp', icon: 'zap', name: 'MP Boost', cost: 200,

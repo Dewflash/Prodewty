@@ -15,7 +15,7 @@ import { getRPGState, type RPGState } from '../../src/db/rpg';
 import {
   getComputedStats, getFatigue, getPendingQuests, getAcceptedQuests, getSkippedQuests,
   getCompletedQuests, reinstateQuest, generateQuests,
-  getDungeons, startDungeon, getActiveDungeonRun, submitDungeonClear, failDungeon, abandonDungeon,
+  getDungeons, startDungeon, getActiveDungeonRun, submitDungeonClear, failDungeon, abandonDungeon, getDungeonExpiryRemaining,
   acceptQuest, completeQuest, skipQuest, deleteQuest,
   allocateStat, getQuestCompletedCount, getDeathCount, getAbandonedCount,
   getInventoryBySlot, getUnequippedBySlots, getDropRates,
@@ -104,18 +104,22 @@ export default function GameScreen() {
     setActiveBuffs(getActiveBuffs());
 
     const activeRun = getActiveDungeonRun();
-    if (activeRun && activeRunId === null) {
+    if (activeRun) {
       const dungeon = dList.find(d => d.id === activeRun.dungeon_id) ?? null;
       if (dungeon) {
+        // activeRun.duration_mins is frozen at start time — always resync the
+        // timer from started_at + this frozen value (not dungeon.duration_mins,
+        // which is live-derived and can drift while the run is in progress).
+        const runDungeon = { ...dungeon, duration_mins: activeRun.duration_mins };
         const elapsed   = (Date.now() - new Date(activeRun.started_at).getTime()) / 1000;
-        const remaining = Math.max(0, dungeon.duration_mins * 60 - Math.floor(elapsed));
+        const remaining = Math.max(0, runDungeon.duration_mins * 60 - Math.floor(elapsed));
         setActiveRunId(activeRun.run_id);
-        setSelectedDungeon(dungeon);
+        setSelectedDungeon(runDungeon);
         if (remaining > 0) {
           setTimerSeconds(remaining);
           setDungeonPhase('active');
         } else {
-          failDungeon(activeRun.run_id, dungeon);
+          failDungeon(activeRun.run_id, runDungeon);
           setClearResult(null);
           setDungeonPhase('result');
         }
@@ -172,7 +176,7 @@ export default function GameScreen() {
 
   function handleStartTimer() {
     if (!selectedDungeon) return;
-    const runId = startDungeon(selectedDungeon.id, useMp);
+    const runId = startDungeon(selectedDungeon.id, selectedDungeon.duration_mins, useMp);
     setActiveRunId(runId);
     setTimerSeconds(selectedDungeon.duration_mins * 60);
     setDungeonPhase('active');
@@ -212,7 +216,7 @@ export default function GameScreen() {
     if (activeRunId === null) return;
     Alert.alert('Abandon Dungeon?', 'No penalty, no reward. Timer stops.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Abandon', style: 'destructive', onPress: () => { abandonDungeon(activeRunId!); playSound('abandondungeon'); closeDungeonFlow(); }},
+      { text: 'Abandon', style: 'destructive', onPress: () => { abandonDungeon(activeRunId!, selectedDungeon!); playSound('abandondungeon'); closeDungeonFlow(); }},
     ]);
   }
 
@@ -490,12 +494,25 @@ export default function GameScreen() {
             ) : (
               <>
                 <Text style={s.sectionHeading}>E-RANK GATES</Text>
-                {dungeons.map(d => (
+                {dungeons.filter(d => !d.is_generated).map(d => (
                   <DungeonCard key={d.id} dungeon={d}
                     isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
                     onTap={() => handleEnterGate(d)}
                     onRarityInfo={() => setRarityInfoRank(d.rank)} />
                 ))}
+
+                {dungeons.some(d => d.is_generated) && (
+                  <>
+                    <Text style={[s.sectionHeading, { marginTop: spacing.md }]}>EXTRA GATES</Text>
+                    {dungeons.filter(d => d.is_generated).map(d => (
+                      <DungeonCard key={d.id} dungeon={d}
+                        isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
+                        onTap={() => handleEnterGate(d)}
+                        onRarityInfo={() => setRarityInfoRank(d.rank)}
+                        expiryLabel={getDungeonExpiryRemaining(d.expires_at)} />
+                    ))}
+                  </>
+                )}
               </>
             )}
           </>

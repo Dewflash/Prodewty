@@ -505,10 +505,10 @@ const s = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   heading: { fontFamily: fonts.ui.semibold, fontSize: fontSize.xl, color: colors.textPrimary },
   xpBadge: {
-    borderWidth: 1, borderColor: colors.success, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: 4,
   },
-  xpText: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.success },
+  xpText: { fontFamily: fonts.mono.bold, fontSize: fontSize.sm, color: colors.primary },
 
   barsCard: {
     backgroundColor: colors.card, borderRadius: radius.md,

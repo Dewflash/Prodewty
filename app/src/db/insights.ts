@@ -178,13 +178,14 @@ function generateMoodTrendSuggestions(snapshot: PlayerSnapshot, prior: PlayerSna
   insertSuggestion('mood_trend', title, description, { dedupe_key: dedupeKey, direction, delta: Math.round(delta * 10) / 10 });
 }
 
-/** Generates fresh suggestions if personalization is enabled. Call alongside the snapshot refresh — same 7-day cadence. */
+/** Generates fresh suggestions if personalization is enabled. Call alongside the snapshot refresh — same recompute cadence. */
 export function generateInsightSuggestions(): void {
   if (!isPersonalizationEnabled()) return;
   try {
     // Capture the prior cycle's snapshot + timestamp BEFORE refreshing —
-    // getOrRefreshSnapshot overwrites stored state in place once the 7-day
-    // gate elapses, so this is the only chance to diff against the old cycle.
+    // getOrRefreshSnapshot overwrites stored state in place once the recompute
+    // gate (7-day timer or new logs since last snapshot) trips, so this is the
+    // only chance to diff against the old cycle.
     const { last_snapshot_at: priorAt, snapshot: prior } = getStoredSnapshot();
     const snapshot = getOrRefreshSnapshot();
     const justRefreshed = snapshot.computed_at !== priorAt;

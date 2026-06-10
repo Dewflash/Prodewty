@@ -437,14 +437,45 @@ export function spendXP(amount: number): 'ok' | 'insufficient' {
   return 'ok';
 }
 
+// Buying a Streak Freeze adds it to the global inventory (unarmed) — it only
+// becomes the "armed" freeze checkStreakFreeze() auto-consumes on a missed day
+// once the player presses USE on it (useStreakFreeze, below).
 export function purchaseStreakFreeze(): 'ok' | 'insufficient_coins' {
   const COST = 50;
   const state = getRPGState();
   if ((state.coins ?? 0) < COST) return 'insufficient_coins';
-  db.runSync(
-    'UPDATE rpg_state SET coins = coins - ?, streak_freezes = streak_freezes + 1 WHERE id = 1',
-    COST,
+  db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', COST);
+  const existing = db.getFirstSync<{ id: number }>(
+    `SELECT id FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = 'Streak Freeze'`,
   );
+  if (existing) {
+    db.runSync(`UPDATE inventory SET quantity = quantity + 1 WHERE id = ?`, existing.id);
+  } else {
+    db.runSync(
+      `INSERT INTO inventory (item_name, category, item_type, description, quantity)
+       VALUES ('Streak Freeze', 'global', 'consumable', 'Use to arm — protects your streak for one missed day.', 1)`,
+    );
+  }
+  triggerCurrencyRefresh();
+  return 'ok';
+}
+
+export function getStreakFreezeInventoryCount(): number {
+  return db.getFirstSync<{ quantity: number }>(
+    `SELECT quantity FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = 'Streak Freeze'`,
+  )?.quantity ?? 0;
+}
+
+// Consumes one unarmed Streak Freeze from inventory and arms it
+// (rpg_state.streak_freezes — the pool checkStreakFreeze() auto-consumes).
+export function useStreakFreeze(): 'ok' | 'no_inventory' {
+  const item = db.getFirstSync<{ id: number; quantity: number }>(
+    `SELECT id, quantity FROM inventory WHERE category = 'global' AND item_type = 'consumable' AND item_name = 'Streak Freeze'`,
+  );
+  if (!item || item.quantity <= 0) return 'no_inventory';
+  if (item.quantity <= 1) db.runSync(`DELETE FROM inventory WHERE id = ?`, item.id);
+  else db.runSync(`UPDATE inventory SET quantity = quantity - 1 WHERE id = ?`, item.id);
+  db.runSync('UPDATE rpg_state SET streak_freezes = streak_freezes + 1 WHERE id = 1');
   triggerCurrencyRefresh();
   return 'ok';
 }

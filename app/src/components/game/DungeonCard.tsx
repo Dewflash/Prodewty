@@ -6,14 +6,16 @@ import { spacing, radius } from '../../theme/spacing';
 import { isDungeonOnCooldown, getDungeonCooldownRemaining, type Dungeon } from '../../db/game';
 
 export const RANK_COLOR: Record<string, string> = {
+  F: '#475569',
   E: '#64748B', D: '#34D399', C: '#38BDF8',
   B: '#A855F7', A: '#F97316', S: '#FBBF24',
   SS: '#F472B6', SSS: '#FB7185', Legend: '#FFFFFF',
 };
 
-export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo }: {
+export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo, expiryLabel }: {
   dungeon: Dungeon; isActiveRun: boolean;
   onTap: () => void; onRarityInfo: () => void;
+  expiryLabel?: string | null;
 }) {
   const onCooldown        = !isActiveRun && isDungeonOnCooldown(dungeon.id, dungeon.cooldown_hours);
   const cooldownRemaining = onCooldown ? getDungeonCooldownRemaining(dungeon.id, dungeon.cooldown_hours) : null;
@@ -28,7 +30,10 @@ export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo }: {
       onPress={!onCooldown ? onTap : undefined}
       style={[dc.card, { borderColor: rankColor, backgroundColor: `${rankColor}14` }, isActiveRun && { borderColor: colors.primary }]}
     >
-      <Text style={[dc.rankLabel, { color: rankColor }]}>{dungeon.rank}-RANK GATE</Text>
+      <View style={dc.rankRow}>
+        <Text style={[dc.rankLabel, { color: rankColor }]}>{dungeon.rank}-RANK GATE</Text>
+        {expiryLabel ? <Text style={dc.expiryLabel}>EXPIRES IN {expiryLabel.toUpperCase()}</Text> : null}
+      </View>
       <Text style={dc.name}>{dungeon.name}</Text>
       <Text style={dc.statLine}>
         {dungeon.primary_stat.toUpperCase()} + {dungeon.secondary_stat?.toUpperCase() ?? '—'} · {dungeon.duration_mins} min
@@ -50,7 +55,9 @@ export function DungeonCard({ dungeon, isActiveRun, onTap, onRarityInfo }: {
 
 export const dc = StyleSheet.create({
   card:       { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, gap: 6, borderWidth: 1, borderColor: colors.border },
+  rankRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rankLabel:  { fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 2 },
+  expiryLabel:{ fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1, color: colors.textMuted },
   name:       { fontFamily: fonts.ui.semibold,  fontSize: fontSize.md, color: colors.textPrimary },
   statLine:   { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
   flavor:     { fontFamily: fonts.ui.regular,   fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 18 },

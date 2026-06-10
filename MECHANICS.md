@@ -28,6 +28,15 @@
   - **Mood field validation hardened**: `MoodSettingsSheet` now hard-blocks (alert + refuse to save) XP-change magnitude > 10 or MP-rate magnitude > 50, instead of silently clamping.
   - **MP regen now keys off *yesterday's* logged mood**: new `activity_logs.mood_name` column + chip-selector wired into the daily log form; `_applyMpRegen` looks up the prior day's named mood via `getLoggedMoodName()` rather than the live sticky `current_mood`.
   - **Timezone sweep completed**: every remaining `toISOString().split('T')[0]` call site (rpg.ts, logs.ts, game.ts, bible.ts, milestones.tsx, index.tsx, history.tsx, log.tsx) converted to the local-calendar-day-correct `localDateStr()` — closes out the known UTC-vs-local streak/date-boundary risk noted in the prior MP-regen pass.
+- **2026-06-10 follow-up batch** — full as-built logs in `ONBOARDING_QUEST_SPEC.md` §14–§16:
+  - Quest snapshot recompute now also triggers when new activity/mood logs exist since the last snapshot (not just the 7-day timer) — fixes backfilled logs not generating new quests.
+  - Extra Gates (Key-generated dungeons) are one-time: any finished attempt (clear/fail/abandon) deletes the gate, no cooldown retry.
+  - Streak Freeze purchases now go to inventory and require pressing USE to arm, instead of activating instantly on purchase.
+  - Active dungeon runs freeze `duration_mins` at start (schema v44/v45) so the countdown timer and XP/log entry can't desync from a live-recomputed value mid-run.
+  - Home XP bar gained a glowing player-rank badge (`getPlayerRankLabel`, F–Legend, muted "F" tier).
+  - Onboarding-seeded categories can now have their XP weight retuned via "Manage Activities" (slider, 1–20).
+  - The Effects row no longer shows a fake "driven" mood tag for the default `current_mood` when no matching custom mood (with real passive effects) exists.
+  - Color consistency pass: "usable XP" / "today XP" now match the XP bar's blue (`colors.primary`, including the Recharge badge's border), Vigor matches across Soul Record/GlobalCurrencyBar (`colors.success`), Anima is a fixed silvery blue regardless of sign.
 
 ### Next / planned (not yet implemented)
 - Dungeon content for D–Legend ranks — needed before the unlock system has any visible effect (names/flavor/objectives not specified anywhere; explicitly held off creating placeholder content during 1B per user direction)
@@ -319,6 +328,14 @@ Mental delta = mood-part + prod-part. Examples:
 
 Dungeon ranks (E…Legend, 9 ranks) map to indices 2–10 on this same scale — "F" only ever appears as a player tier, never a dungeon rank.
 
+**Rank badge (home XP bar)**: `getPlayerRankLabel(level)` (game.ts) maps the
+above table to a letter, shown as a glowing, `RANK_COLOR`-tinted badge to the
+left of the LVL badge in `XPBar`. `RANK_COLOR` (DungeonCard.tsx) gained an `F`
+entry (`#475569`, muted slate) for tier 1 — the F badge is dimmed (`66`/`AA`
+alpha border/text) and skips the pulsing glow animation the other ranks have,
+since "unranked" shouldn't look like an achievement. See
+`ONBOARDING_QUEST_SPEC.md` §16.
+
 ### Dungeon Fail Damage Formula
 
 ```
@@ -521,6 +538,11 @@ Using a consumable writes a timed entry to `active_buffs` (1 hour expiry).
 
 Cooldown per dungeon (stored in `dungeons.cooldown_hours`). Currently 2 minutes in dev build.
 
+**Extra Gates are exempt** — Key-generated dungeons (`is_generated=1`) are
+one-time quests: any finished attempt (clear, fail, or abandon) deletes the
+gate row immediately (`consumeIfGenerated()` in game.ts), regardless of
+`cooldown_hours` or `expires_at`. There is no retry.
+
 ### 11.6 Unlock System — Rights & Keys
 
 Players naturally unlock dungeon ranks as they level up. The Game itself is gated behind **Level 11** (`MIN_GAME_LEVEL`/`isGameUnlocked()` in game.ts — tapping the Game tab below this level shows "Unlockable only at level 11"), and ranks now unlock on a clean every-10-levels cadence starting there, so E becomes available the instant the Game does.
@@ -565,6 +587,38 @@ Either path materializes a permanent inventory item (`category='game'`, `item_ty
 > Costs are intentionally low — the grind is in the runs and drop rates, not the unlock. E has neither a Key nor a Right price (see above).
 
 **Known gap — daily dungeon-rotation engine (deferred, separately scoped):** the dungeon list is still a static seeded set grouped by rank — there is no daily-generation/expiry/rotation mechanic, so Keys can't yet generate extra gates and natural gates don't show expiry countdowns. Building this requires a new `dungeon_instances`-style table, a daily generation job (rule: 5× current-highest-unlocked-rank + 1× each rank below it), and a real Key-consumption flow. Logged in memory (`project_phase_d_followup.md`, item G) for a dedicated design pass — do not improvise it inline.
+
+### 11.7 Time Limit (`duration_mins`) — live-derived, 2026-06-10
+
+`duration_mins` serves double duty: it's the **countdown timer** for an attempt (`game.tsx`: `setTimerSeconds(dungeon.duration_mins * 60)`, `fmtTimer(...)`) and the **XP-calc input** (§11.1: `sessionXP(dungeon.duration_mins, categoryWeight)`). As of v43, it is no longer a static seeded value for most dungeons — `getDungeons()`/`getActiveDungeonRun()` (game.ts) compute it live on every call via `withLiveDuration()`, gated by a new `dungeons.time_mode` column:
+
+- **`time_mode = 'duration'` (default, all dungeons except Hunter's Run)**: the dungeon's task is "do this activity for N minutes" — more time = more work = harder. Time limit = `recommendedDurationMinutes(snapshot, dungeon.category, fallback)` (questEngine.ts — same `avg_duration_mins × stretchMultiplier(consistency_score)` formula used for stretch-tier quests, §12.1) × a per-rank multiplier (`DUNGEON_RANK_DURATION_MULT` in game.ts):
+
+  | Rank | E | D | C | B | A | S | SS | SSS | Legend |
+  |---|---|---|---|---|---|---|---|---|---|
+  | Mult | 0.9 | 0.95 | 1.0 | 1.05 | 1.1 | 1.2 | 1.3 | 1.4 | 1.5 |
+
+  Falls back to the dungeon's static seeded `duration_mins` (still 30 for the current E-rank set) if the player hasn't logged that category yet.
+
+- **`time_mode = 'time_trial'` (Hunter's Run only)**: the task is a *fixed* objective with a deadline ("Complete a 2.4 km run before the gate closes") — more time would make it *easier*, so the formula is inverted/inapplicable. These dungeons are skipped by `withLiveDuration()` and keep their static seeded `duration_mins` untouched. Rank differentiation for `time_trial` dungeons stays in `difficulty`/`coin_reward`/drop-table only, same as before.
+
+**Active runs freeze `duration_mins` at start (schema v44)**: `withLiveDuration()`
+recomputes on every `getDungeons()`/`getActiveDungeonRun()` call, so a
+`'duration'`-mode dungeon's derived value can shift mid-run (e.g. the player
+logs another activity in that category before the timer ends). To stop this
+from desyncing the on-screen countdown from the XP/log entry written on clear,
+`startDungeon(dungeonId, durationMins, mpUsed)` now stores the
+already-computed `duration_mins` on the `dungeon_runs` row, and
+`getActiveDungeonRun()` returns that frozen value for any `status='active'`
+run instead of a fresh `withLiveDuration()` call (falls back to a live
+recompute only for pre-v44 runs with `duration_mins IS NULL`). `game.tsx`
+resyncs the timer from `started_at + frozen duration_mins` on every reload
+(not just on first detecting the run), and uses this frozen-duration dungeon
+object for the rest of the attempt. See `ONBOARDING_QUEST_SPEC.md` §16.
+
+**Why this is engine-safe long-term**: every template in `DEFAULT_QUEST_TEMPLATES` (`schema.ts`) is phrased as "log/spend N minutes of {category}" — the quest engine has no concept of a fixed-task/time-trial candidate. So any future dungeon content generated by the engine is automatically `'duration'`-mode-compatible. `time_trial` is reserved for hand-authored exceptions like Hunter's Run; if more are added later, just set `time_mode = 'time_trial'` on that row.
+
+> **⚠️ Constraint for future difficulty work**: `time_mode` is the permanent switch for *any* difficulty-scaling mechanic, not just this one. `'duration'` dungeons scale difficulty by increasing `duration_mins` (more time = more work). `'time_trial'` dungeons must NEVER scale difficulty this way — for a fixed task with a deadline, more time makes it *easier*, which would defeat the point of a higher-rank gate. If/when `time_trial` difficulty scaling is designed (different axis — e.g. tightening a pace/distance target, not yet specced), it must branch on `time_mode === 'time_trial'` and leave `duration_mins`/the countdown untouched. Same applies if a time-trial-style `quest_templates` row is ever added — it would need the same tag and the same exclusion from `{minutes}`/stretch logic (§12.1).
 
 ---
 
