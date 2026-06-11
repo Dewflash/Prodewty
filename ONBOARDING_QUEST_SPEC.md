@@ -839,6 +839,16 @@ not-yet-unlocked rank shows an alert ("Right Required") rather than hiding the
 button. Felt more transparent than silently hiding a button the player may not
 understand the absence of.
 
+**Global 12-hour cooldown on Key usage (schema v47, added 2026-06-11)**: separate
+from the generated gate's own `expires_at` above — `useDungeonKey()` now
+checks `getKeyUsageCooldownRemaining()` (new `rpg_state.last_key_used_at`
+column) and returns `'on_cooldown'` if < 12h have passed since the last
+successful use of *any* rank's Key; `app/inventory.tsx`'s `handleUseKey`
+shows "Key On Cooldown — you can use another Dungeon Key in Nh/Nm." On a
+successful use, `last_key_used_at` is stamped via `sqlNow()` (local-time
+string, same convention as `dungeon_runs.started_at` — see §16's
+`getActiveDungeonRun` note for why this format is used consistently).
+
 ## 14. AS-BUILT LOG — Quest snapshot recompute on backfilled logs, 2026-06-10
 
 **The bug**: a player who backfills several days of activity logs in one
@@ -898,11 +908,11 @@ button in `app/inventory.tsx` (Global tab) — moves one unit from inventory int
 Store's "N owned" now reads inventory quantity (`getStreakFreezeInventoryCount()`)
 instead of the armed count.
 
-**Known pre-existing inconsistency, not touched**: the Store lists Streak
-Freeze at 300 coins (`store.tsx`), but `purchaseStreakFreeze()`'s `COST`
-constant is 50 — `buy()` only gates on the displayed 300, then
-`purchaseStreakFreeze()` deducts just 50. Pre-existing, out of scope for this
-change; flagged for a future balance pass.
+**Streak Freeze cost mismatch — RESOLVED 2026-06-11**: the Store listed Streak
+Freeze at 300 coins (`store.tsx`) but `purchaseStreakFreeze()`'s `COST`
+constant was 50 — `buy()` only gated on the displayed 300, then
+`purchaseStreakFreeze()` deducted just 50. Fixed by changing `COST` to 300 to
+match the displayed/gated price.
 
 **Color cleanup** ("usable XP" = `spendable_xp`, the Recharge-tab balance,
 `insights.tsx` `xpText`): both `spendable_xp` displays — the Recharge-tab badge
@@ -985,3 +995,170 @@ doesn't actually grant (no matching `custom_moods` row → `xp_change = 0`). The
 tag is now gated on `customMoods.some(m => m.name === currentMoodState)` —
 only moods the player has actually created (and which therefore have real
 `xp_change`/`mp_rate` effects wired, §1.5/§17.1) appear as Effects tags.
+
+## 17. AS-BUILT LOG — Daily Quests + Daily Gates (shared pool), 2026-06-11
+
+**What changed**: the old weekly-cadence quest engine (`generateQuests()`,
+fill-empty-category-slots, `quest_type='weekly'`) is retired entirely.
+`generateDailyContent()` (game.ts, full replacement) generates exactly **3
+Daily Quests + 3 Daily Gates** once per local day, drawn from one shared
+candidate pool. `quest_type='daily'` is now the only quest type. This closes
+out `[[project_phase_d_followup]]` item G's last open piece — the "natural
+daily-spawn rotation job" that §13 deferred when Extra Gates shipped.
+
+**Idempotency**: new `rpg_state.last_daily_gen_date` column (migration v48,
+`ALTER TABLE rpg_state ADD COLUMN last_daily_gen_date TEXT`) is compared
+against `localDateStr()` at the top of `generateDailyContent()`. If they
+match, the function returns immediately — so calling it on every `reload()`
+(as `app/(tabs)/game.tsx` now does, replacing the old `generateQuests()` call)
+only does work on the first reload of a new local day.
+
+**Wipe + regenerate**:
+- `DELETE FROM quests WHERE quest_type = 'daily'` — unconditional. Daily
+  Quests have no "active run" concept, so anything not completed by day's end
+  is simply gone; no `expired` status was added (§12.3).
+- `cleanupExpiredDungeons()` (existing, unchanged) runs next, dropping any
+  `is_generated=1` dungeon rows whose `expires_at` has lapsed and which have
+  no row in `dungeon_runs` with `status='active'`.
+
+**Shared pool draw — `drawDailyPool(snapshot)` (questEngine.ts, new)**:
+```ts
+export function drawDailyPool(snapshot: PlayerSnapshot): { questCandidates: QuestCandidate[]; dungeonCandidates: QuestCandidate[] } {
+  const pool = weightedSample(buildCandidates(snapshot), QUEST_ENGINE_TUNING.candidate_pool_limit * 2);
+  return {
+    questCandidates: pool.slice(0, QUEST_ENGINE_TUNING.candidate_pool_limit),
+    dungeonCandidates: pool.slice(QUEST_ENGINE_TUNING.candidate_pool_limit, QUEST_ENGINE_TUNING.candidate_pool_limit * 2),
+  };
+}
+```
+`weightedSample` was made `export`ed (previously module-private) for this.
+Since `buildCandidates` already yields **at most one candidate per category**
+(its core invariant from §11), drawing 6 distinct candidates and slicing
+`[0:3]`/`[3:6]` guarantees the 3 Daily Quests and 3 Daily Gates never share a
+category — no extra de-dup pass needed. If fewer than 6 categories exist
+(e.g. a brand-new account), `dungeonCandidates` may come up short and
+`generateDailyContent()` simply inserts fewer than 3 gates that day.
+
+**New `dungeon_templates` table (migration v48)** — the shared content bank
+for both Daily Gates and Extra Gates:
+```sql
+CREATE TABLE IF NOT EXISTS dungeon_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  name_template TEXT NOT NULL,
+  flavor_template TEXT NOT NULL,
+  objective_template TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 1
+)
+```
+Seeded via `INSERT OR IGNORE` from `DEFAULT_DUNGEON_TEMPLATES` (schema.ts) — 8
+rows, 1-2 per `kind` (`maintain`/`stretch`/`discovery`/`restorative`/
+`mood_repair`, the same `kind` vocabulary as `quest_templates`/`buildCandidates`),
+each with `{category}`/`{minutes}` placeholders, e.g.:
+- `maintain` → "{category} Gate" / "A familiar trial. Steady ground, no
+  surprises — just {category}." / "Complete a {category} session to hold the
+  line."
+- `stretch` → "Greater {category} Gate" / "...ready for more {category} than
+  usual." / "Push to {minutes} min of {category} before the gate closes."
+- `restorative`/`mood_repair` → "Quiet Gate"/"Resting Gate"/"Gentle Gate"
+  variants with no pressure/targets.
+
+**`fillDungeonTemplate(candidate)` (questEngine.ts, new)** — picks a random
+matching-`kind` row (`ORDER BY RANDOM() LIMIT 1`, falling back to a generic
+`{category} Gate` template if `dungeon_templates` is somehow empty), fills
+`{category}`/`{minutes}` (defaulting `{minutes}` to 30 if the candidate has
+none), and returns `{ name, flavor_text, objective_text, primary_stat:
+candidate.attribute, secondary_stat: null }`. `secondary_stat` is always
+`null` — `DungeonCard.tsx` already renders `dungeon.secondary_stat?.toUpperCase()
+?? '—'`, so this displays cleanly as "—" with no UI change needed.
+
+**Daily Gate rank/duration/coin — reuses existing rank multipliers, "nothing
+else" per spec**:
+- New `getCurrentDungeonRank(playerLevel)` (game.ts) walks
+  `DUNGEON_TIER_INDEX` (E:2...Legend:10) descending and returns the first rank
+  where `isDungeonRankUnlocked(rank, playerLevel)` is true, defaulting to
+  `'E'`. All 3 Daily Gates in a batch get this single rank.
+- Duration: `recommendedDurationMinutes(snapshot, candidate.category,
+  candidate.minutes ?? 30) * DUNGEON_RANK_DURATION_MULT[rank]`, `time_mode =
+  'duration'` — identical formula to §11.7's live-derived duration for
+  ordinary dungeons, just computed once at generation time and frozen (same
+  as Extra Gates already did, §13).
+- Coin reward at clear time uses the existing `DUNGEON_RANK_COIN_MULT[rank]`
+  unchanged (`submitDungeonClear`, §11.1) — no new reward logic.
+
+**Insert shape**: each Daily Gate is `INSERT INTO dungeons (..., is_generated,
+is_daily, expires_at) VALUES (..., 1, 1, <start of tomorrow, local>)`. The
+vestigial `item_name`/`item_description`/`coin_reward`/`item_drop_chance`/
+`difficulty` columns (confirmed unused by actual gameplay — drops come from
+`rollDrop(rank, mpUsed)` + `pickSlot(category)`, which has a `'default'`
+fallback, §11.3/§11.4) are omitted and left at schema defaults, same as Extra
+Gates already did.
+
+**Stale-cleanup mechanism, "except active runs"**: Daily Gates get
+`expires_at = start of tomorrow (local)` at generation time. The *next* day's
+`generateDailyContent()` call runs `cleanupExpiredDungeons()` first — the
+existing `DELETE FROM dungeons WHERE is_generated = 1 AND expires_at <= now
+AND id NOT IN (SELECT dungeon_id FROM dungeon_runs WHERE status = 'active')`
+(unchanged from §13) — so a Daily Gate the player is mid-run on survives past
+midnight until the run resolves (clear/fail/abandon all call
+`consumeIfGenerated()`, which deletes the row regardless of `expires_at`,
+§15). No new cleanup logic was needed; giving Daily Gates a real `expires_at`
+was sufficient to fold them into the existing mechanism.
+
+**Extra Gates (Dungeon Keys) migrated to the same pool**: `useDungeonKey(rank)`
+previously cloned a random one of 5 hand-authored `is_generated=0` template
+rows (§13). It now does:
+```ts
+const snapshot = getOrRefreshSnapshot();
+const candidate = weightedSample(buildCandidates(snapshot), 1)[0];
+const { name, flavor_text, objective_text, primary_stat, secondary_stat } = fillDungeonTemplate(candidate);
+const recommended = recommendedDurationMinutes(snapshot, candidate.category, candidate.minutes ?? 30);
+const durationMins = Math.round(recommended * (DUNGEON_RANK_DURATION_MULT[rank] ?? 1.0));
+```
+Everything downstream — the 1-10 day / 1-3 day (`HIGH_TIER_RANKS`) random
+`expires_at`, Key inventory decrement, `last_key_used_at` cooldown stamp,
+Right-ownership check — is unchanged from §13. Net effect: Daily Gates and
+Extra Gates are now generated by the exact same code path
+(`buildCandidates` → `weightedSample` → `fillDungeonTemplate` →
+`recommendedDurationMinutes`), differing only in *rank source* (current
+unlocked rank vs. the specific Key's rank), *expiry* (tomorrow vs. random
+multi-day), and the `is_daily` flag.
+
+**Removed entirely**:
+- The 5 old `is_generated=0` dungeon rows (Hunter's Run, Iron Will, Intel
+  Report, Sacred Grounds, Mirror Protocol — migration v10, confirmed
+  Kevin-personal test content) and their `dungeon_runs` rows:
+  ```sql
+  DELETE FROM dungeon_runs WHERE dungeon_id IN (SELECT id FROM dungeons WHERE is_generated = 0);
+  DELETE FROM dungeons WHERE is_generated = 0;
+  ```
+- `quest_type = 'weekly'` rows: `DELETE FROM quests WHERE quest_type = 'weekly'`.
+- The "E-RANK GATES" UI section in `app/(tabs)/game.tsx` (was
+  `dungeons.filter(d => !d.is_generated)`) — gone, since no permanent
+  `is_generated=0` dungeons exist anymore.
+
+**New UI structure** (`app/(tabs)/game.tsx`): "DAILY GATES"
+(`dungeons.filter(d => d.is_generated && d.is_daily)`) always renders; "EXTRA
+GATES" (`dungeons.filter(d => d.is_generated && !d.is_daily)`) only renders
+its heading when at least one exists (`dungeons.some(...)`). Both use the
+same `DungeonCard` + `getDungeonExpiryRemaining` + rarity-info-sheet wiring as
+before.
+
+**Time mode note**: all Daily Gates and Extra Gates are `time_mode='duration'`
+— `fillDungeonTemplate`'s templates are all phrased as "spend N minutes of
+{category}" (mirroring `DEFAULT_QUEST_TEMPLATES`'s engine-safety guarantee,
+§11.7), so `withLiveDuration()`'s `time_mode='time_trial'` branch is now
+unreachable for any *generated* dungeon — it remains reserved for
+hand-authored exceptions, of which none currently exist post-migration.
+
+**Schema migration v48 summary** (schema.ts): creates `dungeon_templates` +
+seeds `DEFAULT_DUNGEON_TEMPLATES`; `ALTER TABLE dungeons ADD COLUMN is_daily
+INTEGER NOT NULL DEFAULT 0`; `ALTER TABLE rpg_state ADD COLUMN
+last_daily_gen_date TEXT`; deletes the 5 old templates + their runs; deletes
+`quest_type='weekly'` quests.
+
+**Verification**: `npx tsc --noEmit` clean across `rpg.ts`, `schema.ts`,
+`questEngine.ts`, `game.ts`, `game.tsx` (pre-existing, unrelated `suitup.tsx`
+errors — `Rarity`/`RARITY_COLOR`/`RARITY_BG` not found — left untouched, see
+`[[demo_and_customisation]]`). No runtime/simulator testing performed yet for
+this feature.

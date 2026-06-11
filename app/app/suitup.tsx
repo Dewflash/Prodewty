@@ -10,6 +10,7 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 
 // ─── Rarity System — re-exported from src/constants/rarity.ts ────────────────
+import { RARITY_COLOR, RARITY_BG, type Rarity } from '../src/constants/rarity';
 export { RARITY_COLOR, RARITY_BG, type Rarity } from '../src/constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────

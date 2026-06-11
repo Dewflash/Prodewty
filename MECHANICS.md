@@ -12,7 +12,7 @@
 - **Phase 1B — Full wipe/reset**: `performFullReset()` (schema.ts) wipes all user-data tables (logs, quests, inventory, dungeon runs, habits, moods, categories, recharge activities, dungeon_unlocks), keeps `dungeons` (game content), resets `rpg_state`/`health_state` to fresh-start defaults (Level 1, 0/450 XP, HP 100, MP 100, all currencies zero, health bars 100%), and re-seeds personal-build defaults (10 categories, 15 recharge activities, 6 moods). Wired into Settings → Danger Zone, replacing the old activity-log-only wipe.
 - ~~**Phase 1B — Mood deletion**: `custom_moods.used` column (migration v33) flags a mood the moment it's activated via `setCurrentMood`; `deleteCustomMood()` soft-deletes (`is_active = 0`) and blocks if `used = 1`.~~ — **Superseded** (see "Mood deletion + Past History" entry below): used moods are no longer blocked from deletion, they archive instead.
 - **Phase 1B — Info tab updates**: confirmed already complete from the HP rebuild pass — health tier multipliers, decay rates, and HP-removed text in `index.tsx`/`insights.tsx` all match this doc; drop tables render live from `DROP_TABLE` so they're always in sync.
-- ~~**Phase 1B — Dungeon unlock system (mechanism)**: `dungeon_unlocks` table (migration v33) persists early-unlocked ranks; `isDungeonRankUnlocked()` checks natural-unlock-by-level OR early-unlock; `earlyUnlockDungeonRank()` spends Spendable XP...~~ — **Superseded** by the Rights & Keys system (Phase D follow-up section 2, see §11.6): `earlyUnlockDungeonRank` is gone, replaced by `purchaseDungeonRight`/`purchaseDungeonKey`, and the Shop now shows separate Right/Key cards instead of a single "Dungeon Rank Unlocks" list. The `dungeon_unlocks` table itself persists unchanged. **Note:** only E-rank dungeons exist as content right now (5 seeded) — the gating is fully wired but has no visible effect on D–Legend until that dungeon content is created (deliberately deferred — see Next).
+- ~~**Phase 1B — Dungeon unlock system (mechanism)**: `dungeon_unlocks` table (migration v33) persists early-unlocked ranks; `isDungeonRankUnlocked()` checks natural-unlock-by-level OR early-unlock; `earlyUnlockDungeonRank()` spends Spendable XP...~~ — **Superseded** by the Rights & Keys system (Phase D follow-up section 2, see §11.6): `earlyUnlockDungeonRank` is gone, replaced by `purchaseDungeonRight`/`purchaseDungeonKey`, and the Shop now shows separate Right/Key cards instead of a single "Dungeon Rank Unlocks" list. The `dungeon_unlocks` table itself persists unchanged. ~~Only 5 hand-authored dungeons exist as permanent E-RANK GATES content — D–Legend ranks get content via Extra Gates (Dungeon Keys clone one of these 5 templates and stamp it with the Key's rank, §11.7/§13), so no D–Legend-specific content was ever needed.~~ — **Superseded again** (2026-06-11): those 5 templates are deleted; all dungeon content (Daily Gates and Extra Gates alike) is now drawn from the shared `dungeon_templates` pool, see §11.8.
 - **Phase 1B — Cosmetic store purchases**: `purchaseCosmetic('standard' | 'premium')` sells a redeemable "Cosmetic Token" inventory entry for 5,000 / 10,000 coins (exact pricing from §6). Actual cosmetic content/visuals are still undesigned — tokens are a functional coin sink and placeholder to redeem against once content exists. Surfaced in Store → Global tab.
 - **Category management pass (post-1B)**: added `is_communal` flag (migration v34) — a third per-category logging boost alongside `is_physical`/`is_recreational`, granting +5 Emotional health on log (mirrors the existing +5 Physical/+5 Mental pattern, see §3.3). Replaced the 1–5 weight picker with a horizontal 1–20 scroller matching the formula's actual clamp range (`Math.max(1, Math.min(20, weight))`), and added info-icon explainers next to "Weight" (in the New Activity Tag sheet) and "Duration" (in the Log screen) describing how each affects XP, including the 20-minute default applied when duration is left blank.
 - **Attribute-driven stat gain (replaces hardcoded auto-gain)**: migration v35 adds `{attribute}_auto` columns to `rpg_state`; `grantAttributeStatGain()` directly adds +1 to the stat matching a logged category's chosen `attribute`, on every single log — see §9.3 for full details and the pacing-shift note (confirmed deliberate). Removed the old `logCount`/`totalActivityCount`-based thresholds entirely. Added an info icon next to "STATUS WINDOW" in the Game tab explaining both AP-allocation and activity-gain stat sources.
@@ -32,14 +32,14 @@
   - Quest snapshot recompute now also triggers when new activity/mood logs exist since the last snapshot (not just the 7-day timer) — fixes backfilled logs not generating new quests.
   - Extra Gates (Key-generated dungeons) are one-time: any finished attempt (clear/fail/abandon) deletes the gate, no cooldown retry.
   - Streak Freeze purchases now go to inventory and require pressing USE to arm, instead of activating instantly on purchase.
-  - Active dungeon runs freeze `duration_mins` at start (schema v44/v45) so the countdown timer and XP/log entry can't desync from a live-recomputed value mid-run.
+  - Active dungeon runs freeze `duration_mins` at start (schema v45) so the countdown timer and XP/log entry can't desync from a live-recomputed value mid-run.
   - Home XP bar gained a glowing player-rank badge (`getPlayerRankLabel`, F–Legend, muted "F" tier).
   - Onboarding-seeded categories can now have their XP weight retuned via "Manage Activities" (slider, 1–20).
   - The Effects row no longer shows a fake "driven" mood tag for the default `current_mood` when no matching custom mood (with real passive effects) exists.
   - Color consistency pass: "usable XP" / "today XP" now match the XP bar's blue (`colors.primary`, including the Recharge badge's border), Vigor matches across Soul Record/GlobalCurrencyBar (`colors.success`), Anima is a fixed silvery blue regardless of sign.
+- **Daily Quests + Daily Gates (shared pool), 2026-06-11** — full as-built log in `ONBOARDING_QUEST_SPEC.md` §17, full design in §11.8/§12.1. `generateDailyContent()` replaces `generateQuests()`: once per local day, wipes and regenerates exactly 3 Daily Quests (`quest_type='daily'`, the only quest type now — `'weekly'` retired) + 3 Daily Gates, drawn from one shared 6-candidate pool (`drawDailyPool`) with guaranteed zero category overlap. Daily Gates use the player's current unlocked rank (`getCurrentDungeonRank`) and the existing rank multipliers. Extra Gates (Dungeon Keys) migrated to the same `dungeon_templates` pool; the 5 old hand-authored E-RANK templates and the "E-RANK GATES" UI section are deleted.
 
 ### Next / planned (not yet implemented)
-- Dungeon content for D–Legend ranks — needed before the unlock system has any visible effect (names/flavor/objectives not specified anywhere; explicitly held off creating placeholder content during 1B per user direction)
 - Actual cosmetic content/visuals — pricing is implemented (§6) but what a "cosmetic" actually looks like/does is still undefined
 
 ### To do before Phase 2 — pre-existing tsc errors (not caused by HP work)
@@ -49,7 +49,7 @@
 - Remaining: `suitup.tsx` errors (`Rarity`/`RARITY_COLOR`/`RARITY_BG` not found) — left untouched, this is the demo/dead screen already slated for full replacement in Phase 2 (see `demo_and_customisation` notes)
 
 ### Phase 2 (deferred)
-- Dormant/cosmetic-only systems: equipment stat buffs, consumable buff application, Anima coin multiplier repurposing — see ⚠️ Critical Findings and §16 (mood passives `xp_change`/`mp_rate` and the MP system are now wired, see §1.5/§17)
+- Dormant/cosmetic-only systems: equipment stat buffs, consumable buff application — see ⚠️ Critical Findings and §16 (mood passives `xp_change`/`mp_rate`, the MP system, and the Anima coin multiplier are now wired, see §1.5/§13/§17)
 - Suitup screen replacement (currently demo/dead code — see `demo_and_customisation` notes)
 
 ---
@@ -393,22 +393,22 @@ No cap on max damage. HP is floored at 0.
 
 | Source | Amount | Modifier |
 |---|---|---|
-| Dungeon clear | floor(rand(50–100) × rankMult × moodMult) | rankMult: E=1.0…Legend=1.8 |
-| Quest complete | floor(50 × moodMult) | — |
+| Dungeon clear | floor(rand(50–100) × rankMult × moodMult × animaMult) | rankMult: E=1.0…Legend=1.8 |
+| Quest complete | floor(50 × moodMult × animaMult) | — |
 | Level-up | level × 10 per level gained | No modifier |
 
 **Dungeon rank coin multipliers:** E=1.0, D=1.1, C=1.2, B=1.3, A=1.4, S=1.5, SS=1.6, SSS=1.7, Legend=1.8
 
 **Mood coin multiplier:** 0.95 + ((mood − 1) / 9) × 0.10 from most recent mood log. Range 0.95–1.05.
 
-**Anima coin multiplier:** ×0.8 if Anima < −10 (currently dormant — to be repurposed Phase 2).
+**Anima coin multiplier:** `1 + Anima × 0.005`, clamped to 0x–3x. E.g. Anima −50 → 0.75x (25% drop), Anima +50 → 1.25x (25% boost). See §13.
 
 ### Spend Sinks
 
 | Item | Cost | Effect |
 |---|---|---|
-| Streak Freeze | 50 coins | +1 streak freeze (banked, auto-uses on 2-day gap) |
-| MP Boost | 75 coins | +25 MP — spend it before a dungeon run to boost item-drop luck, see §17.2 |
+| Streak Freeze | 300 coins | Adds to global inventory; USE from Inventory to arm (banked, auto-uses on 2-day gap) |
+| MP Boost | 200 coins | +25 MP — spend it before a dungeon run to boost item-drop luck, see §17.2 |
 | Critical HP Boost | 100 coins | +30 HP (only purchasable if HP ≤ 30) |
 | Standard Cosmetic | 5,000 coins | Grants a redeemable "Standard Cosmetic Token" — content/visuals not yet designed |
 | Premium Cosmetic | 10,000 coins | Grants a redeemable "Premium Cosmetic Token" — content/visuals not yet designed |
@@ -538,10 +538,10 @@ Using a consumable writes a timed entry to `active_buffs` (1 hour expiry).
 
 Cooldown per dungeon (stored in `dungeons.cooldown_hours`). Currently 2 minutes in dev build.
 
-**Extra Gates are exempt** — Key-generated dungeons (`is_generated=1`) are
-one-time quests: any finished attempt (clear, fail, or abandon) deletes the
-gate row immediately (`consumeIfGenerated()` in game.ts), regardless of
-`cooldown_hours` or `expires_at`. There is no retry.
+**Generated gates are exempt** — Daily Gates and Extra Gates (both
+`is_generated=1`, see §11.8) are one-time quests: any finished attempt (clear,
+fail, or abandon) deletes the gate row immediately (`consumeIfGenerated()` in
+game.ts), regardless of `cooldown_hours` or `expires_at`. There is no retry.
 
 ### 11.6 Unlock System — Rights & Keys
 
@@ -569,7 +569,7 @@ Either path materializes a permanent inventory item (`category='game'`, `item_ty
 
 > E needs no Right purchase path — it unlocks at exactly `MIN_GAME_LEVEL` (11), so no player can ever reach the Game before E is already accessible.
 
-**Key** — a consumable, `category='game'`/`item_type='dungeon_key'`, name `"{RANK}-Tier Dungeon Key"`. Purchasable from the Shop (Store → GAME → "Dungeon Keys", priced per the table below) and drops at a **~15% chance from clearing a gate of that same rank** (`submitDungeonClear` in game.ts, surfaced as a "Bonus Drop" on the clear screen). Using one is meant to generate an extra gate of its rank with a random expiry — **this consumption/generation step is intentionally stubbed** pending the daily dungeon-rotation engine (see Known Gaps below); the item exists, is purchasable, and drops, but "use" has no effect yet.
+**Key** — a consumable, `category='game'`/`item_type='dungeon_key'`, name `"{RANK}-Tier Dungeon Key"`. Purchasable from the Shop (Store → GAME → "Dungeon Keys", priced per the table below) and drops at a **~15% chance from clearing a gate of that same rank** (`submitDungeonClear` in game.ts, surfaced as a "Bonus Drop" on the clear screen). Using one (`useDungeonKey()`) generates an extra gate ("Extra Gate") of its rank with a random expiry, drawn from the same shared content pool as Daily Gates — see §11.8.
 
 **Right/Key Spendable-XP pricing** (`DUNGEON_KEY_PRICE` in game.ts — Right price = Key price × 5):
 
@@ -586,8 +586,6 @@ Either path materializes a permanent inventory item (`category='game'`, `item_ty
 
 > Costs are intentionally low — the grind is in the runs and drop rates, not the unlock. E has neither a Key nor a Right price (see above).
 
-**Known gap — daily dungeon-rotation engine (deferred, separately scoped):** the dungeon list is still a static seeded set grouped by rank — there is no daily-generation/expiry/rotation mechanic, so Keys can't yet generate extra gates and natural gates don't show expiry countdowns. Building this requires a new `dungeon_instances`-style table, a daily generation job (rule: 5× current-highest-unlocked-rank + 1× each rank below it), and a real Key-consumption flow. Logged in memory (`project_phase_d_followup.md`, item G) for a dedicated design pass — do not improvise it inline.
-
 ### 11.7 Time Limit (`duration_mins`) — live-derived, 2026-06-10
 
 `duration_mins` serves double duty: it's the **countdown timer** for an attempt (`game.tsx`: `setTimerSeconds(dungeon.duration_mins * 60)`, `fmtTimer(...)`) and the **XP-calc input** (§11.1: `sessionXP(dungeon.duration_mins, categoryWeight)`). As of v43, it is no longer a static seeded value for most dungeons — `getDungeons()`/`getActiveDungeonRun()` (game.ts) compute it live on every call via `withLiveDuration()`, gated by a new `dungeons.time_mode` column:
@@ -602,7 +600,7 @@ Either path materializes a permanent inventory item (`category='game'`, `item_ty
 
 - **`time_mode = 'time_trial'` (Hunter's Run only)**: the task is a *fixed* objective with a deadline ("Complete a 2.4 km run before the gate closes") — more time would make it *easier*, so the formula is inverted/inapplicable. These dungeons are skipped by `withLiveDuration()` and keep their static seeded `duration_mins` untouched. Rank differentiation for `time_trial` dungeons stays in `difficulty`/`coin_reward`/drop-table only, same as before.
 
-**Active runs freeze `duration_mins` at start (schema v44)**: `withLiveDuration()`
+**Active runs freeze `duration_mins` at start (schema v45)**: `withLiveDuration()`
 recomputes on every `getDungeons()`/`getActiveDungeonRun()` call, so a
 `'duration'`-mode dungeon's derived value can shift mid-run (e.g. the player
 logs another activity in that category before the timer ends). To stop this
@@ -611,7 +609,7 @@ from desyncing the on-screen countdown from the XP/log entry written on clear,
 already-computed `duration_mins` on the `dungeon_runs` row, and
 `getActiveDungeonRun()` returns that frozen value for any `status='active'`
 run instead of a fresh `withLiveDuration()` call (falls back to a live
-recompute only for pre-v44 runs with `duration_mins IS NULL`). `game.tsx`
+recompute only for pre-v45 runs with `duration_mins IS NULL`). `game.tsx`
 resyncs the timer from `started_at + frozen duration_mins` on every reload
 (not just on first detecting the run), and uses this frozen-duration dungeon
 object for the rest of the attempt. See `ONBOARDING_QUEST_SPEC.md` §16.
@@ -620,17 +618,41 @@ object for the rest of the attempt. See `ONBOARDING_QUEST_SPEC.md` §16.
 
 > **⚠️ Constraint for future difficulty work**: `time_mode` is the permanent switch for *any* difficulty-scaling mechanic, not just this one. `'duration'` dungeons scale difficulty by increasing `duration_mins` (more time = more work). `'time_trial'` dungeons must NEVER scale difficulty this way — for a fixed task with a deadline, more time makes it *easier*, which would defeat the point of a higher-rank gate. If/when `time_trial` difficulty scaling is designed (different axis — e.g. tightening a pace/distance target, not yet specced), it must branch on `time_mode === 'time_trial'` and leave `duration_mins`/the countdown untouched. Same applies if a time-trial-style `quest_templates` row is ever added — it would need the same tag and the same exclusion from `{minutes}`/stretch logic (§12.1).
 
+### 11.8 Daily Quests + Daily Gates (Shared Pool) — 2026-06-11
+
+Once per local day, `generateDailyContent()` (game.ts, replaces the old `generateQuests()`) generates **3 Daily Quests + 3 Daily Gates** in a single batch:
+
+- **Idempotent**: gated by `rpg_state.last_daily_gen_date` vs `localDateStr()` — runs at most once per local day, on the first `reload()` of the day.
+- **Wipe + regenerate**: deletes all `quest_type='daily'` quest rows outright (the old weekly engine and `quest_type='weekly'` are retired entirely — `'daily'` is now the only quest type), then calls `cleanupExpiredDungeons()` to drop any expired generated gates not mid-attempt.
+- **Shared candidate pool**: `drawDailyPool(snapshot)` draws **6** distinct-category candidates from the same `buildCandidates()` pool that powers regular quests (`weightedSample(buildCandidates(snapshot), candidate_pool_limit * 2)`), then splits `[0:3]` → Daily Quests, `[3:6]` → Daily Gates. Since `buildCandidates` yields at most one candidate per category, the two halves are guaranteed to share zero categories — no extra de-dup logic needed.
+- **Daily Quests**: filled via the existing `fillTemplate()` (§12.1), inserted with `quest_type='daily'`, status `pending`.
+- **Daily Gates**: filled via `fillDungeonTemplate(candidate)`, which picks a random row from the new `dungeon_templates` table (migration v48, seeded by `DEFAULT_DUNGEON_TEMPLATES` — one or more per `kind`: `maintain`/`stretch`/`discovery`/`restorative`/`mood_repair`) and substitutes `{category}`/`{minutes}`. `secondary_stat` is always `null` (renders as "—" in `DungeonCard`).
+- **Rank**: all 3 Daily Gates use `getCurrentDungeonRank(playerLevel)` — the player's *highest currently-unlocked* dungeon rank (walks `DUNGEON_TIER_INDEX` descending via `isDungeonRankUnlocked`, defaults `'E'`). Nothing else scales with rank for Daily Gates beyond the existing `DUNGEON_RANK_DURATION_MULT`/`DUNGEON_RANK_COIN_MULT` tables (§11.7/§11.1).
+- **Duration**: `recommendedDurationMinutes(snapshot, candidate.category, candidate.minutes ?? 30) × DUNGEON_RANK_DURATION_MULT[rank]` — same formula as `'duration'`-mode dungeons (§11.7), `time_mode='duration'`.
+- **Expiry & cleanup**: each Daily Gate row gets `is_generated=1, is_daily=1, expires_at = start of tomorrow (local)`. The next day's `generateDailyContent()` call runs `cleanupExpiredDungeons()` first, which deletes any `is_generated=1` row past its `expires_at` **unless** it has an active `dungeon_runs` entry — so an in-progress Daily Gate survives into the next day until the run finishes, with zero new logic (this is the existing function from §11.5/§11.7, unchanged).
+- **Extra Gates (Dungeon Keys) migrated to the same pool**: `useDungeonKey(rank)` no longer clones one of the 5 old hand-authored `is_generated=0` templates (deleted in migration v48, along with their `dungeon_runs`). It now draws a single candidate the same way (`weightedSample(buildCandidates(snapshot), 1)[0]` → `fillDungeonTemplate`), computes duration the same way, and inserts with `is_generated=1, is_daily=0` and the existing 1–10 day (1–3 day for `S`/`SS`/`SSS`/`Legend`) random expiry (§11.6) — unchanged.
+- **UI**: the Game tab shows a "DAILY GATES" section (`is_generated && is_daily`) and, only when at least one exists, an "EXTRA GATES" section (`is_generated && !is_daily`). The old "E-RANK GATES" section (the 5 permanent hand-authored dungeons) is removed entirely.
+
+Full as-built log: `ONBOARDING_QUEST_SPEC.md` §17.
+
 ---
 
 ## 12. Quest System
 
-### 12.1 Generation Algorithm — REPLACED 2026-06-09 by the adaptive quest engine
+### 12.1 Generation Algorithm — REPLACED 2026-06-09 by the adaptive quest engine, daily cadence 2026-06-11
 
 The old static rule ("category logged ≥2× in 28 days, absent 7 days, no existing
-pending/accepted quest for it") is gone. `generateQuests()` (`game.ts`) now fully
-delegates to `src/db/questEngine.ts` — a rules-based weighted-scoring engine (NOT ML;
-same transparent/tunable philosophy as `DROP_TABLE`/`getCategoryWeight`). Full design
-+ as-built log: `ONBOARDING_QUEST_SPEC.md` §11 and `[[project_quest_engine_and_insights]]`.
+pending/accepted quest for it") is gone. `generateDailyContent()` (`game.ts`, replaces
+the old `generateQuests()`) delegates to `src/db/questEngine.ts` — a rules-based
+weighted-scoring engine (NOT ML; same transparent/tunable philosophy as
+`DROP_TABLE`/`getCategoryWeight`). Full design + as-built log:
+`ONBOARDING_QUEST_SPEC.md` §11/§17 and `[[project_quest_engine_and_insights]]`.
+
+As of 2026-06-11, generation is **daily**, not on-demand: once per local day,
+`generateDailyContent()` wipes all `quest_type='daily'` rows (the only quest type —
+the old `'weekly'` fill-empty-slots engine is retired) and regenerates exactly 3
+Daily Quests, alongside 3 Daily Gates drawn from the same pool — see §11.8 for the
+shared-pool draw (`drawDailyPool`, 6-candidate split) and dungeon-side details.
 
 **4-stage pipeline, gated by a 7-day recompute cycle (`quest_engine_state` table):**
 1. **Player Snapshot** (`computePlayerSnapshot`/`getOrRefreshSnapshot`) — per-category
@@ -647,13 +669,14 @@ same transparent/tunable philosophy as `DROP_TABLE`/`getCategoryWeight`). Full d
    (`logged_days_ratio < 0.3`) — on mismatch, raises the difficulty floor (forces
    stretch-tier, starves easy/discovery candidates) rather than injecting anything
    restorative, since the "problem" here is coasting, not distress.
-4. **Weighted draw** (`buildCandidates`/`drawQuestCandidates`) — combines base category
-   weight × stretch × mood-rule multiplier × **recency decay** (`0.5^(ageDays/14)` —
-   fades a logged category's pull the longer since last logged) into a score, then a
-   ticket-based weighted-random draw without replacement (same mechanism as
-   `DROP_TABLE`). Draws up to 3 candidates (`candidate_pool_limit`); categories that
-   exist but weren't logged this window surface as gentle `discovery` material
-   (withheld during mood-repair / anti-cheese states).
+4. **Weighted draw** (`buildCandidates`/`drawQuestCandidates`/`drawDailyPool`) — combines
+   base category weight × stretch × mood-rule multiplier × **recency decay**
+   (`0.5^(ageDays/14)` — fades a logged category's pull the longer since last logged)
+   into a score, then a ticket-based weighted-random draw without replacement (same
+   mechanism as `DROP_TABLE`). `drawDailyPool` draws 6 candidates
+   (`candidate_pool_limit * 2`) and splits 3 → Daily Quests, 3 → Daily Gates (§11.8);
+   categories that exist but weren't logged this window surface as gentle `discovery`
+   material (withheld during mood-repair / anti-cheese states).
 
 Quest text is composed by filling `quest_templates` rows (`{category}`/`{minutes}`
 placeholders, `DEFAULT_QUEST_TEMPLATES`, migration v41) keyed by candidate `kind`
@@ -667,9 +690,14 @@ random from the matching pool — never one fixed phrasing per type.
 | Reward | Amount |
 |---|---|
 | XP | sessionXP(quest.duration_mins ?? 30, categoryWeight) × 1.10 |
-| Coins | floor(50 × moodCoinMult) |
+| Coins | floor(50 × moodCoinMult × animaMult) |
 
 ### 12.3 Status Flow
+
+`quest_type` is always `'daily'` — the full batch of 3 is wiped and regenerated
+once per local day by `generateDailyContent()` (§11.8/§12.1), so `pending` quests
+that were never accepted/completed simply don't survive to the next day (no
+`expired` status needed).
 
 ```
 
@@ -699,7 +727,7 @@ pending → deleted  (permanent, never reappears)
 
 = `vigor − self_destruct_count`
 
-**Effect at Anima < −10:** coin multiplier drops to ×0.8.
+**Coin multiplier:** `1 + Anima × 0.005`, clamped to 0x–3x (0.5% swing per Anima point in either direction). Applies to dungeon-clear and quest-complete coin rewards (`getCoinMultiplier()` in `rpg.ts`).
 
 ---
 
@@ -841,9 +869,9 @@ Quest Complete
 Coin Multiplier (mood)
   ← most recent mood log: 0.95 + ((mood−1)/9) × 0.10
 
-Coin Multiplier (Anima) — dormant
+Coin Multiplier (Anima)
   ← getAnima() = vigor − blight
-  ← if anima < −10 → ×0.8 (to be repurposed Phase 2)
+  ← multiplier = clamp(1 + anima × 0.005, 0, 3)
 
 Recharge Activity
   ← costs spendable_xp

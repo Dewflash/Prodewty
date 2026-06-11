@@ -14,7 +14,7 @@ import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { getRPGState, type RPGState } from '../../src/db/rpg';
 import {
   getComputedStats, getFatigue, getPendingQuests, getAcceptedQuests, getSkippedQuests,
-  getCompletedQuests, reinstateQuest, generateQuests,
+  getCompletedQuests, reinstateQuest, generateDailyContent,
   getDungeons, startDungeon, getActiveDungeonRun, submitDungeonClear, failDungeon, abandonDungeon, getDungeonExpiryRemaining,
   acceptQuest, completeQuest, skipQuest, deleteQuest,
   allocateStat, getQuestCompletedCount, getDeathCount, getAbandonedCount,
@@ -88,12 +88,12 @@ export default function GameScreen() {
   // ─── Data loading ───────────────────────────────────────────────────────────
 
   function reload() {
+    generateDailyContent();
     const dList = getDungeons();
     setRpg(getRPGState());
     setStats(getComputedStats());
     setFatigue(getFatigue());
     setDungeons(dList);
-    generateQuests();
     setPending(getPendingQuests());
     setAccepted(getAcceptedQuests());
     setDeaths(getDeathCount());
@@ -493,18 +493,19 @@ export default function GameScreen() {
               </View>
             ) : (
               <>
-                <Text style={s.sectionHeading}>E-RANK GATES</Text>
-                {dungeons.filter(d => !d.is_generated).map(d => (
+                <Text style={s.sectionHeading}>DAILY GATES</Text>
+                {dungeons.filter(d => d.is_generated && d.is_daily).map(d => (
                   <DungeonCard key={d.id} dungeon={d}
                     isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
                     onTap={() => handleEnterGate(d)}
-                    onRarityInfo={() => setRarityInfoRank(d.rank)} />
+                    onRarityInfo={() => setRarityInfoRank(d.rank)}
+                    expiryLabel={getDungeonExpiryRemaining(d.expires_at)} />
                 ))}
 
-                {dungeons.some(d => d.is_generated) && (
+                {dungeons.some(d => d.is_generated && !d.is_daily) && (
                   <>
                     <Text style={[s.sectionHeading, { marginTop: spacing.md }]}>EXTRA GATES</Text>
-                    {dungeons.filter(d => d.is_generated).map(d => (
+                    {dungeons.filter(d => d.is_generated && !d.is_daily).map(d => (
                       <DungeonCard key={d.id} dungeon={d}
                         isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
                         onTap={() => handleEnterGate(d)}

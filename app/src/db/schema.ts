@@ -59,7 +59,8 @@ export function initDB() {
     resilience         INTEGER NOT NULL DEFAULT 1,
     title              TEXT NOT NULL DEFAULT 'Unranked',
     streak_days        INTEGER NOT NULL DEFAULT 0,
-    last_active_date   TEXT
+    last_active_date   TEXT,
+    last_key_used_at   TEXT
   )`);
 
   db.execSync(`INSERT OR IGNORE INTO rpg_state (id) VALUES (1)`);
@@ -865,70 +866,10 @@ function runMigrations() {
     const z   = (n: number) => String(n).padStart(2, '0');
     const ts  = (d: Date)   => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:00`;
     const dDate = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
-    const dTs   = (n: number, h = 9) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(h, 0, 0, 0); return ts(d); };
     const yesterday = dDate(1);
 
     // ── 1. All gates open ────────────────────────────────────────────────────
     db.execSync(`DELETE FROM dungeon_runs`);
-
-    // ── 2. Fresh activity logs — 14 days ─────────────────────────────────────
-    db.execSync(`DELETE FROM activity_logs`);
-    type E25 = { d: number; h?: number; t: 'mood'|'act'|'dungeon'|'quest';
-                 cat?: string; desc?: string; dur?: number;
-                 mood?: number; nrg?: number; prod?: number;
-                 xp: number; well?: string; rev?: string };
-    const entries25: E25[] = [
-      { d:14, t:'mood', mood:6, nrg:6, prod:6, xp:20 },
-      { d:14, t:'act',  cat:'Workout',  desc:'Morning run 5km',                   dur:45,  xp:52 },
-      { d:13, t:'mood', mood:7, nrg:7, prod:8, xp:20 },
-      { d:13, t:'act',  cat:'Coding',   desc:'Personal project sprint',            dur:90,  xp:65, rev:'Break large features into small commits' },
-      { d:12, t:'mood', mood:6, nrg:6, prod:7, xp:20 },
-      { d:12, t:'act',  cat:'Study',    desc:'System design — caching tradeoffs',  dur:60,  xp:48, well:'Understood cache invalidation' },
-      { d:11, t:'mood', mood:7, nrg:8, prod:8, xp:20 },
-      { d:11, t:'act',  cat:'Workout',  desc:'HIIT session',                       dur:30,  xp:38 },
-      { d:11, h:10, t:'act', cat:'Devotion', desc:'Morning devotion',              dur:20,  xp:28 },
-      { d:10, t:'mood', mood:7, nrg:7, prod:7, xp:20 },
-      { d:10, t:'act',  cat:'Coding',   desc:'Refactored db layer',                dur:80,  xp:60 },
-      { d:10, h:14, t:'dungeon', cat:'Workout', desc:"E-Rank Gate: Hunter's Run",  dur:30,  xp:45 },
-      { d:9,  t:'mood', mood:8, nrg:8, prod:8, xp:20 },
-      { d:9,  t:'act',  cat:'Reading',  desc:'Atomic Habits ch 9–12',              dur:45,  xp:42 },
-      { d:8,  t:'mood', mood:7, nrg:7, prod:7, xp:20 },
-      { d:8,  t:'act',  cat:'Workout',  desc:'Gym — full body',                    dur:60,  xp:62, well:'New PB on bench press' },
-      { d:7,  t:'mood', mood:6, nrg:6, prod:6, xp:20 },
-      { d:7,  t:'act',  cat:'Journal',  desc:'Weekly reflection',                  dur:25,  xp:32, rev:"Stop saying 'I'll try' — say 'I will'" },
-      { d:6,  t:'mood', mood:8, nrg:8, prod:9, xp:20 },
-      { d:6,  t:'act',  cat:'Coding',   desc:'New feature shipped',                dur:120, xp:78, well:'Deployed cleanly first attempt' },
-      { d:5,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
-      { d:5,  t:'act',  cat:'Study',    desc:'Algorithm prep — trees and graphs',  dur:60,  xp:48 },
-      // day 4: gap for streak-break testing
-      { d:3,  t:'mood', mood:7, nrg:8, prod:8, xp:20 },
-      { d:3,  t:'act',  cat:'Workout',  desc:'Sprint intervals',                   dur:35,  xp:40 },
-      { d:3,  h:11, t:'quest', cat:'Coding', desc:'Log: Coding',                   xp:30   },
-      { d:2,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
-      { d:2,  t:'act',  cat:'Devotion', desc:'Bible study — Proverbs 3',           dur:25,  xp:30, rev:'Trust in the Lord with all your heart' },
-      { d:1,  t:'mood', mood:7, nrg:7, prod:8, xp:20 },
-      { d:1,  t:'act',  cat:'Admin',    desc:'Weekly planning session',            dur:30,  xp:28 },
-    ];
-    for (const e of entries25) {
-      const date = dDate(e.d);
-      const tstr = dTs(e.d, e.h ?? (e.t === 'mood' ? 8 : 9));
-      if (e.t === 'mood') {
-        db.runSync(
-          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
-             mood_rating,energy_rating,productivity_rating,categories,xp_awarded,what_went_well,what_to_improve)
-           VALUES ('','','daily','mood',?,?,?,?,?,'[]',?,?,?)`,
-          date, tstr, e.mood??7, e.nrg??7, e.prod??7, e.xp, e.well??null, e.rev??null,
-        );
-      } else {
-        db.runSync(
-          `INSERT INTO activity_logs (category,description,log_type,entry_type,log_date,created_at,
-             categories,duration_mins,xp_awarded,mood_rating,what_went_well,what_to_improve)
-           VALUES (?,?,'daily',?,?,?,?,?,?,0,?,?)`,
-          e.cat??'', e.desc??'', e.t, date, tstr,
-          JSON.stringify([e.cat??'']), e.dur??null, e.xp, e.well??null, e.rev??null,
-        );
-      }
-    }
 
     // ── 3. Hunter's Run on 12h cooldown, all other gates open ────────────────
     const huntersId = db.getFirstSync<{id:number}>(`SELECT id FROM dungeons WHERE name="Hunter's Run" LIMIT 1`)?.id;
@@ -1321,6 +1262,54 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 46');
   }
+
+  if (version < 47) {
+    // Global cooldown on Dungeon Key usage (useDungeonKey, game.ts) — separate
+    // from the generated gate's own expires_at (§13/ONBOARDING_QUEST_SPEC.md).
+    // Records the timestamp of the last successful key use; checked against a
+    // 12-hour window before allowing another.
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN last_key_used_at TEXT`); } catch {}
+
+    db.execSync('PRAGMA user_version = 47');
+  }
+
+  if (version < 48) {
+    // Daily Quests + Daily Gates: 3 quests + 3 dungeons drawn once per day from
+    // the same category-candidate pool (questEngine.drawDailyPool), replacing
+    // the old weekly fill-empty-slots engine — quest_type='daily' is now the
+    // only quest type. dungeon_templates mirrors quest_templates for the
+    // dungeon side (flavor/objective text per candidate kind). Extra Gates
+    // (Dungeon Keys) also draw from this bank now, so the original 5
+    // is_generated=0 dungeons (Kevin-personal test content used as both the
+    // "E-RANK GATES" display and the Key clone source) are removed entirely.
+    db.execSync(`CREATE TABLE IF NOT EXISTS dungeon_templates (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind               TEXT NOT NULL,
+      name_template      TEXT NOT NULL,
+      flavor_template    TEXT NOT NULL,
+      objective_template TEXT NOT NULL,
+      is_default         INTEGER NOT NULL DEFAULT 1
+    )`);
+
+    for (const t of DEFAULT_DUNGEON_TEMPLATES) {
+      db.runSync(
+        `INSERT OR IGNORE INTO dungeon_templates (kind, name_template, flavor_template, objective_template, is_default)
+         VALUES (?, ?, ?, ?, 1)`,
+        t.kind, t.name, t.flavor, t.objective,
+      );
+    }
+
+    try { db.execSync(`ALTER TABLE dungeons ADD COLUMN is_daily INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN last_daily_gen_date TEXT`); } catch {}
+
+    db.execSync(`DELETE FROM dungeon_runs WHERE dungeon_id IN (SELECT id FROM dungeons WHERE is_generated = 0)`);
+    db.execSync(`DELETE FROM dungeons WHERE is_generated = 0`);
+
+    // Old weekly quest engine retired — 'daily' is the only quest_type going forward.
+    db.execSync(`DELETE FROM quests WHERE quest_type = 'weekly'`);
+
+    db.execSync('PRAGMA user_version = 48');
+  }
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
@@ -1339,6 +1328,24 @@ const DEFAULT_QUEST_TEMPLATES: { kind: string; title: string; desc: string }[] =
   { kind: 'restorative', title: 'Recharge first',                      desc: "No pressure to push hard right now — a short {category} session to recharge counts too." },
   // mood_repair — gently themed toward positive states when mood's been low for a while
   { kind: 'mood_repair', title: 'Something for you: {category}',       desc: 'A small {category} session, just for the enjoyment of it — no targets attached.' },
+];
+
+// Dungeon-side counterpart to DEFAULT_QUEST_TEMPLATES — same kinds, same
+// {category}/{minutes} placeholders, filled by questEngine.fillDungeonTemplate.
+const DEFAULT_DUNGEON_TEMPLATES: { kind: string; name: string; flavor: string; objective: string }[] = [
+  // maintain — keep a habit you already have going
+  { kind: 'maintain',    name: '{category} Gate',         flavor: 'A familiar trial. Steady ground, no surprises — just {category}.', objective: 'Complete a {category} session to hold the line.' },
+  { kind: 'maintain',    name: 'Echo Gate: {category}',    flavor: 'This gate has stood quiet a while, waiting for {category}.',       objective: 'Step back into {category} and clear the gate.' },
+  // stretch — push a habit slightly further than your usual
+  { kind: 'stretch',     name: 'Greater {category} Gate',  flavor: "The gate senses you're ready for more {category} than usual.",     objective: 'Push to {minutes} min of {category} before the gate closes.' },
+  { kind: 'stretch',     name: 'Trial Gate: {category}',   flavor: 'A harder trial than your usual {category} pace.',                  objective: 'Clear {minutes} min of {category} to break through.' },
+  // discovery — something logged as created/tracked but rarely actually logged
+  { kind: 'discovery',   name: 'Hidden Gate: {category}',  flavor: 'An unfamiliar gate has opened, resonating with {category}.',       objective: 'Step into {category} — even a short attempt counts.' },
+  // restorative — injected when mood/health signals run low
+  { kind: 'restorative', name: 'Quiet Gate: {category}',   flavor: 'A quiet gate. No pressure here — just {category}.',                objective: 'Spend a little time on {category} to recharge.' },
+  { kind: 'restorative', name: 'Resting Gate: {category}', flavor: 'Soft light fills this gate. Take it slow.',                        objective: 'A gentle {category} session — no targets attached.' },
+  // mood_repair — gently themed toward positive states when mood's been low for a while
+  { kind: 'mood_repair', name: 'Gentle Gate: {category}',  flavor: 'This gate asks for nothing but a little {category}, for you.',     objective: 'A small {category} session, just for the enjoyment of it.' },
 ];
 
 // ─── Full Wipe / Reset (Phase 1B §1) ─────────────────────────────────────────

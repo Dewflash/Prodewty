@@ -354,7 +354,7 @@ export function buildCandidates(snapshot: PlayerSnapshot): QuestCandidate[] {
   return candidates.filter(c => c.score > 0);
 }
 
-function weightedSample<T extends { score: number }>(pool: T[], n: number): T[] {
+export function weightedSample<T extends { score: number }>(pool: T[], n: number): T[] {
   const remaining = [...pool];
   const picked: T[] = [];
   while (remaining.length && picked.length < n) {
@@ -377,6 +377,19 @@ export function drawQuestCandidates(snapshot: PlayerSnapshot): QuestCandidate[] 
   return weightedSample(pool, QUEST_ENGINE_TUNING.candidate_pool_limit);
 }
 
+// ─── Daily pool ───────────────────────────────────────────────────────────────
+// Daily Quests + Daily Gates draw from the SAME candidate pool — 6 distinct
+// categories sampled once, split 3 quests / 3 dungeons. Since buildCandidates
+// produces at most one candidate per category, this guarantees no category
+// overlap between the two groups (and no two daily gates share a category).
+export function drawDailyPool(snapshot: PlayerSnapshot): { questCandidates: QuestCandidate[]; dungeonCandidates: QuestCandidate[] } {
+  const pool = weightedSample(buildCandidates(snapshot), QUEST_ENGINE_TUNING.candidate_pool_limit * 2);
+  return {
+    questCandidates: pool.slice(0, QUEST_ENGINE_TUNING.candidate_pool_limit),
+    dungeonCandidates: pool.slice(QUEST_ENGINE_TUNING.candidate_pool_limit, QUEST_ENGINE_TUNING.candidate_pool_limit * 2),
+  };
+}
+
 // ─── Template fill ────────────────────────────────────────────────────────────
 
 export function fillTemplate(candidate: QuestCandidate): { title: string; description: string; stat_hint: string } {
@@ -393,5 +406,27 @@ export function fillTemplate(candidate: QuestCandidate): { title: string; descri
     title: fill(row.title_template),
     description: fill(row.description_template),
     stat_hint: candidate.attribute,
+  };
+}
+
+// Dungeon-side counterpart to fillTemplate — used by both Daily Gates and
+// Extra Gates (Dungeon Keys). Duration/rank multipliers are applied by the
+// caller (game.ts), same separation as fillTemplate/coin_reward.
+export function fillDungeonTemplate(candidate: QuestCandidate): { name: string; flavor_text: string; objective_text: string; primary_stat: string; secondary_stat: string | null } {
+  const row = db.getFirstSync<{ name_template: string; flavor_template: string; objective_template: string }>(
+    `SELECT name_template, flavor_template, objective_template FROM dungeon_templates WHERE kind = ? ORDER BY RANDOM() LIMIT 1`,
+    candidate.kind,
+  ) ?? { name_template: '{category} Gate', flavor_template: 'A trial of {category} awaits beyond this gate.', objective_template: 'Complete a {category} session before the gate closes.' };
+
+  const fill = (s: string) => s
+    .replace(/\{category\}/g, candidate.category)
+    .replace(/\{minutes\}/g, String(candidate.minutes ?? 30));
+
+  return {
+    name: fill(row.name_template),
+    flavor_text: fill(row.flavor_template),
+    objective_text: fill(row.objective_template),
+    primary_stat: candidate.attribute,
+    secondary_stat: null,
   };
 }

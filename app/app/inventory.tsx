@@ -9,7 +9,7 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
 import { playSound } from '../src/services/audio';
 import { RANK_COLOR } from '../src/components/game/DungeonCard';
-import { useDungeonKey } from '../src/db/game';
+import { useDungeonKey, getKeyUsageCooldownRemaining } from '../src/db/game';
 import { useStreakFreeze } from '../src/db/rpg';
 
 type InventoryItem = {
@@ -100,6 +100,10 @@ export default function InventoryScreen() {
       Alert.alert('Gate Generated', `A new ${rank}-rank gate has appeared under Extra Gates in the Game tab.`);
     } else if (result === 'right_required') {
       Alert.alert('Right Required', `You need the ${rank}-Tier Dungeon Right before this Key can be used.`);
+    } else if (result === 'on_cooldown') {
+      const hours = getKeyUsageCooldownRemaining();
+      const label = hours >= 1 ? `${Math.ceil(hours)}h` : `${Math.ceil(hours * 60)}m`;
+      Alert.alert('Key On Cooldown', `You can use another Dungeon Key in ${label}.`);
     } else {
       Alert.alert('Cannot use', 'This Key could not be found in your inventory.');
     }

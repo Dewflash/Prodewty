@@ -21,8 +21,8 @@ const DUNGEON_RANKS = ['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Legend'];
 function purchaseMPBoost(): 'ok' | 'insufficient_coins' {
   try {
     const rpg = db.getFirstSync<{ coins: number; mp: number; hp_max: number }>('SELECT coins, mp, hp_max FROM rpg_state WHERE id=1')!;
-    if ((rpg.coins ?? 0) < 75) return 'insufficient_coins';
-    db.runSync(`UPDATE rpg_state SET mp = MIN(100, mp + 25), coins = coins - 75 WHERE id = 1`);
+    if ((rpg.coins ?? 0) < 200) return 'insufficient_coins';
+    db.runSync(`UPDATE rpg_state SET mp = MIN(100, mp + 25), coins = coins - 200 WHERE id = 1`);
     return 'ok';
   } catch { return 'insufficient_coins'; }
 }

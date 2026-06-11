@@ -51,6 +51,10 @@ export type RPGState = {
   // v21
   spendable_xp: number;
   total_xp_earned: number;
+  // v47
+  last_key_used_at: string | null;
+  // v48
+  last_daily_gen_date: string | null;
 };
 
 export function getRPGState(): RPGState {
@@ -97,9 +101,11 @@ export function getAnima(): number {
   } catch { return 0; }
 }
 
-// Coin multiplier: debuff when anima < -10 (blight far exceeds vigor). To be repurposed — new mechanic TBD.
+// Coin multiplier: scales with Anima at 0.5% per point (anima -50 = 0.75x / 25%
+// drop, anima +50 = 1.25x / 25% boost), clamped to 0x-3x so it can't go negative
+// or run away unbounded as vigor accumulates over time.
 export function getCoinMultiplier(): number {
-  return getAnima() < -10 ? 0.8 : 1.0;
+  return Math.max(0, Math.min(3, 1 + getAnima() * 0.005));
 }
 
 // Weekly log boost: 1.05× on all activity logs for 7 days after submitting a weekly reflection.
@@ -441,7 +447,7 @@ export function spendXP(amount: number): 'ok' | 'insufficient' {
 // becomes the "armed" freeze checkStreakFreeze() auto-consumes on a missed day
 // once the player presses USE on it (useStreakFreeze, below).
 export function purchaseStreakFreeze(): 'ok' | 'insufficient_coins' {
-  const COST = 50;
+  const COST = 300;
   const state = getRPGState();
   if ((state.coins ?? 0) < COST) return 'insufficient_coins';
   db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', COST);

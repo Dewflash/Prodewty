@@ -1,11 +1,11 @@
 import { db } from './schema';
-import { getRPGState, applyXP, DUNGEON_NATURAL_UNLOCK_LEVEL, materializeDungeonRight } from './rpg';
+import { getRPGState, applyXP, DUNGEON_NATURAL_UNLOCK_LEVEL, materializeDungeonRight, getCoinMultiplier } from './rpg';
 import { getHealthState } from './health';
 import { sessionXP } from '../services/xpEngine';
 import { sqlNow, pad, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
-import { getOrRefreshSnapshot, drawQuestCandidates, fillTemplate, recommendedDurationMinutes } from './questEngine';
+import { getOrRefreshSnapshot, buildCandidates, drawDailyPool, fillTemplate, fillDungeonTemplate, recommendedDurationMinutes, weightedSample } from './questEngine';
 import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ export type Dungeon = {
   category: string;
   time_mode: string;
   is_generated: number;
+  is_daily: number;
   expires_at: string | null;
 };
 
@@ -141,9 +142,9 @@ const DUNGEON_RANK_DURATION_MULT: Record<string, number> = {
 // as stretch-tier quests) × the rank multiplier above. 'time_trial' dungeons
 // (fixed task + deadline, e.g. Hunter's Run — more time would make it
 // *easier*) pass through with their static seeded duration_mins untouched.
-// Key-generated gates (is_generated=1) had their duration frozen at creation
-// time (useDungeonKey) and never recompute — "this data no longer adapts to
-// player behaviour once the gate is generated."
+// Generated gates (is_generated=1 — Daily Gates and Key-generated Extra Gates)
+// had their duration frozen at creation time and never recompute — "this data
+// no longer adapts to player behaviour once the gate is generated."
 function withLiveDuration<T extends { duration_mins: number; category: string; rank: string; time_mode: string; is_generated: number }>(row: T): T {
   if (row.is_generated || row.time_mode !== 'duration') return row;
   const snapshot = getOrRefreshSnapshot();
@@ -152,8 +153,10 @@ function withLiveDuration<T extends { duration_mins: number; category: string; r
   return { ...row, duration_mins: Math.round(recommended * rankMult) };
 }
 
-// Key-generated gates (is_generated=1) expire (expires_at). Drops any that
-// have lapsed and aren't mid-attempt — keeps the table from accumulating stale rows.
+// Generated gates (is_generated=1 — Daily Gates and Extra Gates) expire
+// (expires_at). Drops any that have lapsed and aren't mid-attempt — keeps the
+// table from accumulating stale rows, and is how stale Daily Gates get
+// removed when the next day's batch generates (generateDailyContent).
 function cleanupExpiredDungeons(): void {
   db.runSync(
     `DELETE FROM dungeons WHERE is_generated = 1 AND expires_at <= datetime('now', 'localtime')
@@ -161,7 +164,7 @@ function cleanupExpiredDungeons(): void {
   );
 }
 
-/** "6h" / "2d" countdown for a Key-generated gate's expires_at, or null if permanent/expired. */
+/** "6h" / "2d" countdown for a generated gate's expires_at, or null if permanent/expired. */
 export function getDungeonExpiryRemaining(expiresAt: string | null): string | null {
   if (!expiresAt) return null;
   const remaining = (new Date(expiresAt).getTime() - Date.now()) / 3600000;
@@ -223,6 +226,16 @@ function isRankEarlyUnlocked(rank: string): boolean {
 export function isDungeonRankUnlocked(rank: string, playerLevel: number): boolean {
   if ((DUNGEON_NATURAL_UNLOCK_LEVEL[rank] ?? 1) <= playerLevel) return true;
   return isRankEarlyUnlocked(rank);
+}
+
+// Highest dungeon rank currently unlocked — used as the rank for newly
+// generated Daily Gates (DUNGEON_RANK_COIN_MULT/DUNGEON_RANK_DURATION_MULT).
+function getCurrentDungeonRank(playerLevel: number): string {
+  const ranksByTier = Object.entries(DUNGEON_TIER_INDEX).sort((a, b) => b[1] - a[1]);
+  for (const [rank] of ranksByTier) {
+    if (isDungeonRankUnlocked(rank, playerLevel)) return rank;
+  }
+  return 'E';
 }
 
 export function getDungeonUnlockInfo(rank: string): {
@@ -317,17 +330,30 @@ export function purchaseDungeonKey(rank: string): 'ok' | 'insufficient_xp' | 'no
   return 'ok';
 }
 
-// Consumes a Key, generating an extra gate of its rank — a clone of a random
-// base template (is_generated=0; the same 5 activities reused at every rank,
-// per MECHANICS.md §11.7/§11) stamped with this rank's duration/coin/drop
+// Consumes a Key, generating an extra gate of its rank — drawn from the same
+// category-candidate pool as Daily Quests/Gates (questEngine.buildCandidates +
+// fillDungeonTemplate), stamped with this rank's duration/coin/drop
 // multipliers. The gate's duration_mins is computed once, here, then frozen
 // (withLiveDuration skips is_generated rows) — "this data no longer adapts to
 // player behaviour once the gate is created." Expires in 1–10 days (1–3 for
 // S+ ranks, dungeonKeyExpiryRangeText). Requires the rank's Right already be
 // owned (a Key alone doesn't grant early access — see isDungeonRankUnlocked).
-export function useDungeonKey(rank: string): 'ok' | 'no_key' | 'right_required' {
+// Global cooldown between Key uses (any rank) — separate from the generated
+// gate's own expires_at. rpg_state.last_key_used_at (schema v47).
+const KEY_USAGE_COOLDOWN_HOURS = 12;
+
+/** Hours remaining before another Dungeon Key can be used, or 0 if off cooldown. */
+export function getKeyUsageCooldownRemaining(): number {
+  const { last_key_used_at } = getRPGState();
+  if (!last_key_used_at) return 0;
+  const elapsedHours = (Date.now() - new Date(last_key_used_at).getTime()) / 3600000;
+  return Math.max(0, KEY_USAGE_COOLDOWN_HOURS - elapsedHours);
+}
+
+export function useDungeonKey(rank: string): 'ok' | 'no_key' | 'right_required' | 'on_cooldown' {
   const { current_level } = getRPGState();
   if (!isDungeonRankUnlocked(rank, current_level)) return 'right_required';
+  if (getKeyUsageCooldownRemaining() > 0) return 'on_cooldown';
 
   const keyName = dungeonKeyItemName(rank);
   const keyRow = db.getFirstSync<{ id: number; quantity: number }>(
@@ -335,15 +361,11 @@ export function useDungeonKey(rank: string): 'ok' | 'no_key' | 'right_required' 
   );
   if (!keyRow || keyRow.quantity < 1) return 'no_key';
 
-  const template = db.getFirstSync<Dungeon>(`SELECT * FROM dungeons WHERE is_generated = 0 ORDER BY RANDOM() LIMIT 1`);
-  if (!template) return 'no_key';
-
-  let durationMins = template.duration_mins;
-  if (template.time_mode === 'duration') {
-    const snapshot = getOrRefreshSnapshot();
-    const recommended = recommendedDurationMinutes(snapshot, template.category, template.duration_mins);
-    durationMins = Math.round(recommended * (DUNGEON_RANK_DURATION_MULT[rank] ?? 1.0));
-  }
+  const snapshot = getOrRefreshSnapshot();
+  const candidate = weightedSample(buildCandidates(snapshot), 1)[0];
+  const { name, flavor_text, objective_text, primary_stat, secondary_stat } = fillDungeonTemplate(candidate);
+  const recommended = recommendedDurationMinutes(snapshot, candidate.category, candidate.minutes ?? 30);
+  const durationMins = Math.round(recommended * (DUNGEON_RANK_DURATION_MULT[rank] ?? 1.0));
 
   const expirySeconds = Math.round((HIGH_TIER_RANKS.includes(rank) ? 1 + Math.random() * 2 : 1 + Math.random() * 9) * 86400);
   const expiresAt = db.getFirstSync<{ d: string }>(
@@ -351,15 +373,15 @@ export function useDungeonKey(rank: string): 'ok' | 'no_key' | 'right_required' 
   )!.d;
 
   db.runSync(
-    `INSERT INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, difficulty, coin_reward, item_drop_chance, item_name, item_description, objective_text, duration_mins, category, cooldown_hours, time_mode, is_generated, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-    template.name, rank, template.flavor_text, template.primary_stat, template.secondary_stat,
-    template.difficulty, template.coin_reward, template.item_drop_chance, template.item_name, template.item_description,
-    template.objective_text, durationMins, template.category, template.cooldown_hours, template.time_mode, expiresAt,
+    `INSERT INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, objective_text, duration_mins, category, time_mode, is_generated, is_daily, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'duration', 1, 0, ?)`,
+    name, rank, flavor_text, primary_stat, secondary_stat, objective_text, durationMins, candidate.category, expiresAt,
   );
 
   if (keyRow.quantity <= 1) db.runSync(`DELETE FROM inventory WHERE id = ?`, keyRow.id);
   else db.runSync(`UPDATE inventory SET quantity = quantity - 1 WHERE id = ?`, keyRow.id);
+
+  db.runSync(`UPDATE rpg_state SET last_key_used_at = ? WHERE id = 1`, sqlNow());
 
   return 'ok';
 }
@@ -636,8 +658,35 @@ export type RevivalQuest = {
   duration_mins: number;
 };
 
+// Revival quests are generated on demand (only when the player dies and the
+// revival screen opens) from the same category-candidate pool as Daily Quests
+// (§11.8/§12.1) — but skip the snapshot's stretch/difficulty bump entirely and
+// take a flat 80% of the category's base avg_duration_mins, making them easier
+// than the player's normal pace. Reward formation (hp_restore + completion XP,
+// see completeRevivalQuest below) is unchanged.
+const REVIVAL_QUEST_COUNT = 3;
+const REVIVAL_DURATION_FACTOR = 0.8;
+const REVIVAL_DURATION_FALLBACK = 15;
+const REVIVAL_HP_RESTORE = 20;
+
 export function getRevivalQuests(): RevivalQuest[] {
-  return db.getAllSync<RevivalQuest>('SELECT * FROM revival_quests WHERE is_active = 1 ORDER BY hp_restore DESC');
+  const snapshot = getOrRefreshSnapshot();
+  const candidates = buildCandidates(snapshot);
+  const picked = weightedSample(candidates, REVIVAL_QUEST_COUNT);
+
+  return picked.map((c, i) => {
+    const { title, description } = fillTemplate(c);
+    const baseMinutes = snapshot.categories.find(cat => cat.category === c.category)?.avg_duration_mins ?? 0;
+    const duration_mins = Math.round((baseMinutes > 0 ? baseMinutes : REVIVAL_DURATION_FALLBACK) * REVIVAL_DURATION_FACTOR);
+    return {
+      id: i + 1,
+      title,
+      description,
+      category: c.category,
+      hp_restore: REVIVAL_HP_RESTORE,
+      duration_mins,
+    };
+  });
 }
 
 export function completeRevivalQuest(quest: RevivalQuest): void {
@@ -798,9 +847,9 @@ export function getActiveDungeonRun(): ActiveDungeonRun | null {
   return run_duration_mins != null ? { ...rest, duration_mins: run_duration_mins } : withLiveDuration(rest);
 }
 
-// Extra Gates (is_generated=1, from Dungeon Keys) are one-time quests — any
-// finished attempt (clear, fail, or abandon) consumes the gate, win or lose,
-// so it no longer appears under Extra Gates regardless of cooldown.
+// Generated gates (is_generated=1 — Daily Gates and Extra Gates) are one-time
+// quests — any finished attempt (clear, fail, or abandon) consumes the gate,
+// win or lose, so it no longer appears in its section regardless of cooldown.
 function consumeIfGenerated(dungeon: Dungeon): void {
   if (dungeon.is_generated) {
     db.runSync(`DELETE FROM dungeons WHERE id = ?`, dungeon.id);
@@ -812,7 +861,7 @@ export function submitDungeonClear(runId: number, dungeon: Dungeon): DungeonClea
   const xpEarned    = Math.max(1, Math.floor(sessionXP(dungeon.duration_mins, weight) * 1.20));
   const rankMult    = DUNGEON_RANK_COIN_MULT[dungeon.rank] ?? 1.0;
   const baseCoins   = 50 + Math.floor(Math.random() * 51); // rand(50–100)
-  const coinsEarned = Math.floor(baseCoins * rankMult * getMoodCoinMult());
+  const coinsEarned = Math.floor(baseCoins * rankMult * getMoodCoinMult() * getCoinMultiplier());
   let itemDropped: string | null = null;
   let itemRarity: Rarity | null = null;
   let itemSlotType: string | null = null;
@@ -909,26 +958,51 @@ export function getAcceptedQuests(): Quest[] {
   );
 }
 
-export function generateQuests(): void {
+// Once per local day (rpg_state.last_daily_gen_date), draws a 6-candidate pool
+// (questEngine.drawDailyPool — same pool useDungeonKey draws from) split 3
+// quests / 3 dungeons. Each candidate is a distinct category, so the two
+// groups never overlap. Replaces the retired weekly quest engine —
+// quest_type='daily' is the only quest type now. Stale daily quests are wiped
+// outright; stale Daily Gates expire via cleanupExpiredDungeons (expires_at =
+// start of the new day, active runs excluded — same exception as Extra Gates).
+export function generateDailyContent(): void {
   try {
+    const today = localDateStr();
+    if (getRPGState().last_daily_gen_date === today) return;
+
+    db.runSync(`DELETE FROM quests WHERE quest_type = 'daily'`);
+    cleanupExpiredDungeons();
+
     const snapshot = getOrRefreshSnapshot();
-    const drawn = drawQuestCandidates(snapshot);
+    const { questCandidates, dungeonCandidates } = drawDailyPool(snapshot);
 
-    const existing = db.getAllSync<{ category: string }>(
-      "SELECT category FROM quests WHERE status IN ('pending','accepted')",
-    ).map(r => r.category);
-
-    for (const candidate of drawn) {
-      if (existing.includes(candidate.category)) continue;
+    for (const candidate of questCandidates) {
       const { title, description, stat_hint } = fillTemplate(candidate);
       db.runSync(
         `INSERT INTO quests (title, description, category, quest_type, coin_reward, status, stat_hint, duration_mins)
-         VALUES (?, ?, ?, 'weekly', 30, 'pending', ?, ?)`,
+         VALUES (?, ?, ?, 'daily', 30, 'pending', ?, ?)`,
         title, description, candidate.category, stat_hint, candidate.minutes ?? 30,
       );
     }
 
-    // Starter quests (First Activity, Record Mood) removed — defer to onboarding flow at multi-user launch
+    const rank = getCurrentDungeonRank(getRPGState().current_level);
+    const rankDurationMult = DUNGEON_RANK_DURATION_MULT[rank] ?? 1.0;
+    const expiresAt = db.getFirstSync<{ d: string }>(
+      `SELECT datetime('now', 'localtime', 'start of day', '+1 day') as d`,
+    )!.d;
+
+    for (const candidate of dungeonCandidates) {
+      const { name, flavor_text, objective_text, primary_stat, secondary_stat } = fillDungeonTemplate(candidate);
+      const recommended = recommendedDurationMinutes(snapshot, candidate.category, candidate.minutes ?? 30);
+      const durationMins = Math.round(recommended * rankDurationMult);
+      db.runSync(
+        `INSERT INTO dungeons (name, rank, flavor_text, primary_stat, secondary_stat, objective_text, duration_mins, category, time_mode, is_generated, is_daily, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'duration', 1, 1, ?)`,
+        name, rank, flavor_text, primary_stat, secondary_stat, objective_text, durationMins, candidate.category, expiresAt,
+      );
+    }
+
+    db.runSync(`UPDATE rpg_state SET last_daily_gen_date = ? WHERE id = 1`, today);
   } catch {}
 }
 
@@ -943,7 +1017,7 @@ export function completeQuest(questId: number, notes?: string): void {
   const weight   = getCategoryWeight(quest.category);
   const duration = quest.duration_mins ?? 30;
   const xpEarned  = Math.max(1, Math.floor(sessionXP(duration, weight) * 1.10));
-  const questCoins = Math.floor(50 * getMoodCoinMult());
+  const questCoins = Math.floor(50 * getMoodCoinMult() * getCoinMultiplier());
   db.runSync(`UPDATE quests SET status = 'completed' WHERE id = ?`, questId);
   db.runSync(`INSERT INTO quest_completions (quest_id, coins_earned) VALUES (?, ?)`, questId, questCoins);
   db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', questCoins);
