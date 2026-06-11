@@ -10,7 +10,7 @@ import { spacing, radius } from '../src/theme/spacing';
 import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
 import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
-import { pickCustomBGM, removeCustomBGM, getCustomBGMName } from '../src/services/bgmCustom';
+import { pickCustomBGM, removeCustomBGM, getCustomBGMName, clearAllCustomBGM } from '../src/services/bgmCustom';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 
@@ -91,6 +91,7 @@ export default function SettingsScreen() {
       });
       if (result.success) {
         performFullReset(archiveHistory);
+        clearAllCustomBGM();
         triggerCurrencyRefresh();
         router.replace('/onboarding');
       } else {

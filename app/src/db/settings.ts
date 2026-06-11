@@ -13,6 +13,12 @@ export function setSetting(key: string, value: string): void {
   } catch {}
 }
 
+export function deleteSettingsByPrefix(prefix: string): void {
+  try {
+    db.runSync('DELETE FROM settings WHERE key LIKE ?', `${prefix}%`);
+  } catch {}
+}
+
 export function getBGMSelection(zone: string): number {
   return parseInt(getSetting(`bgm_${zone}`, '0'), 10);
 }

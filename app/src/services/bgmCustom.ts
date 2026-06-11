@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
-import { getSetting, setSetting } from '../db/settings';
+import { getSetting, setSetting, deleteSettingsByPrefix } from '../db/settings';
 
 const BGM_DIR = new Directory(Paths.document, 'bgm');
 
@@ -51,4 +51,12 @@ export function removeCustomBGM(zone: string, slot: number): void {
     } catch {}
   }
   setSetting(settingKey(zone, slot), '');
+}
+
+// Wipes every uploaded BGM file and its setting — used on full app reset.
+export function clearAllCustomBGM(): void {
+  try {
+    if (BGM_DIR.exists) BGM_DIR.delete();
+  } catch {}
+  deleteSettingsByPrefix('custom_bgm_');
 }
