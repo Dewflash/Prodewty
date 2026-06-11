@@ -9,6 +9,12 @@ export const colors = {
   textPrimary: '#F8FAFC',
   textMuted: '#64748B',
 
+  // Semi-opaque card backing — used to keep otherwise-transparent sections
+  // legible over a custom wallpaper (see hasCustomWallpaper())
+  surfaceOverlay: 'rgba(30,41,59,0.85)',
+  // Muted/dim text repainted for legibility on top of surfaceOverlay
+  textOnSurface: '#F1F5F9',
+
   // Health-bar stat colors
   statEmotional: '#F87171',  // brighter red (easier to read)
   statPhysical:  '#2563EB',  // dark blue

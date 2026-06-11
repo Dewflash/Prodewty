@@ -6,6 +6,7 @@ import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
 import { getWeeklySummary, type WeeklySummary } from '../db/logs';
+import { Surface } from './Surface';
 import { getPendingCount, isPersonalizationEnabled } from '../db/insights';
 import { playSound } from '../services/audio';
 import { hapticLight } from '../utils/haptics';
@@ -59,7 +60,7 @@ export function TopRibbon({ title }: Props) {
 
   return (
     <>
-      <View style={s.ribbon}>
+      <Surface style={s.ribbon}>
         {/* Left: Hamburger + Store + Inventory */}
         <View style={s.group}>
           <Pressable style={s.iconBtn} onPress={() => { hapticLight(); playSound('topribbonbutton'); setMenuVisible(true); }}>
@@ -90,7 +91,7 @@ export function TopRibbon({ title }: Props) {
           </Pressable>
         </View>
 
-      </View>
+      </Surface>
 
       {/* ── Side Menu Drawer ── */}
       <Modal visible={menuVisible} transparent animationType="none">

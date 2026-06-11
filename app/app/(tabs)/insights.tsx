@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal,
   TextInput, KeyboardAvoidingView, Platform, Alert, TouchableOpacity,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
 import { useFocusEffect } from 'expo-router';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
@@ -21,6 +21,8 @@ import { db } from '../../src/db/schema';
 import { triggerCurrencyRefresh } from '../../src/db/currencySignal';
 import { STAT_ICON, STAT_COLOR } from '../../src/constants/stats';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { Surface, muted, flatSurface } from '../../src/components/Surface';
+import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
 
 type WeeklyStatRow = { avg: number | null; min: number | null; max: number | null };
 type WeeklyHealthStats = { emotional: WeeklyStatRow; physical: WeeklyStatRow; mental: WeeklyStatRow };
@@ -169,6 +171,7 @@ const rc = StyleSheet.create({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function RechargeScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const [health, setHealth] = useState<HealthState | null>(null);
   const [rpg, setRpg] = useState<RPGState | null>(null);
   const [activities, setActivities] = useState<RestorativeActivity[]>([]);
@@ -271,18 +274,18 @@ export default function RechargeScreen() {
 
   return (
     <SwipeNavWrapper currentIndex={3}>
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <TopRibbon title="Recharge" />
       <ScrollView contentContainerStyle={s.content}>
 
         {/* Header */}
         <View style={s.headerRow}>
-          <Text style={s.heading}>Recharge</Text>
+          <Surface pad={spacing.sm}><Text style={s.heading}>Recharge</Text></Surface>
           <TouchableOpacity onPress={() => setInfoModal(true)} style={s.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Feather name="info" size={16} color={colors.textMuted} />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <View style={s.xpBadge}>
+          <View style={[s.xpBadge, wallpaperActive && flatSurface()]}>
             <Text style={s.xpText}>{xp.toLocaleString()} XP</Text>
           </View>
         </View>
@@ -339,18 +342,18 @@ export default function RechargeScreen() {
         {/* Restore section */}
         <View style={s.section}>
           <View style={s.sectionHeader}>
-            <Text style={s.sectionHeading}>Restore</Text>
+            <Surface pad={spacing.sm}><Text style={s.sectionHeading}>Restore</Text></Surface>
             <TouchableOpacity onPress={() => setRestoreInfoModal(true)} style={s.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Feather name="info" size={14} color={colors.textMuted} />
             </TouchableOpacity>
-            <Pressable onPress={openPastHistory} style={s.pastRestoreBtn}>
-              <Feather name="archive" size={12} color={colors.textMuted} />
-              <Text style={s.pastRestoreBtnText}>Past Restore</Text>
+            <Pressable onPress={openPastHistory} style={[s.pastRestoreBtn, wallpaperActive && flatSurface()]}>
+              <Feather name="archive" size={12} color={muted(wallpaperActive)} />
+              <Text style={[s.pastRestoreBtnText, { color: muted(wallpaperActive) }]}>Past Restore</Text>
             </Pressable>
             <View style={{ flex: 1 }} />
             {!isStatDead && (
               <Pressable onPress={() => setAddModal(true)}>
-                <Text style={s.addLink}>+ Custom</Text>
+                <Surface pad={spacing.sm}><Text style={s.addLink}>+ Custom</Text></Surface>
               </Pressable>
             )}
           </View>
@@ -493,7 +496,7 @@ export default function RechargeScreen() {
           </Pressable>
         </View>
       </Modal>
-    </SafeAreaView>
+    </Screen>
     </SwipeNavWrapper>
   );
 }

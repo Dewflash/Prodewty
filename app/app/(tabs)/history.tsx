@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert,
   TextInput, KeyboardAvoidingView, Platform, LayoutAnimation,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
@@ -18,6 +18,8 @@ import { localDateStr } from '../../src/utils/date';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { Surface, muted } from '../../src/components/Surface';
+import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
 import { getNotesForDate, type BibleNote } from '../../src/db/bible';
 
 const MONTHS       = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -409,6 +411,7 @@ function LogCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete: () 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function HistoryScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const now = new Date();
   const [tab,         setTab]         = useState<'daily' | 'weekly'>('daily');
   const [year,        setYear]        = useState(now.getFullYear());
@@ -458,16 +461,16 @@ export default function HistoryScreen() {
 
   return (
     <SwipeNavWrapper currentIndex={1}>
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <TopRibbon title="History" />
 
-      <View style={s.tabRow}>
+      <Surface style={s.tabRow}>
         {(['daily','weekly'] as const).map(t => (
           <Pressable key={t} onPress={() => setTab(t)} style={[s.tabBtn, tab===t && s.tabBtnActive]}>
-            <Text style={[s.tabText, tab===t && s.tabTextActive]}>{t.charAt(0).toUpperCase()+t.slice(1)}</Text>
+            <Text style={[s.tabText, { color: muted(wallpaperActive) }, tab===t && s.tabTextActive]}>{t.charAt(0).toUpperCase()+t.slice(1)}</Text>
           </Pressable>
         ))}
-      </View>
+      </Surface>
 
       {tab === 'daily' ? (
         <ScrollView contentContainerStyle={s.content}>
@@ -487,8 +490,8 @@ export default function HistoryScreen() {
             </View>
           </View>
 
-          <View style={[s.calendar, { marginBottom: spacing.md }]}>
-            <View style={s.calRow}>{DAY_LABELS.map(d => <Text key={d} style={s.dayLabel}>{d}</Text>)}</View>
+          <Surface style={[s.calendar, { marginBottom: spacing.md }]} pad={spacing.sm}>
+            <View style={s.calRow}>{DAY_LABELS.map(d => <Text key={d} style={[s.dayLabel, { color: muted(wallpaperActive) }]}>{d}</Text>)}</View>
             {Array.from({ length: cells.length / 7 }, (_, row) => (
               <View key={row} style={s.calRow}>
                 {cells.slice(row*7, row*7+7).map((day, col) => {
@@ -509,7 +512,7 @@ export default function HistoryScreen() {
                 })}
               </View>
             ))}
-          </View>
+          </Surface>
 
           {searchResults !== null ? (
             <>
@@ -521,19 +524,19 @@ export default function HistoryScreen() {
             </>
           ) : (
             <>
-              <View style={s.dayHeader}>
+              <Surface style={s.dayHeader} pad={spacing.sm}>
                 <Text style={s.dayTitle}>
                   {selected === todayStr() ? 'Today' : new Date(selected+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}
                 </Text>
                 <View style={s.viewToggle}>
                   <Pressable onPress={() => setViewMode('logs')} style={[s.toggleBtn, viewMode==='logs' && s.toggleBtnOn]}>
-                    <Text style={[s.toggleTxt, viewMode==='logs' && s.toggleTxtOn]}>Logs</Text>
+                    <Text style={[s.toggleTxt, { color: muted(wallpaperActive) }, viewMode==='logs' && s.toggleTxtOn]}>Logs</Text>
                   </Pressable>
                   <Pressable onPress={() => setViewMode('bible')} style={[s.toggleBtn, viewMode==='bible' && s.toggleBtnOn]}>
-                    <Text style={[s.toggleTxt, viewMode==='bible' && s.toggleTxtOn]}>Bible</Text>
+                    <Text style={[s.toggleTxt, { color: muted(wallpaperActive) }, viewMode==='bible' && s.toggleTxtOn]}>Bible</Text>
                   </Pressable>
                 </View>
-              </View>
+              </Surface>
               {viewMode === 'logs' ? (() => {
                 const filtered = dayLogs.filter(l => l.log_type !== 'weekly');
                 return filtered.length === 0
@@ -587,7 +590,7 @@ export default function HistoryScreen() {
           </View>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+    </Screen>
     </SwipeNavWrapper>
   );
 }

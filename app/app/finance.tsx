@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, StyleSheet, ScrollView, Pressable,
   useWindowDimensions, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -209,7 +209,7 @@ export default function FinanceScreen() {
   const chartPoints = chartRange === 'monthly' ? buildMonthlyPoints() : buildYearlyPoints();
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <Screen style={s.root} edges={['top']}>
       {/* Header */}
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.iconBtn}>
@@ -329,7 +329,7 @@ export default function FinanceScreen() {
           </View>
         </ScrollView>
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

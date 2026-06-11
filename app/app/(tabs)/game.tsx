@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable,
   Modal, TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -33,6 +33,8 @@ import { fmtBuff, fmtTimer } from '../../src/utils/format';
 import { PendingQuestCard, AcceptedQuestCard, HiddenQuestCard, CompletedQuestCard } from '../../src/components/game/QuestCards';
 import { DungeonCard, RANK_COLOR } from '../../src/components/game/DungeonCard';
 import { playSound, switchBGM } from '../../src/services/audio';
+import { Surface, muted, dim } from '../../src/components/Surface';
+import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,7 @@ type DungeonPhase = 'entry' | 'active' | 'result' | null;
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function GameScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const [section,      setSection]      = useState<GameSection>('stats');
   const [rpg,          setRpg]          = useState<RPGState | null>(null);
   const [stats,        setStats]        = useState<GameStats | null>(null);
@@ -288,37 +291,37 @@ export default function GameScreen() {
 
   return (
     <SwipeNavWrapper currentIndex={4}>
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
 
       {/* Ribbon */}
-      <View style={s.ribbon}>
+      <Surface style={s.ribbon}>
         <View style={s.ribbonGroupLeft}>
           <Pressable style={s.ribbonIcon} onPress={() => setQuestPreview(true)}>
-            <Feather name="book-open" size={18} color={colors.textMuted} />
+            <Feather name="book-open" size={18} color={muted(wallpaperActive)} />
           </Pressable>
           <Pressable style={s.ribbonIcon} onPress={() => setGameInfoVisible(true)}>
-            <Feather name="info" size={18} color={colors.textMuted} />
+            <Feather name="info" size={18} color={muted(wallpaperActive)} />
           </Pressable>
         </View>
         <Text style={s.ribbonTitle}>SOLO LEVELING</Text>
         <View style={s.ribbonGroup}>
           <Pressable style={s.ribbonIcon} onPress={() => router.push('/store')}>
-            <Feather name="shopping-bag" size={20} color={colors.textMuted} />
+            <Feather name="shopping-bag" size={20} color={muted(wallpaperActive)} />
           </Pressable>
           <Pressable style={s.ribbonIcon} onPress={() => router.push('/game-log')}>
-            <Feather name="terminal" size={20} color={colors.textMuted} />
+            <Feather name="terminal" size={20} color={muted(wallpaperActive)} />
           </Pressable>
         </View>
-      </View>
+      </Surface>
 
       {/* Section tabs */}
-      <View style={s.tabs}>
+      <Surface style={s.tabs}>
         {(['stats', 'inventory', 'quests', 'dungeons'] as GameSection[]).map(tab => (
           <Pressable key={tab} onPress={() => setSection(tab)} style={[s.tab, section === tab && s.tabActive]}>
-            <Text style={[s.tabTxt, section === tab && s.tabTxtActive]}>{tab.toUpperCase()}</Text>
+            <Text style={[s.tabTxt, { color: muted(wallpaperActive) }, section === tab && s.tabTxtActive]}>{tab.toUpperCase()}</Text>
           </Pressable>
         ))}
-      </View>
+      </Surface>
 
       <ScrollView contentContainerStyle={s.content}>
 
@@ -435,15 +438,15 @@ export default function GameScreen() {
         {section === 'quests' && (
           <>
             {accepted.length === 0 && pending.length === 0 && skipped.length === 0 && completed.length === 0 ? (
-              <View style={s.empty}>
-                <Feather name="inbox" size={32} color={colors.border} />
-                <Text style={s.emptyTxt}>No quests available.{'\n'}Keep logging — the system is watching.</Text>
-              </View>
+              <Surface style={s.empty} pad={spacing.sm}>
+                <Feather name="inbox" size={32} color={dim(wallpaperActive)} />
+                <Text style={[s.emptyTxt, { color: muted(wallpaperActive) }]}>No quests available.{'\n'}Keep logging — the system is watching.</Text>
+              </Surface>
             ) : (
               <>
                 {accepted.length > 0 && (
                   <>
-                    <Text style={s.sectionHeading}>ACTIVE</Text>
+                    <Surface pad={spacing.sm}><Text style={s.sectionHeading}>ACTIVE</Text></Surface>
                     {accepted.map(q => (
                       <AcceptedQuestCard key={q.id} quest={q}
                         onComplete={() => { setCompletingQuest(q); setQuestNotes(''); }}
@@ -453,7 +456,7 @@ export default function GameScreen() {
                 )}
                 {pending.length > 0 && (
                   <>
-                    <Text style={s.sectionHeading}>AVAILABLE</Text>
+                    <Surface pad={spacing.sm}><Text style={s.sectionHeading}>AVAILABLE</Text></Surface>
                     {pending.map(q => (
                       <PendingQuestCard key={q.id} quest={q}
                         onAccept={() => { acceptQuest(q.id); reload(); }}
@@ -464,7 +467,7 @@ export default function GameScreen() {
                 )}
                 {skipped.length > 0 && (
                   <>
-                    <Text style={[s.sectionHeading, { color: colors.textMuted }]}>HIDDEN TODAY</Text>
+                    <Surface pad={spacing.sm}><Text style={[s.sectionHeading, { color: muted(wallpaperActive) }]}>HIDDEN TODAY</Text></Surface>
                     {skipped.map(q => (
                       <HiddenQuestCard key={q.id} quest={q}
                         onReinstate={() => { reinstateQuest(q.id); reload(); }}
@@ -474,7 +477,7 @@ export default function GameScreen() {
                 )}
                 {completed.length > 0 && (
                   <>
-                    <Text style={[s.sectionHeading, { color: colors.textMuted, marginTop: spacing.sm }]}>COMPLETED</Text>
+                    <Surface pad={spacing.sm}><Text style={[s.sectionHeading, { color: muted(wallpaperActive), marginTop: spacing.sm }]}>COMPLETED</Text></Surface>
                     {completed.map(q => <CompletedQuestCard key={q.id} quest={q} />)}
                   </>
                 )}
@@ -487,13 +490,13 @@ export default function GameScreen() {
         {section === 'dungeons' && (
           <>
             {dungeons.length === 0 ? (
-              <View style={s.empty}>
-                <Feather name="shield" size={32} color={colors.border} />
-                <Text style={s.emptyTxt}>No dungeon gates detected.</Text>
-              </View>
+              <Surface style={s.empty} pad={spacing.sm}>
+                <Feather name="shield" size={32} color={dim(wallpaperActive)} />
+                <Text style={[s.emptyTxt, { color: muted(wallpaperActive) }]}>No dungeon gates detected.</Text>
+              </Surface>
             ) : (
               <>
-                <Text style={s.sectionHeading}>DAILY GATES</Text>
+                <Surface pad={spacing.sm}><Text style={s.sectionHeading}>DAILY GATES</Text></Surface>
                 {dungeons.filter(d => d.is_generated && d.is_daily).map(d => (
                   <DungeonCard key={d.id} dungeon={d}
                     isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
@@ -504,7 +507,7 @@ export default function GameScreen() {
 
                 {dungeons.some(d => d.is_generated && !d.is_daily) && (
                   <>
-                    <Text style={[s.sectionHeading, { marginTop: spacing.md }]}>EXTRA GATES</Text>
+                    <Surface pad={spacing.sm}><Text style={[s.sectionHeading, { marginTop: spacing.md }]}>EXTRA GATES</Text></Surface>
                     {dungeons.filter(d => d.is_generated && !d.is_daily).map(d => (
                       <DungeonCard key={d.id} dungeon={d}
                         isActiveRun={activeRunId !== null && selectedDungeon?.id === d.id}
@@ -855,7 +858,7 @@ export default function GameScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-    </SafeAreaView>
+    </Screen>
     </SwipeNavWrapper>
   );
 }

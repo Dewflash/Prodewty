@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -141,7 +141,7 @@ export default function OnboardingScreen() {
   const cluster = (answers.q1_fields ?? []).map(d => DOMAIN_TO_CLUSTER[d]).find(Boolean);
 
   return (
-    <SafeAreaView style={s.root} edges={['top', 'bottom']}>
+    <Screen style={s.root} edges={['top', 'bottom']}>
       <View style={s.header}>
         <Pressable onPress={back} style={[s.headerBtn, { opacity: isFirst ? 0 : 1 }]} disabled={isFirst}>
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
@@ -405,7 +405,7 @@ export default function OnboardingScreen() {
           )}
         </View>
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

@@ -9,7 +9,10 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.anonymous.prodewty"
+      "bundleIdentifier": "com.anonymous.prodewty",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Choose a photo to use as your app background."
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

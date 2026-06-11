@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { db } from '../src/db/schema';
@@ -11,6 +11,8 @@ import { playSound } from '../src/services/audio';
 import { RANK_COLOR } from '../src/components/game/DungeonCard';
 import { useDungeonKey, getKeyUsageCooldownRemaining } from '../src/db/game';
 import { useStreakFreeze } from '../src/db/rpg';
+import { Surface, muted, dim } from '../src/components/Surface';
+import { hasCustomWallpaper } from '../src/services/wallpaperCustom';
 
 type InventoryItem = {
   id: number;
@@ -80,6 +82,7 @@ function ItemCard({ item, onUse }: { item: InventoryItem; onUse?: (item: Invento
 type InventorySection = 'global' | 'game';
 
 export default function InventoryScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const [section, setSection] = useState<InventorySection>('global');
   const [globalItems, setGlobalItems] = useState<InventoryItem[]>([]);
   const [gameItems, setGameItems] = useState<InventoryItem[]>([]);
@@ -132,45 +135,47 @@ export default function InventoryScreen() {
   const items = section === 'global' ? globalItems : gameItems;
 
   return (
-    <SafeAreaView style={s.safe}>
-      <View style={s.header}>
+    <Screen style={s.safe}>
+      <Surface style={s.header}>
         <Pressable onPress={() => { playSound('globalinventoryback'); router.back(); }} style={s.back}>
           <Feather name="arrow-left" size={22} color={colors.textPrimary} />
         </Pressable>
         <Text style={s.title}>Inventory</Text>
         <View style={{ width: 30 }} />
-      </View>
+      </Surface>
 
-      <View style={s.tabs}>
+      <Surface style={s.tabs}>
         {(['global', 'game'] as InventorySection[]).map(t => (
           <Pressable key={t} onPress={() => setSection(t)} style={[s.tabBtn, section === t && s.tabBtnActive]}>
-            <Text style={[s.tabTxt, section === t && s.tabTxtActive]}>{t === 'global' ? 'GLOBAL' : 'GAME'}</Text>
+            <Text style={[s.tabTxt, { color: muted(wallpaperActive) }, section === t && s.tabTxtActive]}>{t === 'global' ? 'GLOBAL' : 'GAME'}</Text>
           </Pressable>
         ))}
-      </View>
+      </Surface>
 
       <ScrollView contentContainerStyle={s.content}>
         {section === 'global' ? (
-          <>
-            <Text style={s.sectionSub}>Streak Freeze, treats, and other cross-system items</Text>
-            <Text style={[s.sectionSub, { marginTop: 2, color: colors.border }]}>Game equipment is managed in Game → Inventory tab.</Text>
-          </>
+          <Surface pad={spacing.sm}>
+            <Text style={[s.sectionSub, { color: muted(wallpaperActive) }]}>Streak Freeze, treats, and other cross-system items</Text>
+            <Text style={[s.sectionSub, { marginTop: 2, color: dim(wallpaperActive) }]}>Game equipment is managed in Game → Inventory tab.</Text>
+          </Surface>
         ) : (
-          <Text style={s.sectionSub}>Dungeon Rights and Keys — Equipment, weapons, and consumables are managed in Game → Inventory tab.</Text>
+          <Surface pad={spacing.sm}>
+            <Text style={[s.sectionSub, { color: muted(wallpaperActive) }]}>Dungeon Rights and Keys — Equipment, weapons, and consumables are managed in Game → Inventory tab.</Text>
+          </Surface>
         )}
 
         {items.length === 0 ? (
-          <View style={s.empty}>
-            <Feather name="archive" size={32} color={colors.border} />
-            <Text style={s.emptyText}>{section === 'global' ? 'No global items yet.' : 'No Rights or Keys yet.'}</Text>
-          </View>
+          <Surface style={s.empty} pad={spacing.sm}>
+            <Feather name="archive" size={32} color={dim(wallpaperActive)} />
+            <Text style={[s.emptyText, { color: muted(wallpaperActive) }]}>{section === 'global' ? 'No global items yet.' : 'No Rights or Keys yet.'}</Text>
+          </Surface>
         ) : (
           items.map(i => <ItemCard key={i.id} item={i} onUse={handleUse} />)
         )}
 
-        {section === 'global' && <Text style={s.footer}>Bible component · Financial treats — coming soon</Text>}
+        {section === 'global' && <Surface pad={spacing.sm}><Text style={[s.footer, { color: dim(wallpaperActive) }]}>Bible component · Financial treats — coming soon</Text></Surface>}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

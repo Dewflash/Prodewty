@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -28,7 +28,7 @@ export default function RevelationsScreen() {
     : items;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.back}>
           <Feather name="arrow-left" size={22} color={colors.textPrimary} />
@@ -77,7 +77,7 @@ export default function RevelationsScreen() {
           )}
         />
       )}
-    </SafeAreaView>
+    </Screen>
   );
 }
 

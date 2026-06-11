@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -41,7 +41,7 @@ export default function BibleScreen() {
   }
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <Screen style={s.root} edges={['top']}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.iconBtn}>
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
@@ -91,7 +91,7 @@ export default function BibleScreen() {
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, Modal,
   TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
@@ -77,7 +77,7 @@ export default function RecommendationsScreen() {
 
   if (!enabled) {
     return (
-      <SafeAreaView style={s.safe}>
+      <Screen style={s.safe}>
         <View style={s.content}>
           <Text style={s.heading}>Insights</Text>
           <View style={s.empty}>
@@ -91,12 +91,12 @@ export default function RecommendationsScreen() {
             </Pressable>
           </View>
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <View style={s.content}>
         <Text style={s.heading}>Insights</Text>
         <Text style={s.sub}>Quiet observations about your patterns — accept what's useful, dismiss the rest.</Text>
@@ -190,7 +190,7 @@ export default function RecommendationsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

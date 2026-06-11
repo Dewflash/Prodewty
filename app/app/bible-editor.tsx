@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, StyleSheet, Pressable, KeyboardAvoidingView,
   Platform, ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -212,7 +212,7 @@ export default function BibleEditorScreen() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <Screen style={s.root} edges={['top']}>
       {/* Header */}
       <View style={s.header}>
         <Pressable onPress={handleBack} style={s.iconBtn}>
@@ -258,7 +258,7 @@ export default function BibleEditorScreen() {
           />
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

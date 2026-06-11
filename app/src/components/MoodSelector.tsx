@@ -3,6 +3,8 @@ import { View, Pressable, Text, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
+import { muted } from './Surface';
+import { hasCustomWallpaper } from '../services/wallpaperCustom';
 
 type Props = {
   value: number | null;
@@ -11,9 +13,10 @@ type Props = {
 };
 
 export function MoodSelector({ value, onChange, label = 'Mood' }: Props) {
+  const wallpaperActive = hasCustomWallpaper();
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: muted(wallpaperActive) }]}>{label}</Text>
       <View style={styles.row}>
         {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
           const isSelected = value === n;

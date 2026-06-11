@@ -1,6 +1,8 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, InteractionManager } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
+import { Surface, muted, dim, flatSurface } from '../../src/components/Surface';
+import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { db } from '../../src/db/schema';
@@ -163,6 +165,7 @@ function earnedBadges(logs: ActivityLog[], streak: number) {
 const CELL_H_COMPACT = 10;
 
 function ScoreRow({ label, vals, cellH, dates, period }: { label: string; vals: (number|null)[]; cellH: number; dates: string[]; period: Period }) {
+  const wallpaperActive = hasCustomWallpaper();
   const [hovered, setHovered] = React.useState<number | null>(null);
   const [rowW, setRowW] = React.useState(300);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -175,10 +178,10 @@ function ScoreRow({ label, vals, cellH, dates, period }: { label: string; vals: 
   }
   const tooltipLeft = hovered !== null ? Math.max(2, Math.min(rowW-48, ((hovered+0.5)/vals.length)*rowW-24)) : 0;
   return (
-    <View style={s.chartBlock}>
+    <Surface style={s.chartBlock} pad={spacing.sm}>
       <View style={s.chartHeader}>
-        <Text style={s.chartLabel}>{label}</Text>
-        <Text style={s.chartAvg}>avg {fmtAvg(vals)}</Text>
+        <Text style={[s.chartLabel, { color: muted(wallpaperActive) }]}>{label}</Text>
+        <Text style={[s.chartAvg, { color: muted(wallpaperActive) }]}>avg {fmtAvg(vals)}</Text>
       </View>
       <View style={{ position: 'relative' }}>
         <View style={[s.cellRow, { height: cellH }]} onLayout={e => setRowW(e.nativeEvent.layout.width)}>
@@ -193,11 +196,12 @@ function ScoreRow({ label, vals, cellH, dates, period }: { label: string; vals: 
           </View>
         )}
       </View>
-    </View>
+    </Surface>
   );
 }
 
 function XPChart({ vals, cellH, period, dates }: { vals: number[]; cellH: number; period: Period; dates: string[] }) {
+  const wallpaperActive = hasCustomWallpaper();
   const max = Math.max(...vals, 1);
   const [hoveredXP, setHoveredXP] = React.useState<{ i: number; v: number } | null>(null);
   const [rowW, setRowW] = React.useState(300);
@@ -207,9 +211,9 @@ function XPChart({ vals, cellH, period, dates }: { vals: number[]; cellH: number
   const tooltipLeft = hoveredXP !== null ? Math.max(2, Math.min(rowW - 48, ((hoveredXP.i + 0.5) / vals.length) * rowW - 24)) : 0;
   const label = period === 'year' ? 'XP per week' : 'XP per day';
   return (
-    <View style={s.chartBlock}>
+    <Surface style={s.chartBlock} pad={spacing.sm}>
       <View style={s.chartHeader}>
-        <Text style={s.chartLabel}>{label}</Text>
+        <Text style={[s.chartLabel, { color: muted(wallpaperActive) }]}>{label}</Text>
         {hoveredXP && <Text style={[s.chartAvg, { color: colors.success }]}>{hoveredXP.v} XP</Text>}
       </View>
       <View style={{ position: 'relative' }}>
@@ -226,16 +230,17 @@ function XPChart({ vals, cellH, period, dates }: { vals: number[]; cellH: number
           </View>
         )}
       </View>
-    </View>
+    </Surface>
   );
 }
 
 function BreakdownChart({ data }: { data: { name: string; count: number }[] }) {
+  const wallpaperActive = hasCustomWallpaper();
   if (data.length === 0) return <Text style={s.emptyNote}>No logs in this period.</Text>;
   const total = data.reduce((s, d) => s + d.count, 0);
   return (
-    <View style={s.chartBlock}>
-      <Text style={s.chartLabel}>Activity breakdown</Text>
+    <Surface style={s.chartBlock} pad={spacing.sm}>
+      <Text style={[s.chartLabel, { color: muted(wallpaperActive) }]}>Activity breakdown</Text>
       <View style={s.breakBar}>
         {data.map((d,i) => <View key={d.name} style={{ flex: d.count, backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }} />)}
       </View>
@@ -243,31 +248,32 @@ function BreakdownChart({ data }: { data: { name: string; count: number }[] }) {
         {data.map((d,i) => (
           <View key={d.name} style={s.legendItem}>
             <View style={[s.legendDot, { backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }]} />
-            <Text style={s.legendText}>{d.name} {Math.round((d.count/total)*100)}%</Text>
+            <Text style={[s.legendText, { color: muted(wallpaperActive) }]}>{d.name} {Math.round((d.count/total)*100)}%</Text>
           </View>
         ))}
       </View>
-    </View>
+    </Surface>
   );
 }
 
 function ActivityStatsSection({ stats, period }: { stats: ActivityTimeStat[]; period: Period }) {
+  const wallpaperActive = hasCustomWallpaper();
   if (stats.length === 0) return <Text style={s.emptyNote}>No activity data yet.</Text>;
   const maxMins = Math.max(...stats.map(s => s.total_mins), 1);
   return (
-    <View style={s.chartBlock}>
-      <Text style={s.chartLabel}>Activity Stats <Text style={{ color: colors.border, fontSize: 10 }}>({period})</Text></Text>
+    <Surface style={s.chartBlock} pad={spacing.sm}>
+      <Text style={[s.chartLabel, { color: muted(wallpaperActive) }]}>Activity Stats <Text style={{ color: dim(wallpaperActive), fontSize: 10 }}>({period})</Text></Text>
       {stats.map((item, i) => (
         <View key={item.category} style={s.actStatRow}>
-          <Text style={s.actStatCat} numberOfLines={1}>{item.category}</Text>
+          <Text style={[s.actStatCat, { color: muted(wallpaperActive) }]} numberOfLines={1}>{item.category}</Text>
           <View style={s.actStatBarWrap}>
             <View style={[s.actStatBar, { width: `${(item.total_mins / maxMins) * 100}%` as any, backgroundColor: CAT_COLORS[i % CAT_COLORS.length] }]} />
           </View>
           <Text style={s.actStatTime}>{fmtMins(item.total_mins)}</Text>
-          <Text style={s.actStatCount}>{item.count}×</Text>
+          <Text style={[s.actStatCount, { color: muted(wallpaperActive) }]}>{item.count}×</Text>
         </View>
       ))}
-    </View>
+    </Surface>
   );
 }
 
@@ -276,6 +282,7 @@ function ActivityStatsSection({ stats, period }: { stats: ActivityTimeStat[]; pe
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProgressScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const { rpgState, setRPGState } = useAppStore();
   const [period, setPeriod] = useState<Period>('week');
   const [chartData, setChartData] = useState<DayData[]>([]);
@@ -434,7 +441,7 @@ export default function ProgressScreen() {
 
   return (
     <SwipeNavWrapper currentIndex={0}>
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <TopRibbon title="Progress" />
       <Animated.ScrollView
         contentContainerStyle={s.content}
@@ -443,7 +450,7 @@ export default function ProgressScreen() {
 
         {rpgState && (
           <>
-            <View style={s.xpGroup}>
+            <Surface style={s.xpGroup} pad={spacing.sm}>
             <XPBar
               level={rpgState.current_level}
               totalXP={rpgState.total_xp}
@@ -455,15 +462,15 @@ export default function ProgressScreen() {
             {/* Effects row — wraps when many tags active */}
             <View style={s.xpEffectsRow}>
               <View style={s.effectsLabel}>
-                <Text style={s.effectsTitle}>Effects</Text>
+                <Text style={[s.effectsTitle, { color: muted(wallpaperActive) }]}>Effects</Text>
                 <TouchableOpacity onPress={() => setEffectsDialogVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Feather name="info" size={12} color={colors.textMuted} />
+                  <Feather name="info" size={12} color={muted(wallpaperActive)} />
                 </TouchableOpacity>
               </View>
               <View style={s.effectsTags}>
                 {healthTierLabel ? (
                   <View style={[s.effectTag, { borderColor: TIER_COLOR[healthTierLabel] ?? colors.border }]}>
-                    <Text style={[s.effectTagTxt, { color: TIER_COLOR[healthTierLabel] ?? colors.textMuted }]}>{healthTierLabel}</Text>
+                    <Text style={[s.effectTagTxt, { color: TIER_COLOR[healthTierLabel] ?? muted(wallpaperActive) }]}>{healthTierLabel}</Text>
                   </View>
                 ) : null}
                 {customMoods.some(m => m.name === currentMoodState) && (
@@ -486,9 +493,9 @@ export default function ProgressScreen() {
 
             {/* Bonus row (streak freeze) */}
             <View style={s.bonusRow}>
-              <Text style={s.bonusTitle}>Bonus</Text>
+              <Text style={[s.bonusTitle, { color: muted(wallpaperActive) }]}>Bonus</Text>
               <TouchableOpacity onPress={() => setEffectsDialogVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="info" size={12} color={colors.textMuted} />
+                <Feather name="info" size={12} color={muted(wallpaperActive)} />
               </TouchableOpacity>
               {(rpgState.streak_freezes ?? 0) > 0 ? (
                 <View style={s.effectChip}>
@@ -496,10 +503,10 @@ export default function ProgressScreen() {
                   <Text style={s.effectText}>Streak Freeze × {rpgState.streak_freezes}</Text>
                 </View>
               ) : (
-                <Text style={s.bonusNone}>None active</Text>
+                <Text style={[s.bonusNone, { color: dim(wallpaperActive) }]}>None active</Text>
               )}
             </View>
-            </View>
+            </Surface>
           </>
         )}
 
@@ -601,22 +608,22 @@ export default function ProgressScreen() {
         </View>
 
         {/* Today at a glance */}
-        <View style={s.todayRow}>
-          <Text style={s.todayLabel}>today</Text>
+        <Surface style={s.todayRow} pad={spacing.sm}>
+          <Text style={[s.todayLabel, { color: muted(wallpaperActive) }]}>today</Text>
           <View style={s.todayDivider} />
-          <Text style={s.todayStat}>{todayLogCount} {todayLogCount === 1 ? 'log' : 'logs'}</Text>
-          <Text style={s.todayDot}>·</Text>
-          <Text style={[s.todayStat, todayXP > 0 && s.todayXPOn]}>{todayXP} XP</Text>
-        </View>
+          <Text style={[s.todayStat, { color: muted(wallpaperActive) }]}>{todayLogCount} {todayLogCount === 1 ? 'log' : 'logs'}</Text>
+          <Text style={[s.todayDot, { color: dim(wallpaperActive) }]}>·</Text>
+          <Text style={[s.todayStat, { color: muted(wallpaperActive) }, todayXP > 0 && s.todayXPOn]}>{todayXP} XP</Text>
+        </Surface>
 
         {/* Period filter */}
-        <View style={s.periodRow}>
+        <Surface style={s.periodRow}>
           {(['week','month','year'] as Period[]).map(p => (
             <Pressable key={p} onPress={() => setPeriod(p)} style={[s.periodBtn, period===p && s.periodBtnOn]}>
-              <Text style={[s.periodTxt, period===p && s.periodTxtOn]}>{p.charAt(0).toUpperCase()+p.slice(1)}</Text>
+              <Text style={[s.periodTxt, { color: muted(wallpaperActive) }, period===p && s.periodTxtOn]}>{p.charAt(0).toUpperCase()+p.slice(1)}</Text>
             </Pressable>
           ))}
-        </View>
+        </Surface>
 
         {/* Compact mood/energy/prod bars */}
         <ScoreRow label="Mood"         vals={moodVals}   cellH={cellH} dates={dates} period={period} />
@@ -689,23 +696,23 @@ export default function ProgressScreen() {
         </View>
 
         {/* Badges */}
-        <View style={s.section}>
+        <Surface style={s.section} pad={spacing.sm}>
           <Text style={s.sectionHead}>Badges</Text>
           <View style={s.badgeGrid}>
             {BADGES.map(b => {
               const has = earned.has(b.id);
               if ((b as any).secret && !has) return (
-                <View key={b.id} style={[s.badge, s.badgeLocked]}><Text style={s.badgeNameLocked}>???</Text></View>
+                <View key={b.id} style={[s.badge, s.badgeLocked, wallpaperActive && flatSurface()]}><Text style={[s.badgeNameLocked, { color: muted(wallpaperActive) }]}>???</Text></View>
               );
               return (
-                <View key={b.id} style={[s.badge, has ? s.badgeOn : s.badgeLocked]}>
-                  <Text style={has ? s.badgeName : s.badgeNameLocked}>{b.name}</Text>
+                <View key={b.id} style={[s.badge, has ? s.badgeOn : [s.badgeLocked, wallpaperActive && flatSurface()]]}>
+                  <Text style={has ? s.badgeName : [s.badgeNameLocked, { color: muted(wallpaperActive) }]}>{b.name}</Text>
                   {has && <Text style={s.badgeDesc}>{b.desc}</Text>}
                 </View>
               );
             })}
           </View>
-        </View>
+        </Surface>
 
       </Animated.ScrollView>
 
@@ -841,7 +848,7 @@ export default function ProgressScreen() {
           )}
         </Animated.View>
       )}
-    </SafeAreaView>
+    </Screen>
     </SwipeNavWrapper>
   );
 }

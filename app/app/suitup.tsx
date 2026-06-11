@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -188,7 +188,7 @@ export default function SuitUpScreen() {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.back}>
           <Feather name="arrow-left" size={22} color={colors.textPrimary} />
@@ -265,7 +265,7 @@ export default function SuitUpScreen() {
 
         <Text style={s.footer}>Items will populate from inventory once acquired in-game.</Text>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

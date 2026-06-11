@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
   Animated, KeyboardAvoidingView, Platform, Modal, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../../src/components/Screen';
 import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../src/theme/colors';
@@ -22,6 +22,8 @@ import { getRPGState, setCurrentMood, isInDeathState, getCustomMoods, MOOD_FALLB
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 import { playSound, switchBGM } from '../../src/services/audio';
 import { localDateStr } from '../../src/utils/date';
+import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
+import { muted, flatSurface, sectionSurface } from '../../src/components/Surface';
 
 type LogMoodState = string;
 
@@ -45,6 +47,7 @@ function getWeekStart(date: Date = new Date()): string {
 }
 
 export default function LogScreen() {
+  const wallpaperActive = hasCustomWallpaper();
   const { categories, habits, setCategories, setHabits, setRPGState } = useAppStore();
 
   const [logMode, setLogMode] = useState<LogMode>('daily');
@@ -238,17 +241,17 @@ export default function LogScreen() {
   return (
     <>
     <SwipeNavWrapper currentIndex={2}>
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <TopRibbon title="Log" />
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView style={s.scroll} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
 
           {/* Mode selector */}
-          <View style={s.modeRow}>
+          <View style={[s.modeRow, wallpaperActive && flatSurface()]}>
             {(['daily', 'weekly', 'other'] as LogMode[]).map(m => (
               <Pressable key={m} onPress={() => { setLogMode(m); if (m !== 'other') setSelectedDate(todayStr()); }}
                 style={[s.modeBtn, logMode === m && s.modeBtnActive]}>
-                <Text style={[s.modeBtnText, logMode === m && s.modeBtnTextActive]}>
+                <Text style={[s.modeBtnText, { color: muted(wallpaperActive) }, logMode === m && s.modeBtnTextActive]}>
                   {m === 'other' ? 'Past Date' : m.charAt(0).toUpperCase() + m.slice(1)}
                 </Text>
               </Pressable>
@@ -257,10 +260,10 @@ export default function LogScreen() {
 
           {/* Date display for Other mode */}
           {logMode === 'other' && (
-            <Pressable style={s.dateRow} onPress={() => setDatePicker(true)}>
+            <Pressable style={[s.dateRow, wallpaperActive && flatSurface()]} onPress={() => setDatePicker(true)}>
               <Feather name="calendar" size={16} color={colors.primary} />
               <Text style={s.dateText}>{selectedDate}</Text>
-              <Feather name="chevron-down" size={14} color={colors.textMuted} />
+              <Feather name="chevron-down" size={14} color={muted(wallpaperActive)} />
             </Pressable>
           )}
 
@@ -293,18 +296,18 @@ export default function LogScreen() {
           </View>
 
           {/* Activity */}
-          <View style={s.section}>
+          <View style={[s.section, wallpaperActive && sectionSurface()]}>
             <View style={s.activityHeaderRow}>
-              <Text style={s.sectionLabel}>Activity</Text>
+              <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Activity</Text>
               <Pressable onPress={() => categoryGridRef.current?.showWeightInfo()} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Feather name="info" size={13} color={colors.textMuted} />
+                <Feather name="info" size={13} color={muted(wallpaperActive)} />
               </Pressable>
               <View style={{ flex: 1 }} />
               <Pressable onPress={() => categoryGridRef.current?.openPastHistory()} style={s.activityHeaderBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Feather name="archive" size={13} color={colors.textMuted} />
+                <Feather name="archive" size={13} color={muted(wallpaperActive)} />
               </Pressable>
               <Pressable onPress={() => categoryGridRef.current?.openManage()} style={s.activityHeaderBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Feather name="settings" size={13} color={colors.textMuted} />
+                <Feather name="settings" size={13} color={muted(wallpaperActive)} />
               </Pressable>
             </View>
             <CategoryGrid
@@ -320,16 +323,16 @@ export default function LogScreen() {
           </View>
 
           {/* Note — title/description for this activity */}
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Note</Text>
+          <View style={[s.section, wallpaperActive && sectionSurface()]}>
+            <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Note</Text>
             <TextInput style={s.textArea} placeholder="What did you work on?"
-              placeholderTextColor={colors.textMuted} value={note} onChangeText={setNote} multiline />
+              placeholderTextColor={muted(wallpaperActive)} value={note} onChangeText={setNote} multiline />
           </View>
 
           {/* Duration */}
-          <View style={s.section}>
+          <View style={[s.section, wallpaperActive && sectionSurface()]}>
             <View style={s.labelRow}>
-              <Text style={s.sectionLabel}>Duration (min)</Text>
+              <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Duration (min)</Text>
               <Pressable onPress={() => Alert.alert(
                 'Duration',
                 "Left blank, duration defaults to 20 minutes for XP purposes.\n\n" +
@@ -338,78 +341,78 @@ export default function LogScreen() {
                 '> 30 min: XP keeps climbing at a flat per-minute rate (higher for heavier-weighted categories)\n\n' +
                 'Longer sessions in heavier-weighted categories earn more XP — but with diminishing early returns.',
               )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Feather name="info" size={14} color={colors.textMuted} />
+                <Feather name="info" size={14} color={muted(wallpaperActive)} />
               </Pressable>
             </View>
-            <TextInput style={s.shortInput} placeholder="Optional — defaults to 20 min" placeholderTextColor={colors.textMuted}
+            <TextInput style={s.shortInput} placeholder="Optional — defaults to 20 min" placeholderTextColor={muted(wallpaperActive)}
               keyboardType="numeric" value={duration} onChangeText={setDuration} />
           </View>
 
           {/* Mood/Energy/Productivity — daily only */}
           {showMoodSection && (
             <>
-              <View style={s.section}><MoodSelector value={mood} onChange={setMood} label="Mood" /></View>
-              <View style={s.section}><MoodSelector value={energy} onChange={setEnergy} label="Energy" /></View>
-              <View style={s.section}><MoodSelector value={productivity} onChange={setProductivity} label="Productivity" /></View>
+              <View style={[s.section, wallpaperActive && sectionSurface()]}><MoodSelector value={mood} onChange={setMood} label="Mood" /></View>
+              <View style={[s.section, wallpaperActive && sectionSurface()]}><MoodSelector value={energy} onChange={setEnergy} label="Energy" /></View>
+              <View style={[s.section, wallpaperActive && sectionSurface()]}><MoodSelector value={productivity} onChange={setProductivity} label="Productivity" /></View>
             </>
           )}
 
           {/* Journal — daily only, lives with mood log */}
           {showMoodSection && (
-            <View style={s.section}>
-              <Text style={s.sectionLabel}>Journal Entry</Text>
+            <View style={[s.section, wallpaperActive && sectionSurface()]}>
+              <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Journal Entry</Text>
               <TextInput style={s.textArea} placeholder="What happened today?"
-                placeholderTextColor={colors.textMuted} value={journal} onChangeText={setJournal} multiline />
+                placeholderTextColor={muted(wallpaperActive)} value={journal} onChangeText={setJournal} multiline />
             </View>
           )}
 
           {/* Weekly journal */}
           {logMode === 'weekly' && (
-            <View style={s.section}>
-              <Text style={s.sectionLabel}>Weekly Journal</Text>
+            <View style={[s.section, wallpaperActive && sectionSurface()]}>
+              <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Weekly Journal</Text>
               <TextInput style={s.textArea} placeholder="Reflection for this week..."
-                placeholderTextColor={colors.textMuted} value={journal} onChangeText={setJournal} multiline />
+                placeholderTextColor={muted(wallpaperActive)} value={journal} onChangeText={setJournal} multiline />
             </View>
           )}
 
           {/* Habits */}
-          <View style={s.section}>
+          <View style={[s.section, wallpaperActive && sectionSurface()]}>
             <View style={s.rowBetween}>
               <View style={s.labelRow}>
-                <Text style={s.sectionLabel}>Habits</Text>
+                <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>Habits</Text>
                 <Pressable onPress={() => Alert.alert(
                   'Habits',
                   'Each habit you check off when submitting a log adds a flat XP bonus: weight × 3.\n\n' +
                   'e.g. a weight-5 habit adds +15 XP, on top of everything else — duration, mood, health, ' +
                   'and all other multipliers. Higher-weight habits are worth more XP per completion.',
                 )} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Feather name="info" size={13} color={colors.textMuted} />
+                  <Feather name="info" size={13} color={muted(wallpaperActive)} />
                 </Pressable>
               </View>
               <Pressable onPress={() => setHabitModal(true)}><Text style={s.addLink}>+ Add</Text></Pressable>
             </View>
             {habits.length === 0
-              ? <Text style={s.emptyNote}>No habits yet.</Text>
+              ? <Text style={[s.emptyNote, { color: muted(wallpaperActive) }]}>No habits yet.</Text>
               : habits.map(habit => (
                 <Pressable key={habit.id} style={s.habitRow} onPress={() => toggleHabit(habit.id)}>
                   <View style={[s.checkbox, checkedHabits.has(habit.id) && s.checkboxChecked]}>
                     {checkedHabits.has(habit.id) && <Feather name="check" size={11} color={colors.bg} />}
                   </View>
                   <Text style={s.habitName}>{habit.name}</Text>
-                  <Text style={s.habitWeight}>w{habit.weight}</Text>
+                  <Text style={[s.habitWeight, { color: muted(wallpaperActive) }]}>w{habit.weight}</Text>
                 </Pressable>
               ))
             }
           </View>
 
           {/* Reflection — what went well + insight (formerly what to improve) */}
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>What went well?</Text>
-            <TextInput style={s.textArea} placeholder="Wins..." placeholderTextColor={colors.textMuted}
+          <View style={[s.section, wallpaperActive && sectionSurface()]}>
+            <Text style={[s.sectionLabel, { color: muted(wallpaperActive) }]}>What went well?</Text>
+            <TextInput style={s.textArea} placeholder="Wins..." placeholderTextColor={muted(wallpaperActive)}
               value={wentWell} onChangeText={setWentWell} multiline />
-            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Revelation</Text>
+            <Text style={[s.sectionLabel, { color: muted(wallpaperActive), marginTop: spacing.sm }]}>Revelation</Text>
             <TextInput style={s.textArea} placeholder="What to carry forward..."
-              placeholderTextColor={colors.textMuted} value={toImprove} onChangeText={setToImprove} multiline />
+              placeholderTextColor={muted(wallpaperActive)} value={toImprove} onChangeText={setToImprove} multiline />
           </View>
 
           {/* Submit */}
@@ -473,7 +476,7 @@ export default function LogScreen() {
         </Pressable>
       </Modal>
 
-    </SafeAreaView>
+    </Screen>
     </SwipeNavWrapper>
 
       <Modal visible={moodInfoVisible} transparent animationType="slide">

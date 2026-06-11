@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Alert, View, Text, TextInput, StyleSheet, ScrollView, Pressable, Switch } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, View, Text, TextInput, StyleSheet, ScrollView, Pressable, Switch, Image } from 'react-native';
+import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -11,6 +11,7 @@ import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src
 import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
 import { pickCustomBGM, removeCustomBGM, getCustomBGMName, clearAllCustomBGM } from '../src/services/bgmCustom';
+import { pickCustomWallpaper, removeCustomWallpaper, getCustomWallpaper } from '../src/services/wallpaperCustom';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 
@@ -35,6 +36,7 @@ export default function SettingsScreen() {
     return init;
   });
 
+  const [wallpaper, setWallpaper] = useState<string | null>(() => getCustomWallpaper());
   const [personalization, setPersonalization] = useState(() => isPersonalizationEnabled());
   const [bibleXP, setBibleXP] = useState(() => getSetting('bible_xp', '50'));
   const [currency, setCurrency] = useState(() => getSetting('finance_currency', '$') || '$');
@@ -66,6 +68,17 @@ export default function SettingsScreen() {
     if (getCurrentBGMZone() === zone && selections[zone] === slot) void reloadCurrentBGM();
   }
 
+  async function handleUploadWallpaper() {
+    const uri = await pickCustomWallpaper();
+    if (!uri) return;
+    setWallpaper(uri);
+  }
+
+  function handleRemoveWallpaper() {
+    removeCustomWallpaper();
+    setWallpaper(null);
+  }
+
   function saveBibleXP(val: string) {
     const n = parseInt(val, 10);
     const clamped = isNaN(n) ? 50 : Math.max(10, Math.min(200, n));
@@ -92,6 +105,7 @@ export default function SettingsScreen() {
       if (result.success) {
         performFullReset(archiveHistory);
         clearAllCustomBGM();
+        removeCustomWallpaper();
         triggerCurrencyRefresh();
         router.replace('/onboarding');
       } else {
@@ -115,7 +129,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <Screen style={s.root} edges={['top']}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.back}>
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
@@ -125,6 +139,27 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
+
+        {/* ── Wallpaper ── */}
+        <Text style={s.sectionLabel}>BACKGROUND</Text>
+        <Text style={s.sectionHint}>Replace the app's flat background with your own image across every screen.</Text>
+        <View style={s.zoneCard}>
+          <View style={s.wallpaperRow}>
+            {wallpaper && <Image source={{ uri: wallpaper }} style={s.wallpaperPreview} />}
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.fieldLabel}>Custom wallpaper</Text>
+              <Text style={s.sectionHint}>{wallpaper ? 'Applied to all screens.' : 'Using default background.'}</Text>
+            </View>
+            <Pressable style={s.iconBtn} onPress={handleUploadWallpaper}>
+              <Feather name="upload" size={14} color={colors.textMuted} />
+            </Pressable>
+            {wallpaper && (
+              <Pressable style={s.iconBtn} onPress={handleRemoveWallpaper}>
+                <Feather name="x" size={14} color={colors.textMuted} />
+              </Pressable>
+            )}
+          </View>
+        </View>
 
         {/* ── BGM ── */}
         <Text style={s.sectionLabel}>BACKGROUND MUSIC</Text>
@@ -235,7 +270,7 @@ export default function SettingsScreen() {
         </View>
 
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
@@ -258,6 +293,10 @@ const s = StyleSheet.create({
     fontFamily: fonts.ui.regular, fontSize: fontSize.xs,
     color: colors.textMuted, marginBottom: spacing.sm,
   },
+
+  // Wallpaper
+  wallpaperRow:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  wallpaperPreview: { width: 36, height: 36, borderRadius: radius.sm, backgroundColor: colors.border },
 
   // BGM
   zoneCard: {

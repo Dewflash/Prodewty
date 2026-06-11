@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Alert, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -104,7 +104,7 @@ export default function QuestPreferencesScreen() {
 
   if (!unlocked) {
     return (
-      <SafeAreaView style={s.root} edges={['top']}>
+      <Screen style={s.root} edges={['top']}>
         <View style={s.lockedWrap}>
           <Feather name="lock" size={28} color={colors.textMuted} />
           <Text style={s.lockedTxt}>{authFailed ? 'Authentication failed.' : 'Authenticating…'}</Text>
@@ -114,12 +114,12 @@ export default function QuestPreferencesScreen() {
             </Pressable>
           )}
         </View>
-      </SafeAreaView>
+      </Screen>
     );
   }
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <Screen style={s.root} edges={['top']}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.back}>
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
@@ -255,7 +255,7 @@ export default function QuestPreferencesScreen() {
           <Text style={s.saveBtnTxt}>Save changes</Text>
         </Pressable>
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 }
 

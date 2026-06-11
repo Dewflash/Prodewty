@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, Pressable, Modal,
   TextInput, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Screen } from '../src/components/Screen';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../src/theme/colors';
@@ -73,7 +73,7 @@ export default function MilestonesScreen() {
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen style={s.safe}>
       <View style={s.header}>
         <Pressable onPress={() => router.back()} style={s.back}>
           <Feather name="arrow-left" size={22} color={colors.textPrimary} />
@@ -180,7 +180,7 @@ export default function MilestonesScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+    </Screen>
   );
 }
 
