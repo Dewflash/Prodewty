@@ -45,7 +45,11 @@ export default function RootLayout() {
   const rightToastY = useRef(new Animated.Value(-80)).current;
   const pathname    = usePathname();
   const pathnameRef = useRef(pathname);
-  useEffect(() => { pathnameRef.current = pathname; }, [pathname]);
+  useEffect(() => {
+    const leavingGame = pathnameRef.current.includes('/game') && !pathname.includes('/game');
+    pathnameRef.current = pathname;
+    if (leavingGame) checkState();
+  }, [pathname]);
 
   function triggerGemBanner() {
     setGemBanner(true);

@@ -1385,16 +1385,34 @@ export function performFullReset(archiveHistory: boolean = false): void {
   db.runSync(`DELETE FROM health_state WHERE id = 1`);
   db.runSync(`INSERT INTO health_state (id) VALUES (1)`);
 
-  // A full reset is a true blank slate — custom_moods/categories/restorative_activities
-  // are wiped and left empty. The onboarding flow re-populates them (it auto-triggers
-  // on the next launch because the account is now objectively empty).
+  // A full reset is a true blank slate — categories are NOT reseeded. The game is
+  // designed to require the user to add their own categories (via onboarding answers,
+  // which deriveAndApplyAnswers() turns into category rows, or manually). If onboarding
+  // is skipped, categories stays empty and quests/dungeons simply won't generate until
+  // the user adds categories themselves — that's intentional, not a bug.
   db.execSync(`DELETE FROM custom_moods`);
   db.execSync(`DELETE FROM categories`);
   db.execSync(`DELETE FROM restorative_activities`);
 
+  for (const a of DEFAULT_RESTORATIVE) {
+    db.runSync(
+      `INSERT OR IGNORE INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
+       VALUES (?, ?, ?, ?, ?, ?, 1)`,
+      a.name, a.desc, a.cost, a.e, a.p, a.m,
+    );
+  }
+
   // Clear completion (not the raw answers) — this is what re-arms the onboarding
   // trigger while preserving "retain your previous answers" for the re-run (§9).
   try { db.runSync(`UPDATE onboarding_answers SET completed_at = NULL WHERE id = 1`); } catch {}
+
+  // The cached Player Snapshot (quest_engine_state) is keyed off activity_logs
+  // count, not account identity — if it happens to match the post-reset log
+  // count (0), getOrRefreshSnapshot() would reuse the stale pre-reset snapshot
+  // (built from the now-replaced categories table) instead of recomputing.
+  // Wipe it so the next generateDailyContent() call computes fresh.
+  db.runSync(`DELETE FROM quest_engine_state WHERE id = 1`);
+  db.runSync(`INSERT INTO quest_engine_state (id) VALUES (1)`);
 }
 
 

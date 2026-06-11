@@ -383,11 +383,19 @@ export function drawQuestCandidates(snapshot: PlayerSnapshot): QuestCandidate[] 
 // produces at most one candidate per category, this guarantees no category
 // overlap between the two groups (and no two daily gates share a category).
 export function drawDailyPool(snapshot: PlayerSnapshot): { questCandidates: QuestCandidate[]; dungeonCandidates: QuestCandidate[] } {
-  const pool = weightedSample(buildCandidates(snapshot), QUEST_ENGINE_TUNING.candidate_pool_limit * 2);
-  return {
-    questCandidates: pool.slice(0, QUEST_ENGINE_TUNING.candidate_pool_limit),
-    dungeonCandidates: pool.slice(QUEST_ENGINE_TUNING.candidate_pool_limit, QUEST_ENGINE_TUNING.candidate_pool_limit * 2),
-  };
+  const candidates = buildCandidates(snapshot);
+  const pool = weightedSample(candidates, QUEST_ENGINE_TUNING.candidate_pool_limit * 2);
+  const questCandidates = pool.slice(0, QUEST_ENGINE_TUNING.candidate_pool_limit);
+  let dungeonCandidates = pool.slice(QUEST_ENGINE_TUNING.candidate_pool_limit, QUEST_ENGINE_TUNING.candidate_pool_limit * 2);
+
+  // Too few categories to fill both groups without overlap (e.g. 1-3 categories
+  // total) — redraw dungeons from the full pool, capped at 3, allowing overlap
+  // with quest categories rather than leaving dungeons empty.
+  if (dungeonCandidates.length === 0 && candidates.length > 0) {
+    dungeonCandidates = weightedSample(candidates, QUEST_ENGINE_TUNING.candidate_pool_limit);
+  }
+
+  return { questCandidates, dungeonCandidates };
 }
 
 // ─── Template fill ────────────────────────────────────────────────────────────

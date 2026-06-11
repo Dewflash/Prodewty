@@ -1002,7 +1002,14 @@ export function generateDailyContent(): void {
       );
     }
 
-    db.runSync(`UPDATE rpg_state SET last_daily_gen_date = ? WHERE id = 1`, today);
+    // Only stamp the gate if something was actually drawn. An empty pool means
+    // `categories` was empty at call time (e.g. right after a full reset, before
+    // onboarding repopulates it) — leave the gate open so the next focus (once
+    // categories exist) retries today instead of locking in zero quests/dungeons
+    // until tomorrow.
+    if (questCandidates.length > 0 || dungeonCandidates.length > 0) {
+      db.runSync(`UPDATE rpg_state SET last_daily_gen_date = ? WHERE id = 1`, today);
+    }
   } catch {}
 }
 
