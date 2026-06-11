@@ -1045,10 +1045,12 @@ export function completeQuest(questId: number, notes?: string): void {
 
 export function skipQuest(questId: number): void {
   db.runSync(`UPDATE quests SET status = 'skipped' WHERE id = ?`, questId);
+  triggerCurrencyRefresh();
 }
 
 export function deleteQuest(questId: number): void {
   db.runSync(`UPDATE quests SET status = 'deleted' WHERE id = ?`, questId);
+  triggerCurrencyRefresh();
 }
 
 // ─── Game log ─────────────────────────────────────────────────────────────────
@@ -1097,6 +1099,7 @@ export function getCompletedQuests(): Quest[] {
 
 export function reinstateQuest(questId: number): void {
   db.runSync(`UPDATE quests SET status = 'pending', accepted_at = NULL WHERE id = ?`, questId);
+  triggerCurrencyRefresh();
 }
 
 export function purchaseHPBoost(): 'ok' | 'insufficient_coins' | 'hp_not_critical' {

@@ -1,5 +1,6 @@
 import { Audio } from 'expo-av';
 import { getBGMSelection } from '../db/settings';
+import { getCustomBGM } from './bgmCustom';
 
 const SOUNDS = {
   logging:                      require('../../assets/sounds/logging.wav'),
@@ -75,7 +76,8 @@ export async function switchBGM(zone: string): Promise<void> {
   if (currentZone === zone) return;
 
   const trackIndex = getBGMSelection(zone);
-  const file = BGM_TRACKS[zone]?.[trackIndex] ?? null;
+  const customUri = getCustomBGM(zone, trackIndex);
+  const file = customUri ? { uri: customUri } : (BGM_TRACKS[zone]?.[trackIndex] ?? null);
 
   if (bgmSound) {
     try { await bgmSound.stopAsync(); await bgmSound.unloadAsync(); } catch {}

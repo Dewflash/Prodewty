@@ -10,6 +10,7 @@ import { spacing, radius } from '../src/theme/spacing';
 import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
 import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
+import { pickCustomBGM, removeCustomBGM, getCustomBGMName } from '../src/services/bgmCustom';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 
@@ -25,6 +26,12 @@ export default function SettingsScreen() {
   const [selections, setSelections] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     for (const z of BGM_ZONES) init[z.zone] = getBGMSelection(z.zone);
+    return init;
+  });
+
+  const [customNames, setCustomNames] = useState<Record<string, string | null>>(() => {
+    const init: Record<string, string | null> = {};
+    for (const z of BGM_ZONES) for (let i = 0; i < z.tracks.length; i++) init[`${z.zone}_${i}`] = getCustomBGMName(z.zone, i);
     return init;
   });
 
@@ -44,6 +51,19 @@ export default function SettingsScreen() {
     setBGMSelection(zone, index);
     setSelections(prev => ({ ...prev, [zone]: index }));
     if (getCurrentBGMZone() === zone) void reloadCurrentBGM();
+  }
+
+  async function handleUploadBGM(zone: string, slot: number) {
+    const uri = await pickCustomBGM(zone, slot);
+    if (!uri) return;
+    setCustomNames(prev => ({ ...prev, [`${zone}_${slot}`]: getCustomBGMName(zone, slot) }));
+    if (getCurrentBGMZone() === zone && selections[zone] === slot) void reloadCurrentBGM();
+  }
+
+  function handleRemoveBGM(zone: string, slot: number) {
+    removeCustomBGM(zone, slot);
+    setCustomNames(prev => ({ ...prev, [`${zone}_${slot}`]: null }));
+    if (getCurrentBGMZone() === zone && selections[zone] === slot) void reloadCurrentBGM();
   }
 
   function saveBibleXP(val: string) {
@@ -107,25 +127,35 @@ export default function SettingsScreen() {
 
         {/* ── BGM ── */}
         <Text style={s.sectionLabel}>BACKGROUND MUSIC</Text>
-        <Text style={s.sectionHint}>Selections saved — tracks will play once audio files are added.</Text>
+        <Text style={s.sectionHint}>Selections saved — upload your own track per slot, or it'll play once bundled audio is added.</Text>
         {BGM_ZONES.map(({ zone, label, tracks }) => (
           <View key={zone} style={s.zoneCard}>
             <Text style={s.zoneLabel}>{label}</Text>
-            <View style={s.trackRow}>
-              {tracks.map((trackLabel, i) => {
-                const selected = selections[zone] === i;
-                return (
+            {tracks.map((trackLabel, i) => {
+              const selected = selections[zone] === i;
+              const customName = customNames[`${zone}_${i}`];
+              return (
+                <View key={i} style={s.trackItem}>
                   <Pressable
-                    key={i}
                     style={[s.trackBtn, selected && s.trackBtnOn]}
                     onPress={() => handleSelect(zone, i)}
                   >
                     <View style={[s.radio, selected && s.radioOn]} />
-                    <Text style={[s.trackLabel, selected && s.trackLabelOn]}>{trackLabel}</Text>
+                    <Text style={[s.trackLabel, selected && s.trackLabelOn]} numberOfLines={1}>
+                      {customName ?? trackLabel}
+                    </Text>
                   </Pressable>
-                );
-              })}
-            </View>
+                  <Pressable style={s.iconBtn} onPress={() => handleUploadBGM(zone, i)}>
+                    <Feather name="upload" size={14} color={colors.textMuted} />
+                  </Pressable>
+                  {customName && (
+                    <Pressable style={s.iconBtn} onPress={() => handleRemoveBGM(zone, i)}>
+                      <Feather name="x" size={14} color={colors.textMuted} />
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
           </View>
         ))}
 
@@ -235,13 +265,14 @@ const s = StyleSheet.create({
     padding: spacing.md, gap: spacing.sm,
   },
   zoneLabel:    { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.textPrimary },
-  trackRow:     { flexDirection: 'row', gap: spacing.sm },
+  trackItem:    { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   trackBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 6 },
   trackBtnOn:   { borderColor: colors.primary, backgroundColor: 'rgba(56,189,248,0.08)' },
   radio:        { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: colors.textMuted },
   radioOn:      { borderColor: colors.primary, backgroundColor: colors.primary },
   trackLabel:   { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, flex: 1 },
   trackLabelOn: { color: colors.primary },
+  iconBtn:      { borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: 6 },
 
   // Field (bible XP + currency)
   fieldCard: {
