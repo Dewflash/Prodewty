@@ -4,6 +4,7 @@ import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
@@ -12,6 +13,7 @@ import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
 import { pickCustomBGM, removeCustomBGM, getCustomBGMName, clearAllCustomBGM } from '../src/services/bgmCustom';
 import { pickCustomWallpaper, removeCustomWallpaper, getCustomWallpaper } from '../src/services/wallpaperCustom';
+import { exportData, importData } from '../src/services/dataBackup';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
 
@@ -124,6 +126,39 @@ export default function SettingsScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete it all', style: 'destructive', onPress: () => confirmAndWipe(false) },
         { text: 'Archive my history', onPress: () => confirmAndWipe(true) },
+      ],
+    );
+  }
+
+  async function handleExportData() {
+    try {
+      const { tableCount } = await exportData();
+      Alert.alert('Backup Exported', `Saved a snapshot of ${tableCount} tables. Choose where to save it from the share sheet.`);
+    } catch {
+      Alert.alert('Export Failed', 'Could not create a backup file.');
+    }
+  }
+
+  async function handleImportData() {
+    const result = await DocumentPicker.getDocumentAsync({ type: 'application/json' });
+    if (result.canceled || !result.assets?.[0]) return;
+    const uri = result.assets[0].uri;
+
+    Alert.alert(
+      'Restore Data',
+      'This replaces your current activity logs, RPG progress, inventory, and other saved data with the contents of this file. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore', style: 'destructive', onPress: async () => {
+            try {
+              const { restored } = await importData(uri);
+              Alert.alert('Data Restored', `Restored ${restored.length} tables. Close and reopen the app for all changes to take effect.`);
+            } catch {
+              Alert.alert('Restore Failed', 'Could not read or apply that backup file.');
+            }
+          },
+        },
       ],
     );
   }
@@ -252,6 +287,18 @@ export default function SettingsScreen() {
         <Pressable style={s.fieldCard} onPress={() => router.push('/quest-preferences')}>
           <Text style={s.fieldLabel}>Quest Preferences</Text>
           <Feather name="chevron-right" size={16} color={colors.textMuted} />
+        </Pressable>
+
+        {/* ── Backup & Restore ── */}
+        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>BACKUP & RESTORE</Text>
+        <Text style={s.sectionHint}>Export a JSON snapshot of your logs, RPG progress, inventory, and other saved data — useful before making big changes, or to move data between schema versions.</Text>
+        <Pressable style={s.fieldCard} onPress={handleExportData}>
+          <Text style={s.fieldLabel}>Export data</Text>
+          <Feather name="download" size={16} color={colors.textMuted} />
+        </Pressable>
+        <Pressable style={[s.fieldCard, { marginTop: spacing.sm }]} onPress={handleImportData}>
+          <Text style={s.fieldLabel}>Import data</Text>
+          <Feather name="upload" size={16} color={colors.textMuted} />
         </Pressable>
 
         {/* ── Danger Zone ── */}
