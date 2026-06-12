@@ -39,7 +39,7 @@ export const WEAPON_SLOTS: { key: string; label: string }[] = [
   { key: 'scepter',  label: 'Scepter'  },
 ];
 
-export const STAT_ABBRS      = ['STR', 'AGI', 'FOC', 'WIS', 'SPR', 'PER', 'STA'];
+export const STAT_ABBRS      = ['STR', 'AGI', 'FOC', 'WIS', 'SPR', 'PER', 'RES'];
 export const STAT_KEYS_SHORT = ['str', 'agi', 'foc', 'wis', 'spr', 'per', 'sta'];
 
 const RARITY_RANK: Record<string, number> = {

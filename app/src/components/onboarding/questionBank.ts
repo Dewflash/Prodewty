@@ -37,7 +37,17 @@ export const Q2_OPTIONS: { key: NonNullable<OnboardingAnswers['q2_exercise']>; l
   { key: 'never_want_to', label: "Never, but I'd like to" },
 ];
 
-export const Q3_OPTIONS = ['Guitar', 'Piano', 'Writing', 'Drawing', 'Production', 'Other'];
+export const Q3_CLUSTERS: { cluster: string; hobbies: string[] }[] = [
+  { cluster: 'Music & Sound', hobbies: ['Guitar', 'Piano', 'Drums', 'Singing', 'Music Production'] },
+  { cluster: 'Visual Arts & Crafts', hobbies: ['Drawing', 'Painting', 'Crochet & Knitting', 'Sewing & Textiles', 'Pottery & Ceramics', 'Photography'] },
+  { cluster: 'Writing & Words', hobbies: ['Creative Writing', 'Poetry', 'Content Writing'] },
+  { cluster: 'Movement & Performance', hobbies: ['Dance', 'Yoga & Pilates', 'Martial Arts', 'Acting & Theatre'] },
+  { cluster: 'Culinary', hobbies: ['Baking', 'Cooking'] },
+  { cluster: 'Games & Making', hobbies: ['Chess & Strategy Games', 'Tabletop & Board Games', 'Woodworking & Model Building', 'Gardening'] },
+];
+export const Q3_OTHER = 'Other';
+export const Q3_CAP = 3;
+export const q3OtherKey = (cluster: string) => `${cluster}:Other`;
 
 export const Q4_OPTIONS = [
   'Movies/TV', 'Gaming', 'Music', 'Reading', 'Socializing', 'Walking/Outdoors',

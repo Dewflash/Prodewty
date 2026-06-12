@@ -16,16 +16,23 @@ import { getRPGState } from './rpg';
 
 // DB storage keys for the 7 attributes (categories.attribute / VALID_ATTRIBUTES in game.ts).
 // Spec §2 uses the friendly names "perception"/"stamina" — they store as per_stat/sta_stat.
+// Note: in UI, 'resilience' displays as "Spirituality"/SPR, and 'sta_stat' displays as
+// "Resilience"/RES (renamed 2026-06-12) — the DB key names themselves are unchanged.
 export type AttributeKey = 'strength' | 'wisdom' | 'focus' | 'agility' | 'resilience' | 'per_stat' | 'sta_stat';
 
 export type Q1bIntent = 'deeper' | 'both' | 'branch';
+
+// Q3 pick — `key` is either a named-hobby key (matches Q3_MAP) or a cluster
+// sentinel "<Cluster>:Other"; `custom` holds the user-typed hobby name when
+// `key` ends in ":Other".
+export type Q3Pick = { key: string; custom?: string };
 
 export type OnboardingAnswers = {
   q1_fields?: string[];          // Q1 — up to 2 cluster-domain picks (or 'Other')
   q1b_intent?: Q1bIntent;        // Q1b — 3-way intent axis
   q1b_subtopic?: string;         // Q1b follow-up — only when intent is 'deeper' or 'both'
   q2_exercise?: 'daily' | 'few_times_week' | 'rarely' | 'never_want_to';
-  q3_creative?: string | null;   // 'Guitar' | 'Piano' | 'Writing' | 'Drawing' | 'Production' | 'Other' | null
+  q3_creative?: Q3Pick[];        // Q3 — up to Q3_CAP (3) hobby/practice picks
   q4_unwind?: string[];          // multi-select — feeds restoratives, not categories
   q5_track?: string[];           // multi-select, cap ~5 — feeds categories via lookup table
   q6_hours_per_day?: number;     // 0.5–6+ in 0.5 steps — base-XP calibration input
@@ -202,17 +209,83 @@ const Q2_MAP: Record<string, InterestTagMapping> = {
   },
 };
 
-// ─── Lookup table — Q3 creative/instrument (tier_base 11 × 1.0 — an explicit
-// "yes I do this" answer is full-commitment signal) ───────────────────────────
+// ─── Lookup table — Q3 hobbies/practices (tier_base 11 × 1.0 — an explicit
+// "yes I do this" answer is full-commitment signal). Keys are the hobby labels
+// shown in Q3_CLUSTERS (questionBank.ts) ────────────────────────────────────
 
 const Q3_MAP: Record<string, InterestTagMapping> = {
-  'Guitar':     { categoryName: 'Guitar Practice',   weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice guitar (15–20 min)' },
-  'Piano':      { categoryName: 'Piano Practice',    weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice piano (15–20 min)' },
-  'Writing':    { categoryName: 'Creative Writing',  weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Write creatively for a bit (15–20 min)' },
-  'Drawing':    { categoryName: 'Drawing Practice',  weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Sketch or draw freely (15–20 min)' },
-  'Production': { categoryName: 'Music Production',  weight: 11, attribute: 'focus',      isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Work on a music production project (20–30 min)' },
-  'Other':      { categoryName: 'Creative Practice', weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: 'Spend time on your creative practice (15–20 min)' },
+  // Music & Sound
+  'Guitar':           { categoryName: 'Guitar Practice',     weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice guitar (15–20 min)' },
+  'Piano':            { categoryName: 'Piano Practice',      weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice piano (15–20 min)' },
+  'Drums':            { categoryName: 'Drums Practice',      weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice drums (15–20 min)' },
+  'Singing':          { categoryName: 'Vocal Practice',      weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Spend time on vocal/singing practice (15–20 min)' },
+  'Music Production': { categoryName: 'Music Production',    weight: 11, attribute: 'focus',      isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Work on a music production project (20–30 min)' },
+  // Visual Arts & Crafts
+  'Drawing':          { categoryName: 'Drawing Practice',    weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Sketch or draw freely (15–20 min)' },
+  'Painting':         { categoryName: 'Painting Practice',   weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Spend time painting (20–30 min)' },
+  'Crochet & Knitting': { categoryName: 'Crochet & Knitting', weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Crochet or knit for a bit (15–20 min)' },
+  'Sewing & Textiles': { categoryName: 'Sewing & Textiles',  weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Work on a sewing or textile project (20–30 min)' },
+  'Pottery & Ceramics': { categoryName: 'Pottery & Ceramics', weight: 11, attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Spend time on pottery or ceramics (20–30 min)' },
+  'Photography':      { categoryName: 'Photography Practice', weight: 11, attribute: 'per_stat',  isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Go shoot or edit photos (15–20 min)' },
+  // Writing & Words
+  'Creative Writing': { categoryName: 'Creative Writing',    weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Write creatively for a bit (15–20 min)' },
+  'Poetry':           { categoryName: 'Poetry Practice',     weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Write or work on a poem (15 min)' },
+  'Content Writing':  { categoryName: 'Content Writing',     weight: 11, attribute: 'focus',      isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Write or edit a piece of content (20–30 min)' },
+  // Movement & Performance
+  'Dance':            { categoryName: 'Dance Practice',      weight: 11, attribute: 'agility',    isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Practice a dance routine or freestyle (20–30 min)' },
+  'Yoga & Pilates':   { categoryName: 'Yoga & Pilates',      weight: 11, attribute: 'resilience', isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Do a yoga or pilates session (20–30 min)' },
+  'Martial Arts':     { categoryName: 'Martial Arts Practice', weight: 11, attribute: 'agility',  isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Train martial arts technique (20–30 min)' },
+  'Acting & Theatre': { categoryName: 'Acting & Theatre',    weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Rehearse or work on a scene/script (20–30 min)' },
+  // Culinary
+  'Baking':           { categoryName: 'Baking Practice',     weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Bake something (30–45 min)' },
+  'Cooking':          { categoryName: 'Cooking Practice',    weight: 11, attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Cook with intention or try a new recipe (20–30 min)' },
+  // Games & Making
+  'Chess & Strategy Games': { categoryName: 'Chess & Strategy', weight: 11, attribute: 'focus',   isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Play or study a strategy game (15–20 min)' },
+  'Tabletop & Board Games': { categoryName: 'Tabletop Games', weight: 11, attribute: 'per_stat',  isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Play or prep a tabletop/board game (20–30 min)' },
+  'Woodworking & Model Building': { categoryName: 'Woodworking & Building', weight: 11, attribute: 'agility', isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Work on a woodworking or model project (20–30 min)' },
+  'Gardening':        { categoryName: 'Gardening Practice',  weight: 11, attribute: 'resilience', isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice'], loggableTemplate: 'Spend time in the garden (15–20 min)' },
 };
+
+// ─── Lookup table — Q3 per-cluster "Other" defaults. Used when a Q3 pick's key
+// is "<Cluster>:Other"; categoryName/loggableTemplate are derived from the
+// user-typed custom hobby name at apply-time ──────────────────────────────────
+
+type Q3OtherDefault = {
+  attribute: AttributeKey;
+  isPhysical: 0 | 1;
+  isRecreational: 0 | 1;
+  questThemeTags: string[];
+  loggableTemplate: (name: string) => string;
+};
+
+const Q3_OTHER_DEFAULTS: Record<string, Q3OtherDefault> = {
+  'Music & Sound':          { attribute: 'agility',    isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Practice ${name} (15–20 min)` },
+  'Visual Arts & Crafts':   { attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Spend time on ${name} (15–20 min)` },
+  'Writing & Words':        { attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Spend time writing — ${name} (15–20 min)` },
+  'Movement & Performance': { attribute: 'agility',    isPhysical: 1, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Spend time on ${name} (20–30 min)` },
+  'Culinary':               { attribute: 'resilience', isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Spend time on ${name} (20–30 min)` },
+  'Games & Making':         { attribute: 'focus',      isPhysical: 0, isRecreational: 1, questThemeTags: ['creative-practice', 'discovery'], loggableTemplate: name => `Spend time on ${name} (15–20 min)` },
+};
+
+const Q3_OTHER_SUFFIX = ':Other';
+
+function deriveQ3(answers: OnboardingAnswers): InterestTagMapping[] {
+  const picks = Array.isArray(answers.q3_creative) ? answers.q3_creative : [];
+  return picks.map(({ key, custom }) => {
+    if (key.endsWith(Q3_OTHER_SUFFIX)) {
+      const cluster = key.slice(0, -Q3_OTHER_SUFFIX.length);
+      const def = Q3_OTHER_DEFAULTS[cluster];
+      if (!def) return null;
+      const name = custom?.trim() || `${cluster} Practice`;
+      return {
+        categoryName: name, weight: 11, attribute: def.attribute,
+        isPhysical: def.isPhysical, isRecreational: def.isRecreational,
+        questThemeTags: def.questThemeTags, loggableTemplate: def.loggableTemplate(name),
+      };
+    }
+    return Q3_MAP[key] ?? null;
+  }).filter((m): m is InterestTagMapping => !!m);
+}
 
 // ─── Lookup table — Q5 "what else do you want to track" (tier_base 9 × 1.0 —
 // picking it FROM the curated list IS the commitment signal, not aspirational) ──
@@ -269,7 +342,7 @@ export function deriveAndApplyAnswers(answers: OnboardingAnswers): void {
   const mappings: InterestTagMapping[] = [
     ...deriveQ1b(answers),
     ...(answers.q2_exercise ? [Q2_MAP[answers.q2_exercise]] : []),
-    ...(answers.q3_creative ? [Q3_MAP[answers.q3_creative]] : []),
+    ...deriveQ3(answers),
     ...(answers.q5_track ?? []).map(tag => Q5_MAP[tag]).filter((m): m is InterestTagMapping => !!m),
   ].filter((m): m is InterestTagMapping => !!m);
 

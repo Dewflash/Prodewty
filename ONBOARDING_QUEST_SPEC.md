@@ -102,8 +102,29 @@ binary pick, and the mechanism for each is unambiguous and maps 1:1 onto existin
 `Daily` / `A few times a week` / `Rarely` / `Never, but I'd like to`
 → Workout-type category, weight scales with answer (18/13/8/6), last option also tagged `discovery`
 
-### Q3 — "Do you play music or do creative work?" (yes/no → tag pick if yes)
-`Guitar` / `Piano` / `Writing` / `Drawing` / `Production` / `Other`
+### Q3 — "What hobbies or skills do you actively practice?" (multi-select, max 3)
+
+REVISED 2026-06-12 — generalized from the old music/creative-only yes/no into a
+categorized hobby picker, since the underlying mechanism (a weight-11 "active
+practice" category) generalizes to any hobby, not just music/art. Options are
+grouped into 6 clusters (clustering is just UI organization here — unlike Q1,
+each hobby gets its own dedicated category, not a shared cluster mapping):
+
+| Cluster | Hobbies in it |
+|---|---|
+| **Music & Sound** | Guitar · Piano · Drums · Singing · Music Production |
+| **Visual Arts & Crafts** | Drawing · Painting · Crochet & Knitting · Sewing & Textiles · Pottery & Ceramics · Photography |
+| **Writing & Words** | Creative Writing · Poetry · Content Writing |
+| **Movement & Performance** | Dance · Yoga & Pilates · Martial Arts · Acting & Theatre |
+| **Culinary** | Baking · Cooking |
+| **Games & Making** | Chess & Strategy Games · Tabletop & Board Games · Woodworking & Model Building · Gardening |
+
+Each cluster also has its own `Other` chip. Picking it reveals a text input for
+a custom hobby name — that name is shown on-screen (during onboarding and later
+in Quest Preferences, pre-filled and editable), and drives a dedicated category
+exactly like a named hobby, using that cluster's "Other" defaults (attribute,
+phys/rec, theme tags, template) with the custom name substituted into the
+category name and loggable template. See §4 for both lookup tables.
 
 ### Q4 — "How do you usually unwind?" (multi-select — feeds restoratives, not categories)
 `Movies/TV` · `Gaming` · `Music` · `Reading` · `Socializing` · `Walking/Outdoors` ·
@@ -184,7 +205,7 @@ weight = round(tier_base × intent_multiplier)     // clamped to the existing 1-
 |---|---|---|
 | Q2 (exercise) | 16 | Physical activity dominates real-world logging — matches Workout=18 in defaults |
 | Q1b "Go deeper" subtopic | 14 | Explicitly-declared priority (compulsory-weekly signal) |
-| Q3 (creative/instrument) | 11 | Named hobby — meaningful but secondary to declared priorities |
+| Q3 (hobby/practice) | 11 | Named hobby — meaningful but secondary to declared priorities |
 | Q5 (tracking wishlist) | 9 | Real intent, but more exploratory by nature |
 | Q1b "A bit of both" subtopic | 8 | Same subject as "go deeper," deliberately softened |
 
@@ -247,17 +268,46 @@ the *other* question sources below, where no prior numbers existed yet)
 | `Rarely` | Workout | strength | 1/0 | (their own logged description, scaled) | 8 | `physical-stretch`,`discovery` |
 | `Never, but I'd like to` | Workout | strength | 1/0 | (their own logged description, scaled) | 6 | `discovery` |
 
-#### Q3 — creative/instrument pick (yes/no → tag; tier_base 11 × 1.0 — an explicit
-"yes I do this" answer is full-commitment signal, weight = 11 across the board)
+#### Q3 — hobby/practice picks (multi-select, max 3; tier_base 11 × 1.0 — an explicit
+"I actively do this" answer is full-commitment signal, weight = 11 across the board)
 
-| Answer | categoryName | attribute | phys/rec | loggableTemplate | weight | questThemeTags |
+| Hobby | categoryName | attribute | phys/rec | loggableTemplate | weight | questThemeTags |
 |---|---|---|---|---|---|---|
 | `Guitar` | Guitar Practice | agility | 0/1 | "Practice guitar (15–20 min)" | 11 | `creative-practice` |
 | `Piano` | Piano Practice | agility | 0/1 | "Practice piano (15–20 min)" | 11 | `creative-practice` |
-| `Writing` | Creative Writing | resilience | 0/1 | "Write creatively for a bit (15–20 min)" | 11 | `creative-practice` |
+| `Drums` | Drums Practice | agility | 0/1 | "Practice drums (15–20 min)" | 11 | `creative-practice` |
+| `Singing` | Vocal Practice | resilience | 0/1 | "Spend time on vocal/singing practice (15–20 min)" | 11 | `creative-practice` |
+| `Music Production` | Music Production | focus | 0/1 | "Work on a music production project (20–30 min)" | 11 | `creative-practice` |
 | `Drawing` | Drawing Practice | resilience | 0/1 | "Sketch or draw freely (15–20 min)" | 11 | `creative-practice` |
-| `Production` | Music Production | focus | 0/1 | "Work on a music production project (20–30 min)" | 11 | `creative-practice` |
-| `Other` | Creative Practice | resilience | 0/1 | "Spend time on your creative practice (15–20 min)" | 11 | `creative-practice`,`discovery` |
+| `Painting` | Painting Practice | resilience | 0/1 | "Spend time painting (20–30 min)" | 11 | `creative-practice` |
+| `Crochet & Knitting` | Crochet & Knitting | agility | 0/1 | "Crochet or knit for a bit (15–20 min)" | 11 | `creative-practice` |
+| `Sewing & Textiles` | Sewing & Textiles | agility | 0/1 | "Work on a sewing or textile project (20–30 min)" | 11 | `creative-practice` |
+| `Pottery & Ceramics` | Pottery & Ceramics | agility | 0/1 | "Spend time on pottery or ceramics (20–30 min)" | 11 | `creative-practice` |
+| `Photography` | Photography Practice | per_stat | 0/1 | "Go shoot or edit photos (15–20 min)" | 11 | `creative-practice` |
+| `Creative Writing` | Creative Writing | resilience | 0/1 | "Write creatively for a bit (15–20 min)" | 11 | `creative-practice` |
+| `Poetry` | Poetry Practice | resilience | 0/1 | "Write or work on a poem (15 min)" | 11 | `creative-practice` |
+| `Content Writing` | Content Writing | focus | 0/1 | "Write or edit a piece of content (20–30 min)" | 11 | `creative-practice` |
+| `Dance` | Dance Practice | agility | 1/1 | "Practice a dance routine or freestyle (20–30 min)" | 11 | `creative-practice` |
+| `Yoga & Pilates` | Yoga & Pilates | resilience | 1/1 | "Do a yoga or pilates session (20–30 min)" | 11 | `creative-practice` |
+| `Martial Arts` | Martial Arts Practice | agility | 1/1 | "Train martial arts technique (20–30 min)" | 11 | `creative-practice` |
+| `Acting & Theatre` | Acting & Theatre | resilience | 0/1 | "Rehearse or work on a scene/script (20–30 min)" | 11 | `creative-practice` |
+| `Baking` | Baking Practice | resilience | 0/1 | "Bake something (30–45 min)" | 11 | `creative-practice` |
+| `Cooking` | Cooking Practice | resilience | 0/1 | "Cook with intention or try a new recipe (20–30 min)" | 11 | `creative-practice` |
+| `Chess & Strategy Games` | Chess & Strategy | focus | 0/1 | "Play or study a strategy game (15–20 min)" | 11 | `creative-practice` |
+| `Tabletop & Board Games` | Tabletop Games | per_stat | 0/1 | "Play or prep a tabletop/board game (20–30 min)" | 11 | `creative-practice` |
+| `Woodworking & Model Building` | Woodworking & Building | agility | 1/1 | "Work on a woodworking or model project (20–30 min)" | 11 | `creative-practice` |
+| `Gardening` | Gardening Practice | resilience | 1/1 | "Spend time in the garden (15–20 min)" | 11 | `creative-practice` |
+
+##### Q3 "Other" per-cluster defaults (custom hobby name substituted as `{name}`; categoryName = the typed name, or "`<Cluster> Practice`" if left blank)
+
+| Cluster | attribute | phys/rec | questThemeTags | loggableTemplate |
+|---|---|---|---|---|
+| Music & Sound | agility | 0/1 | `creative-practice`,`discovery` | "Practice {name} (15–20 min)" |
+| Visual Arts & Crafts | resilience | 0/1 | `creative-practice`,`discovery` | "Spend time on {name} (15–20 min)" |
+| Writing & Words | resilience | 0/1 | `creative-practice`,`discovery` | "Spend time writing — {name} (15–20 min)" |
+| Movement & Performance | agility | 1/1 | `creative-practice`,`discovery` | "Spend time on {name} (20–30 min)" |
+| Culinary | resilience | 0/1 | `creative-practice`,`discovery` | "Spend time on {name} (20–30 min)" |
+| Games & Making | focus | 0/1 | `creative-practice`,`discovery` | "Spend time on {name} (15–20 min)" |
 
 #### Q5 — "what else do you want to track" (multi-select from curated list; tier_base
 9 × 1.0 — picking it FROM the list is itself the commitment signal, not aspirational,
@@ -282,8 +332,10 @@ so no softening multiplier; weight = 9 across the board)
 | `Home/DIY projects` | Home Projects | agility | 1/0 | "Work on a home or DIY project (20–30 min)" | 9 | `discovery`,`organization` |
 | `Travel planning` | Travel Planning | perception | 0/0 | "Spend time planning or researching a trip (10–15 min)" | 9 | `discovery` |
 
-**Total: 12 Q1b subtopics (×2 intent variants = 24 logical mappings) + 4 Q2 + 6 Q3
-+ 16 Q5 = 50 entries, covering every single answer option in the §3 question bank.**
+**Total: 12 Q1b subtopics (×2 intent variants = 24 logical mappings) + 4 Q2 + 24 Q3
+(across 6 clusters) + 6 Q3 "Other" cluster defaults + 16 Q5 = 74 entries, covering
+every single answer option in the §3 question bank (Q3 revised 2026-06-12 from a
+6-entry music/creative pick to a 6-cluster categorized hobby picker, max 3 picks).**
 Two earlier worked samples were reconciled to the now-locked formula: Market News
 13→14 (Go-deeper tier_base 14×1.0), Side Projects 11→9 (Q5 tier_base 9×1.0 — it's
 no longer special-cased above the rest of the Q5 list).
@@ -1162,3 +1214,38 @@ last_daily_gen_date TEXT`; deletes the 5 old templates + their runs; deletes
 errors — `Rarity`/`RARITY_COLOR`/`RARITY_BG` not found — left untouched, see
 `[[demo_and_customisation]]`). No runtime/simulator testing performed yet for
 this feature.
+
+## 18. AS-BUILT LOG — Q3 redesign: categorized hobby/practice picker, 2026-06-12
+
+**What changed**: Q3 (`onboarding_answers.q3_creative`) went from a single
+yes/no music/creative pick (6 options) to a multi-select hobby picker capped
+at 3, organized into 6 clusters (Music & Sound, Visual Arts & Crafts, Writing
+& Words, Movement & Performance, Culinary, Games & Making — 24 named hobbies
+total). Each cluster has its own `Other` chip; picking it reveals a text input
+for a custom hobby name.
+
+**Type change**: `q3_creative?: string | null` → `q3_creative?: Q3Pick[]`
+where `Q3Pick = { key: string; custom?: string }`. `key` is either a Q3_MAP
+hobby key or a cluster sentinel `"<Cluster>:Other"`; `custom` holds the typed
+name for `:Other` picks. `src/db/onboarding.ts`'s `deriveQ3()` resolves both
+forms into `InterestTagMapping`s — named hobbies via the expanded `Q3_MAP`,
+`:Other` picks via `Q3_OTHER_DEFAULTS[cluster]` with the custom name (or
+`"<Cluster> Practice"` if left blank) substituted into `categoryName` and
+`loggableTemplate`. Both feed the same additive, dedup-by-categoryName path in
+`deriveAndApplyAnswers` as every other Q1b/Q2/Q5 mapping — no special-casing.
+
+**Backward compatibility**: pre-redesign saved answers may have `q3_creative`
+as a string or `null`. `deriveQ3()` and both UI screens guard with
+`Array.isArray(answers.q3_creative) ? answers.q3_creative : []`, so old values
+are silently ignored (no crash, no migration) — acceptable since this is local
+dev/test data, not production user data.
+
+**UI**: `app/onboarding.tsx` and `app/quest-preferences.tsx` both render
+`Q3_CLUSTERS` (questionBank.ts) the same way Q1 renders `Q1_CLUSTERS` —
+per-cluster chip groups plus an `Other` chip; selecting `Other` reveals a
+`TextInput` (new `customInput` style) bound to that pick's `custom` field, so
+the typed name is visible immediately and pre-filled/editable later in Quest
+Preferences.
+
+**Verification**: `npx tsc --noEmit` clean. No runtime/simulator testing
+performed yet for this feature.

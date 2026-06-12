@@ -8,7 +8,10 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fonts, fontSize } from '../theme/typography';
 import { spacing, radius } from '../theme/spacing';
-import { addCategory, deleteCategory, getPastHistoryCategories, updateCategoryWeight, type DBCategory } from '../db/categories';
+import {
+  addCategory, deleteCategory, getPastHistoryCategories, renameCategory,
+  updateCategoryAttribute, updateCategoryColor, updateCategoryFlags, updateCategoryWeight, type DBCategory,
+} from '../db/categories';
 
 type Props = {
   categories: DBCategory[];
@@ -27,14 +30,16 @@ export type CategoryGridHandle = {
 const ATTRIBUTES = ['strength', 'wisdom', 'focus', 'agility', 'resilience', 'per_stat', 'sta_stat'] as const;
 const ATTR_LABELS: Record<string, string> = {
   strength: 'STR', wisdom: 'WIS', focus: 'FOC',
-  agility: 'AGI', resilience: 'SPR', per_stat: 'PER', sta_stat: 'STA',
+  agility: 'AGI', resilience: 'SPR', per_stat: 'PER', sta_stat: 'RES',
 };
 
+// Ordered as a hue gradient (red → orange → yellow → green → cyan → blue → violet → pink),
+// with the neutral slate swatch tacked on at the end.
 const COLOR_PALETTE = [
-  '#38BDF8', '#34D399', '#A855F7', '#F97316',
-  '#FBBF24', '#EC4899', '#EF4444', '#3B82F6',
-  '#10B981', '#8B5CF6', '#F59E0B', '#06B6D4',
-  '#64748B', '#6366F1', '#14B8A6', '#F43F5E',
+  '#EF4444', '#F97316', '#F59E0B', '#FBBF24',
+  '#34D399', '#10B981', '#14B8A6', '#06B6D4',
+  '#38BDF8', '#3B82F6', '#6366F1', '#8B5CF6',
+  '#A855F7', '#EC4899', '#F43F5E', '#64748B',
 ];
 
 export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function CategoryGrid({ categories, selected, onSelect, onAdded }, ref) {
@@ -43,6 +48,12 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
   const [manageVisible, setManageVisible] = useState(false);
   const [editingCatId, setEditingCatId] = useState<number | null>(null);
   const [editWeight, setEditWeight] = useState(3);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('#38BDF8');
+  const [editAttr, setEditAttr] = useState<typeof ATTRIBUTES[number]>('focus');
+  const [editIsPhysical, setEditIsPhysical] = useState(false);
+  const [editIsRecreational, setEditIsRecreational] = useState(false);
+  const [editIsCommunal, setEditIsCommunal] = useState(false);
   const [pastHistory, setPastHistory] = useState<DBCategory[]>([]);
   const [newName, setNewName] = useState('');
   const [newWeight, setNewWeight] = useState(3);
@@ -113,14 +124,56 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
     setManageVisible(true);
   }
 
-  function toggleEditWeight(cat: DBCategory) {
-    if (editingCatId === cat.id) { setEditingCatId(null); return; }
+  function toggleEdit(cat: DBCategory) {
+    if (editingCatId === cat.id) {
+      commitRename(cat);
+      setEditingCatId(null);
+      return;
+    }
     setEditWeight(cat.weight);
+    setEditName(cat.name);
+    setEditColor(cat.color || colors.primary);
+    setEditAttr(cat.attribute as typeof ATTRIBUTES[number]);
+    setEditIsPhysical(cat.is_physical === 1);
+    setEditIsRecreational(cat.is_recreational === 1);
+    setEditIsCommunal(cat.is_communal === 1);
     setEditingCatId(cat.id);
   }
 
   function commitEditWeight(cat: DBCategory, weight: number) {
     updateCategoryWeight(cat.name, weight);
+    onAdded();
+  }
+
+  function commitRename(cat: DBCategory) {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === cat.name) { setEditName(cat.name); return; }
+    const result = renameCategory(cat.name, trimmed);
+    if (result === 'duplicate') {
+      Alert.alert('Name already used', `An activity named "${trimmed}" already exists.`);
+      setEditName(cat.name);
+      return;
+    }
+    onAdded();
+  }
+
+  function commitEditColor(cat: DBCategory, color: string) {
+    updateCategoryColor(cat.name, color);
+    setEditColor(color);
+    onAdded();
+  }
+
+  function commitEditAttr(cat: DBCategory, attr: typeof ATTRIBUTES[number]) {
+    updateCategoryAttribute(cat.name, attr);
+    setEditAttr(attr);
+    onAdded();
+  }
+
+  function commitEditFlags(cat: DBCategory, flags: { isPhysical: boolean; isRecreational: boolean; isCommunal: boolean }) {
+    updateCategoryFlags(cat.name, flags.isPhysical, flags.isRecreational, flags.isCommunal);
+    setEditIsPhysical(flags.isPhysical);
+    setEditIsRecreational(flags.isRecreational);
+    setEditIsCommunal(flags.isCommunal);
     onAdded();
   }
 
@@ -266,7 +319,7 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
         <Pressable style={s.overlay} onPress={() => setManageVisible(false)} />
         <View style={s.historySheet}>
           <Text style={s.sheetTitle}>Manage Activities</Text>
-          <Text style={s.subLabel}>Tap the slider icon to adjust XP weight, or the trash icon to remove a tag. Tags you've logged before move to Past History instead of being erased.</Text>
+          <Text style={s.subLabel}>Tap the edit icon to rename, recolour, retune XP weight, change the attribute it feeds, or which health stats it boosts — or the trash icon to remove a tag. Tags you've logged before move to Past History instead of being erased.</Text>
           <ScrollView style={{ maxHeight: 360 }}>
             {categories.map(cat => (
               <View key={cat.id}>
@@ -275,29 +328,91 @@ export const CategoryGrid = forwardRef<CategoryGridHandle, Props>(function Categ
                   <Text style={[s.historyName, { flex: 1 }]} numberOfLines={1}>{cat.name}</Text>
                   <Text style={s.historyMeta}>w{editingCatId === cat.id ? editWeight : cat.weight}</Text>
                   {cat.used === 1 && <Text style={s.historyMeta}>used</Text>}
-                  <Pressable onPress={() => toggleEditWeight(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
-                    <Feather name="sliders" size={14} color={editingCatId === cat.id ? (cat.color || colors.primary) : colors.textMuted} />
+                  <Pressable onPress={() => toggleEdit(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
+                    <Feather name="edit-2" size={14} color={editingCatId === cat.id ? (cat.color || colors.primary) : colors.textMuted} />
                   </Pressable>
                   <Pressable onPress={() => handleDelete(cat)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} style={{ padding: 4 }}>
                     <Feather name="trash-2" size={14} color={colors.danger} />
                   </Pressable>
                 </View>
                 {editingCatId === cat.id && (
-                  <View style={[s.sliderRow, { paddingBottom: spacing.sm }]}>
-                    <Text style={s.sliderEdge}>1</Text>
-                    <Slider
-                      style={{ flex: 1 }}
-                      minimumValue={1}
-                      maximumValue={20}
-                      step={1}
-                      value={editWeight}
-                      onValueChange={setEditWeight}
-                      onSlidingComplete={(v) => commitEditWeight(cat, v)}
-                      minimumTrackTintColor={cat.color || colors.primary}
-                      maximumTrackTintColor={colors.border}
-                      thumbTintColor={cat.color || colors.primary}
+                  <View style={{ paddingBottom: spacing.sm, gap: spacing.sm }}>
+                    <TextInput
+                      style={s.input}
+                      placeholder="Name"
+                      placeholderTextColor={colors.textMuted}
+                      value={editName}
+                      onChangeText={setEditName}
+                      onBlur={() => commitRename(cat)}
+                      onSubmitEditing={() => commitRename(cat)}
                     />
-                    <Text style={s.sliderEdge}>20</Text>
+                    <Text style={s.subLabel}>Colour</Text>
+                    <View style={s.colorGrid}>
+                      {COLOR_PALETTE.map(c => (
+                        <Pressable key={c} onPress={() => commitEditColor(cat, c)}
+                          style={[s.swatch, { backgroundColor: c }, editColor === c && s.swatchSelected]}>
+                          {editColor === c && <Feather name="check" size={10} color={colors.bg} />}
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={s.sliderRow}>
+                      <Text style={s.sliderEdge}>1</Text>
+                      <Slider
+                        style={{ flex: 1 }}
+                        minimumValue={1}
+                        maximumValue={20}
+                        step={1}
+                        value={editWeight}
+                        onValueChange={setEditWeight}
+                        onSlidingComplete={(v) => commitEditWeight(cat, v)}
+                        minimumTrackTintColor={editColor}
+                        maximumTrackTintColor={colors.border}
+                        thumbTintColor={editColor}
+                      />
+                      <Text style={s.sliderEdge}>20</Text>
+                    </View>
+
+                    <View style={s.toggleRow}>
+                      <View>
+                        <Text style={s.toggleLabel}>Physical Activity</Text>
+                        <Text style={s.toggleHint}>+5 Physical health when logged</Text>
+                      </View>
+                      <Switch value={editIsPhysical} onValueChange={(v) => commitEditFlags(cat, { isPhysical: v, isRecreational: editIsRecreational, isCommunal: editIsCommunal })}
+                        trackColor={{ false: colors.border, true: colors.primary }} thumbColor={colors.textPrimary} />
+                    </View>
+                    <View style={s.toggleRow}>
+                      <View>
+                        <Text style={s.toggleLabel}>Recreational</Text>
+                        <Text style={s.toggleHint}>+5 Mental health when logged</Text>
+                      </View>
+                      <Switch value={editIsRecreational} onValueChange={(v) => commitEditFlags(cat, { isPhysical: editIsPhysical, isRecreational: v, isCommunal: editIsCommunal })}
+                        trackColor={{ false: colors.border, true: colors.accent }} thumbColor={colors.textPrimary} />
+                    </View>
+                    <View style={s.toggleRow}>
+                      <View>
+                        <Text style={s.toggleLabel}>Communal Activity</Text>
+                        <Text style={s.toggleHint}>+5 Emotional health when logged</Text>
+                      </View>
+                      <Switch value={editIsCommunal} onValueChange={(v) => commitEditFlags(cat, { isPhysical: editIsPhysical, isRecreational: editIsRecreational, isCommunal: v })}
+                        trackColor={{ false: colors.border, true: colors.statEmotional }} thumbColor={colors.textPrimary} />
+                    </View>
+
+                    <View style={s.labelRow}>
+                      <Text style={s.subLabel}>Attribute (for Game)</Text>
+                      <Pressable onPress={showAttributeInfo} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Feather name="info" size={14} color={colors.textMuted} />
+                      </Pressable>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={s.attrRow}>
+                        {ATTRIBUTES.map(attr => (
+                          <Pressable key={attr} onPress={() => commitEditAttr(cat, attr)}
+                            style={[s.attrPill, editAttr === attr && { borderColor: editColor }]}>
+                            <Text style={[s.attrText, editAttr === attr && { color: editColor }]}>{ATTR_LABELS[attr] ?? attr}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </ScrollView>
                   </View>
                 )}
               </View>

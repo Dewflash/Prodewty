@@ -47,7 +47,7 @@ export function titleForLevel(level: number): string {
 }
 
 // Maps activity category to the 7-stat it primarily raises (auto-increment layer)
-// str=Strength agi=Agility foc=Focus wis=Wisdom spr=Spirituality per=Perception sta=Stamina
+// str=Strength agi=Agility foc=Focus wis=Wisdom spr=Spirituality per=Perception sta=Resilience (displayed; DB key remains sta_stat/sta)
 export const CATEGORY_TO_STAT: Record<string, string> = {
   workout:  'str',
   coding:   'foc',

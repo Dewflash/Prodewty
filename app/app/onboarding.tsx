@@ -4,7 +4,7 @@
 // seeded by schema migrations) guarantees a working app even with zero answers.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import { completeOnboarding, getOnboardingAnswers, OnboardingAnswers } from '../
 import { Chip, OptionRow, s as qs } from '../src/components/onboarding/QuestionPickers';
 import {
   Q1_CLUSTERS, Q1_OTHER, Q1_CAP, DOMAIN_TO_CLUSTER, Q1B_SUBTOPICS, INTENT_OPTIONS,
-  Q2_OPTIONS, Q3_OPTIONS, Q4_OPTIONS, Q5_OPTIONS, Q5_CAP, Q7_LABELS,
+  Q2_OPTIONS, Q3_CLUSTERS, Q3_OTHER, Q3_CAP, q3OtherKey, Q4_OPTIONS, Q5_OPTIONS, Q5_CAP, Q7_LABELS,
 } from '../src/components/onboarding/questionBank';
 
 type StepId = 'intro' | 'retain_prompt' | 'callout' | 'q1' | 'q1b_intent' | 'q1b_subtopic' | 'q2' | 'q3' | 'q4' | 'q5' | 'q6' | 'q7' | 'q8' | 'done';
@@ -24,7 +24,7 @@ type StepId = 'intro' | 'retain_prompt' | 'callout' | 'q1' | 'q1b_intent' | 'q1b
 const QUESTION_LABELS: { key: keyof OnboardingAnswers; label: string }[] = [
   { key: 'q1_fields', label: 'What field you work or study in' },
   { key: 'q2_exercise', label: 'How often you exercise' },
-  { key: 'q3_creative', label: 'Music or creative work' },
+  { key: 'q3_creative', label: 'Hobbies you actively practice' },
   { key: 'q4_unwind', label: 'How you usually unwind' },
   { key: 'q5_track', label: 'What else you want to track' },
   { key: 'q6_hours_per_day', label: 'Hours a day you expect to log' },
@@ -108,6 +108,23 @@ export default function OnboardingScreen() {
       else nextArr = [...withoutOther, domain];
       return { ...prev, q1_fields: nextArr };
     });
+  }
+
+  function toggleQ3(key: string) {
+    setAnswers(prev => {
+      const arr = Array.isArray(prev.q3_creative) ? prev.q3_creative : [];
+      const has = arr.some(p => p.key === key);
+      if (has) return { ...prev, q3_creative: arr.filter(p => p.key !== key) };
+      if (arr.length >= Q3_CAP) return prev;
+      return { ...prev, q3_creative: [...arr, { key }] };
+    });
+  }
+
+  function setQ3Custom(key: string, custom: string) {
+    setAnswers(prev => ({
+      ...prev,
+      q3_creative: (Array.isArray(prev.q3_creative) ? prev.q3_creative : []).map(p => p.key === key ? { ...p, custom } : p),
+    }));
   }
 
   function finish() {
@@ -284,13 +301,33 @@ export default function OnboardingScreen() {
 
         {step === 'q3' && (
           <View style={s.block}>
-            <Text style={s.question}>Do you play music or do creative work?</Text>
-            <Text style={s.hint}>Pick one, or skip if it's not your thing.</Text>
-            <View style={qs.chipWrap}>
-              {Q3_OPTIONS.map(opt => (
-                <Chip key={opt} label={opt} selected={answers.q3_creative === opt} onPress={() => set('q3_creative', opt)} />
-              ))}
-            </View>
+            <Text style={s.question}>What hobbies or skills do you actively practice?</Text>
+            <Text style={s.hint}>Pick up to {Q3_CAP}, or skip if none of these are your thing.</Text>
+            {Q3_CLUSTERS.map(({ cluster: name, hobbies }) => {
+              const otherKey = q3OtherKey(name);
+              const q3Picks = Array.isArray(answers.q3_creative) ? answers.q3_creative : [];
+              const otherPick = q3Picks.find(p => p.key === otherKey);
+              return (
+                <View key={name} style={s.clusterGroup}>
+                  <Text style={s.clusterLabel}>{name.toUpperCase()}</Text>
+                  <View style={qs.chipWrap}>
+                    {hobbies.map(h => (
+                      <Chip key={h} label={h} selected={q3Picks.some(p => p.key === h)} onPress={() => toggleQ3(h)} />
+                    ))}
+                    <Chip label={Q3_OTHER} selected={!!otherPick} onPress={() => toggleQ3(otherKey)} />
+                  </View>
+                  {otherPick && (
+                    <TextInput
+                      style={s.customInput}
+                      placeholder="Name your hobby"
+                      placeholderTextColor={colors.textMuted}
+                      value={otherPick.custom ?? ''}
+                      onChangeText={v => setQ3Custom(otherKey, v)}
+                    />
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -438,6 +475,11 @@ const s = StyleSheet.create({
 
   clusterGroup: { gap: spacing.xs, marginTop: spacing.xs },
   clusterLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.primary, letterSpacing: 1.5 },
+  customInput: {
+    fontFamily: fonts.mono.regular, fontSize: fontSize.sm, color: colors.textPrimary,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingVertical: 4, marginTop: 2,
+  },
 
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: spacing.xs },
   linkBtnTxt: { fontFamily: fonts.ui.semibold, fontSize: fontSize.sm, color: colors.primary },

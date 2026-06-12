@@ -565,7 +565,7 @@ export default function ProgressScreen() {
         {/* Mood */}
         <View style={s.moodCard}>
           <View style={s.moodCardHeader}>
-            <Text style={s.sectionHead}>Mood</Text>
+            <Text style={s.sectionHead}>Mood </Text>
             <View style={{ flex: 1 }} />
             <TouchableOpacity onPress={() => setMoodInfoVisible(true)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
               <Feather name="info" size={14} color={colors.textMuted} />
@@ -860,7 +860,7 @@ const s = StyleSheet.create({
   xpGroup:      { gap: 10 },
   xpEffectsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   effectsLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
-  effectsTags:  { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0, flexWrap: 'wrap' },
+  effectsTags:  { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, flexWrap: 'wrap' },
 
   bonusRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 },
   bonusTitle: { fontFamily: fonts.ui.medium, fontSize: fontSize.xs, color: colors.textMuted },

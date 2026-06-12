@@ -301,7 +301,7 @@ function runMigrations() {
       ['Shadow Thicket',     'E', 'The forest shifts and deceives. Only the swift and perceptive survive.',          'agi', 'per',  5, 20, 0.25, 'Phantom Leaf',   '+2 AGI when equipped.'],
       ['Mystic Archive',     'E', 'Ink spirits guard forbidden tomes. Knowledge defeats them.',                     'wis', 'foc',  5, 20, 0.25, 'Torn Grimoire',  '+2 WIS when equipped.'],
       ['Spirit Sanctum',    'E', 'A hollow shrine pulsing with residual mana. Inner strength resonates here.',     'spr', 'wis',  5, 20, 0.25, 'Prayer Bead',    '+2 SPR when equipped.'],
-      ['Storm Ridge',       'E', 'Thin air and brutal winds. Endurance above all else.',                           'sta', 'str',  5, 20, 0.25, 'Iron Band',      '+2 STA when equipped.'],
+      ['Storm Ridge',       'E', 'Thin air and brutal winds. Endurance above all else.',                           'sta', 'str',  5, 20, 0.25, 'Iron Band',      '+2 RES when equipped.'],
       ['Veil of Perception','E', 'A dungeon that exists between worlds. Only the perceptive find the exit.',       'per', 'spr',  5, 20, 0.25, 'Obsidian Shard', '+2 PER when equipped.'],
     ];
     for (const [nm, rk, fl, ps, ss, df, cr, dc, inm, idc] of dungeonSeeds) {
@@ -334,7 +334,7 @@ function runMigrations() {
     db.execSync(`DELETE FROM dungeons`);
 
     const v10Dungeons: [string, string, string, string, string, number, number, number, string, string, string, number, string][] = [
-      ["Hunter's Run",    'E', "2.4km sprint. Your time starts now.",                          'sta', 'agi', 5, 25, 0.25, "Runner's Band",   '+2 STA when equipped.', 'Complete a 2.4 km run before the gate closes.',                                                    30, 'Workout' ],
+      ["Hunter's Run",    'E', "2.4km sprint. Your time starts now.",                          'sta', 'agi', 5, 25, 0.25, "Runner's Band",   '+2 RES when equipped.', 'Complete a 2.4 km run before the gate closes.',                                                    30, 'Workout' ],
       ['Iron Will',       'E', 'HIIT until failure. Push to the plank hold.',                  'str', 'sta', 5, 25, 0.25, 'Iron Gauntlet',   '+2 STR when equipped.', 'Complete a full HIIT session. Push to the plank hold.',                                            30, 'Workout' ],
       ['Intel Report',    'E', '30 mins on global news. Generate that daily report.',          'wis', 'foc', 5, 20, 0.20, "Analyst's Lens",  '+2 WIS when equipped.', "Read the day's global news and generate a macro summary report.",                                  30, 'Study'   ],
       ['Sacred Grounds',  'E', 'Bible journaling. Zone out and recollect.',                   'spr', 'wis', 5, 20, 0.20, 'Prayer Bead',     '+2 SPR when equipped.', 'Complete one Bible journal entry. Zone out and recollect.',                                        30, 'Devotion'],
@@ -409,7 +409,7 @@ function runMigrations() {
 
     // Game items (from dungeon drop simulations)
     const gameItems: [string, string, string, string][] = [
-      ["Runner's Band",  'game', 'equipment', '+2 STA when equipped. Dropped from Hunter\'s Run.'],
+      ["Runner's Band",  'game', 'equipment', '+2 RES when equipped. Dropped from Hunter\'s Run.'],
       ['Prayer Bead',    'game', 'equipment', '+2 SPR when equipped. Dropped from Sacred Grounds.'],
       ['Obsidian Shard', 'game', 'equipment', '+2 PER when equipped. Dropped from Mirror Protocol.'],
       ["Analyst's Lens", 'game', 'equipment', '+2 WIS when equipped. Dropped from Intel Report.'],
@@ -541,7 +541,7 @@ function runMigrations() {
       ['Wisdom Rune',      'wis'],
       ['Spirit Bead',      'spr'],
       ['Perception Orb',   'per'],
-      ['Stamina Core',     'sta'],
+      ['Resilience Core',  'sta'],
     ];
     for (const [nm, stat] of catalystItems) {
       db.runSync(
@@ -554,7 +554,7 @@ function runMigrations() {
     const consumableItems: [string, string, string][] = [
       ['Strength Tonic', 'str', 'D'],
       ['Focus Draught',  'foc', 'E'],
-      ['Stamina Brew',   'sta', 'E'],
+      ['Resilience Brew', 'sta', 'E'],
     ];
     for (const [nm, stat, rar] of consumableItems) {
       db.runSync(
@@ -601,7 +601,7 @@ function runMigrations() {
     db.runSync(`UPDATE inventory SET stat_buff='spr:1'                  WHERE item_name='Gnarled Rod'`);
     db.runSync(`UPDATE inventory SET stat_buff='str:5'                  WHERE item_name='Strength Tonic'`);
     db.runSync(`UPDATE inventory SET stat_buff='foc:5'                  WHERE item_name='Focus Draught'`);
-    db.runSync(`UPDATE inventory SET stat_buff='sta:5'                  WHERE item_name='Stamina Brew'`);
+    db.runSync(`UPDATE inventory SET stat_buff='sta:5'                  WHERE item_name='Resilience Brew'`);
 
     db.execSync('PRAGMA user_version = 18');
   }
@@ -658,7 +658,7 @@ function runMigrations() {
       ['Wisdom Rune',      'wis', 'Permanently boosts WIS. Inscribed by dungeon spirits. Cannot be replicated.'],
       ['Spirit Bead',      'spr', 'Permanently boosts SPR. Said to contain a fragment of a dissolved dungeon boss.'],
       ['Perception Orb',   'per', 'Permanently boosts PER. Condenses the essence of observation. Rare E-rank find.'],
-      ['Stamina Core',     'sta', 'Permanently boosts STA. Extracted from high-endurance dungeon creatures.'],
+      ['Resilience Core',  'sta', 'Permanently boosts RES. Extracted from high-endurance dungeon creatures.'],
     ];
     for (const [nm, stat, desc] of catalystsV19) {
       db.runSync(
@@ -673,7 +673,7 @@ function runMigrations() {
       ['Agility Serum',  'agi', 'B', 'agi:5', 'Extracted from shadow beasts. Sharpens reflexes for exactly one hour. Bitter aftertaste.'],
       ['Focus Draught',  'foc', 'C', 'foc:5', 'Clarity agent used before intel dungeon runs. Brewed from Mystic Archive residue.'],
       ['Strength Tonic', 'str', 'D', 'str:5', 'Brewed from dungeon moss. Bitter but effective. Standard pre-gate supplement for STR builds.'],
-      ['Stamina Brew',   'sta', 'D', 'sta:5', 'Dense nutritive compound. Extends endurance for one hour. Required for long-floor gates.'],
+      ['Resilience Brew', 'sta', 'D', 'sta:5', 'Dense nutritive compound. Extends endurance for one hour. Required for long-floor gates.'],
       ['Wisdom Elixir',  'wis', 'C', 'wis:5', 'Distilled knowledge essence from the Mystic Archive. Temporary — but the insight lingers.'],
       ['Spirit Tonic',   'spr', 'E', 'spr:5', 'Common restorative. Boosts SPR for one hour. Available at any hunter supply depot.'],
     ];
@@ -1310,6 +1310,21 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 48');
   }
+
+  if (version < 49) {
+    // UI rename: the sta_stat/'sta' attribute now displays as "Resilience"/"RES"
+    // everywhere (StatsSection, InventorySection, CategoryGrid, suitup) — the
+    // internal column/key names (sta_stat, sta, catalyst_sta, stat_buff 'sta:N')
+    // are unchanged (too tangled into game.ts/xpEngine to rename). Rename the
+    // already-seeded "Stamina"-named items so existing inventories match.
+    db.runSync(`UPDATE inventory SET description = REPLACE(description, 'STA', 'RES') WHERE item_name = 'Stamina Core'`);
+    db.runSync(`UPDATE inventory SET description = REPLACE(description, 'STA', 'RES') WHERE item_name = 'Stamina Brew'`);
+    db.runSync(`UPDATE inventory SET item_name = 'Resilience Core' WHERE item_name = 'Stamina Core'`);
+    db.runSync(`UPDATE inventory SET item_name = 'Resilience Brew' WHERE item_name = 'Stamina Brew'`);
+    db.runSync(`UPDATE active_buffs SET item_name = 'Resilience Brew' WHERE item_name = 'Stamina Brew'`);
+
+    db.execSync('PRAGMA user_version = 49');
+  }
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
@@ -1478,7 +1493,7 @@ function runMigration20(): void {
       ['Wisdom Rune',      'wis', 'Permanently boosts WIS. Cannot be replicated.'],
       ['Spirit Bead',      'spr', 'Contains a fragment of a dissolved dungeon boss.'],
       ['Perception Orb',   'per', 'Condenses the essence of observation. Rare E-rank find.'],
-      ['Stamina Core',     'sta', 'Extracted from high-endurance dungeon creatures.'],
+      ['Resilience Core',  'sta', 'Extracted from high-endurance dungeon creatures.'],
     ];
     for (const [nm, stat, desc] of catV20) {
       db.runSync(
@@ -1493,7 +1508,7 @@ function runMigration20(): void {
       ['Agility Serum',   'agi', 'B', 'Extracted from shadow beasts. +5 AGI for 1 hour.'],
       ['Focus Draught',   'foc', 'C', 'Clarity agent used before intel dungeon runs.'],
       ['Strength Tonic',  'str', 'D', 'Brewed from dungeon moss. +5 STR for 1 hour.'],
-      ['Stamina Brew',    'sta', 'D', 'Dense nutritive compound. +5 STA for 1 hour.'],
+      ['Resilience Brew', 'sta', 'D', 'Dense nutritive compound. +5 RES for 1 hour.'],
       ['Wisdom Elixir',   'wis', 'C', 'Distilled knowledge essence. +5 WIS for 1 hour.'],
       ['Spirit Tonic',    'spr', 'E', 'Common restorative. +5 SPR for 1 hour.'],
       ['Power Potion',    'str', 'E', 'Crude strength potion. Basic gate supply. +5 STR for 1 hour.'],

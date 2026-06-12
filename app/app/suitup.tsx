@@ -66,7 +66,7 @@ const CONSUMABLE_SLOTS: ConsumableSlot[] = [
   { stat: 'WIS', statKey: 'wis', item: null },
   { stat: 'SPR', statKey: 'spr', item: null },
   { stat: 'PER', statKey: 'per', item: null },
-  { stat: 'STA', statKey: 'sta', item: null },
+  { stat: 'RES', statKey: 'sta', item: null },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@ export const STAT_KEYS: { key: keyof GameStats; label: string; abbr: string }[] 
   { key: 'wis', label: 'Wisdom',       abbr: 'WIS' },
   { key: 'spr', label: 'Spirituality', abbr: 'SPR' },
   { key: 'per', label: 'Perception',   abbr: 'PER' },
-  { key: 'sta', label: 'Stamina',      abbr: 'STA' },
+  { key: 'sta', label: 'Resilience',   abbr: 'RES' },
 ];
 
 

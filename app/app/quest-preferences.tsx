@@ -8,7 +8,7 @@
 // reshapes the player's experience the same way data destruction does, so it gets the same gate.
 
 import React, { useEffect, useState } from 'react';
-import { Alert, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Alert, View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
 import { Screen } from '../src/components/Screen';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -21,7 +21,7 @@ import { completeOnboarding, getOnboardingAnswers, OnboardingAnswers } from '../
 import { Chip, OptionRow, s as qs } from '../src/components/onboarding/QuestionPickers';
 import {
   Q1_CLUSTERS, Q1_OTHER, Q1_CAP, DOMAIN_TO_CLUSTER, Q1B_SUBTOPICS, INTENT_OPTIONS,
-  Q2_OPTIONS, Q3_OPTIONS, Q4_OPTIONS, Q5_OPTIONS, Q5_CAP, Q7_LABELS,
+  Q2_OPTIONS, Q3_CLUSTERS, Q3_OTHER, Q3_CAP, q3OtherKey, Q4_OPTIONS, Q5_OPTIONS, Q5_CAP, Q7_LABELS,
 } from '../src/components/onboarding/questionBank';
 
 export default function QuestPreferencesScreen() {
@@ -79,6 +79,23 @@ export default function QuestPreferencesScreen() {
       else nextArr = [...withoutOther, domain];
       return { ...prev, q1_fields: nextArr };
     });
+  }
+
+  function toggleQ3(key: string) {
+    setAnswers(prev => {
+      const arr = Array.isArray(prev.q3_creative) ? prev.q3_creative : [];
+      const has = arr.some(p => p.key === key);
+      if (has) return { ...prev, q3_creative: arr.filter(p => p.key !== key) };
+      if (arr.length >= Q3_CAP) return prev;
+      return { ...prev, q3_creative: [...arr, { key }] };
+    });
+  }
+
+  function setQ3Custom(key: string, custom: string) {
+    setAnswers(prev => ({
+      ...prev,
+      q3_creative: (Array.isArray(prev.q3_creative) ? prev.q3_creative : []).map(p => p.key === key ? { ...p, custom } : p),
+    }));
   }
 
   function save() {
@@ -178,12 +195,33 @@ export default function QuestPreferencesScreen() {
         ))}
 
         {/* Q3 */}
-        <Text style={[s.question, s.spaced]}>Do you play music or do creative work?</Text>
-        <View style={qs.chipWrap}>
-          {Q3_OPTIONS.map(opt => (
-            <Chip key={opt} label={opt} selected={answers.q3_creative === opt} onPress={() => set('q3_creative', answers.q3_creative === opt ? null : opt)} />
-          ))}
-        </View>
+        <Text style={[s.question, s.spaced]}>What hobbies or skills do you actively practice?</Text>
+        <Text style={s.hint}>Pick up to {Q3_CAP}, or skip if none of these are your thing.</Text>
+        {Q3_CLUSTERS.map(({ cluster: name, hobbies }) => {
+          const otherKey = q3OtherKey(name);
+          const q3Picks = Array.isArray(answers.q3_creative) ? answers.q3_creative : [];
+          const otherPick = q3Picks.find(p => p.key === otherKey);
+          return (
+            <View key={name} style={s.clusterGroup}>
+              <Text style={s.clusterLabel}>{name.toUpperCase()}</Text>
+              <View style={qs.chipWrap}>
+                {hobbies.map(h => (
+                  <Chip key={h} label={h} selected={q3Picks.some(p => p.key === h)} onPress={() => toggleQ3(h)} />
+                ))}
+                <Chip label={Q3_OTHER} selected={!!otherPick} onPress={() => toggleQ3(otherKey)} />
+              </View>
+              {otherPick && (
+                <TextInput
+                  style={s.customInput}
+                  placeholder="Name your hobby"
+                  placeholderTextColor={colors.textMuted}
+                  value={otherPick.custom ?? ''}
+                  onChangeText={v => setQ3Custom(otherKey, v)}
+                />
+              )}
+            </View>
+          );
+        })}
 
         {/* Q4 */}
         <Text style={[s.question, s.spaced]}>How do you usually unwind?</Text>
@@ -288,6 +326,11 @@ const s = StyleSheet.create({
 
   clusterGroup: { gap: spacing.xs, marginTop: spacing.xs },
   clusterLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.primary, letterSpacing: 1.5 },
+  customInput: {
+    fontFamily: fonts.mono.regular, fontSize: fontSize.sm, color: colors.textPrimary,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingVertical: 4, marginTop: 2,
+  },
 
   saveBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,

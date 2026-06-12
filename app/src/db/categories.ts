@@ -26,6 +26,59 @@ export function updateCategoryWeight(name: string, weight: number): void {
   db.runSync('UPDATE categories SET weight = ? WHERE name = ?', Math.max(1, Math.min(20, Math.round(weight))), name);
 }
 
+// Renames a category and cascades the new name into every place activity_logs
+// references it by string (the legacy single `category` column and the JSON
+// `categories` array), so Past History, Insights, and the quest engine keep
+// pointing at the right history after a rename.
+export function renameCategory(oldName: string, newName: string): 'ok' | 'duplicate' | 'not_found' {
+  const trimmed = newName.trim();
+  if (!trimmed) return 'not_found';
+  if (trimmed === oldName) return 'ok';
+
+  const cat = db.getFirstSync<{ id: number }>('SELECT id FROM categories WHERE name = ?', oldName);
+  if (!cat) return 'not_found';
+
+  const dup = db.getFirstSync<{ id: number }>(
+    'SELECT id FROM categories WHERE lower(name) = lower(?) AND id != ?', trimmed, cat.id,
+  );
+  if (dup) return 'duplicate';
+
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE categories SET name = ? WHERE id = ?', trimmed, cat.id);
+    db.runSync('UPDATE activity_logs SET category = ? WHERE category = ?', trimmed, oldName);
+
+    const rows = db.getAllSync<{ id: number; categories: string }>(
+      `SELECT id, categories FROM activity_logs WHERE categories LIKE ?`, `%"${oldName}"%`,
+    );
+    for (const row of rows) {
+      try {
+        const arr: string[] = JSON.parse(row.categories);
+        if (arr.includes(oldName)) {
+          const updated = arr.map(c => (c === oldName ? trimmed : c));
+          db.runSync('UPDATE activity_logs SET categories = ? WHERE id = ?', JSON.stringify(updated), row.id);
+        }
+      } catch {}
+    }
+  });
+
+  return 'ok';
+}
+
+export function updateCategoryColor(name: string, color: string): void {
+  db.runSync('UPDATE categories SET color = ? WHERE name = ?', color, name);
+}
+
+export function updateCategoryAttribute(name: string, attribute: string): void {
+  db.runSync('UPDATE categories SET attribute = ? WHERE name = ?', attribute, name);
+}
+
+export function updateCategoryFlags(name: string, isPhysical: boolean, isRecreational: boolean, isCommunal: boolean): void {
+  db.runSync(
+    'UPDATE categories SET is_physical = ?, is_recreational = ?, is_communal = ? WHERE name = ?',
+    isPhysical ? 1 : 0, isRecreational ? 1 : 0, isCommunal ? 1 : 0, name,
+  );
+}
+
 export function addCategory(
   name: string,
   weight: number,

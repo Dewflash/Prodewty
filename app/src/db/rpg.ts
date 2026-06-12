@@ -306,6 +306,38 @@ export function getCustomMoods(): CustomMood[] {
   } catch { return []; }
 }
 
+// Renames a mood, cascading to every place its name string is referenced —
+// mirrors renameCategory's pattern for activity categories.
+export function renameCustomMood(oldName: string, newName: string): 'ok' | 'duplicate' | 'not_found' {
+  const trimmed = newName.trim();
+  if (!trimmed) return 'not_found';
+  if (trimmed === oldName) return 'ok';
+  const mood = db.getFirstSync<{ id: number }>('SELECT id FROM custom_moods WHERE name = ?', oldName);
+  if (!mood) return 'not_found';
+  const dup = db.getFirstSync<{ id: number }>(
+    'SELECT id FROM custom_moods WHERE lower(name) = lower(?) AND id != ?', trimmed, mood.id,
+  );
+  if (dup) return 'duplicate';
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE custom_moods SET name = ? WHERE id = ?', trimmed, mood.id);
+    db.runSync('UPDATE activity_logs SET mood_name = ? WHERE mood_name = ?', trimmed, oldName);
+    db.runSync('UPDATE rpg_state SET current_mood = ? WHERE current_mood = ?', trimmed, oldName);
+  });
+  return 'ok';
+}
+
+// Partial field update for an existing mood — used by the inline edit panel
+// in MoodSettingsSheet's "Your Moods" list.
+export function updateCustomMood(
+  name: string,
+  fields: Partial<Pick<CustomMood, 'color' | 'passive_effect' | 'mp_rate' | 'xp_change'>>,
+): void {
+  if ('color' in fields) db.runSync('UPDATE custom_moods SET color = ? WHERE name = ?', fields.color!, name);
+  if ('passive_effect' in fields) db.runSync('UPDATE custom_moods SET passive_effect = ? WHERE name = ?', fields.passive_effect ?? null, name);
+  if ('mp_rate' in fields) db.runSync('UPDATE custom_moods SET mp_rate = ? WHERE name = ?', fields.mp_rate!, name);
+  if ('xp_change' in fields) db.runSync('UPDATE custom_moods SET xp_change = ? WHERE name = ?', fields.xp_change!, name);
+}
+
 export function clearLevelUpPending(): void {
   db.runSync(`UPDATE rpg_state SET level_up_pending = 0, level_up_ap_gained = 0, level_up_coins_gained = 0, level_up_right_rank = NULL WHERE id = 1`);
 }

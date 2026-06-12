@@ -347,7 +347,7 @@ export default function GameScreen() {
 
             {fatigue && (
               <View style={s.fatigueBadge}>
-                <Text style={s.fatigueTxt}>FATIGUE — Energy consistently low. STA penalised in dungeon combat.</Text>
+                <Text style={s.fatigueTxt}>FATIGUE — Energy consistently low. RES penalised in dungeon combat.</Text>
               </View>
             )}
 
@@ -547,7 +547,7 @@ export default function GameScreen() {
             <Text style={[ov.fieldVal, { color: '#EF4444' }]}>HP −20</Text>
             {fatigue && (
               <View style={ov.fatigueWarn}>
-                <Text style={ov.fatigueWarnTxt}>FATIGUE ACTIVE — STA and STR are penalised. Recovery recommended.</Text>
+                <Text style={ov.fatigueWarnTxt}>FATIGUE ACTIVE — RES and STR are penalised. Recovery recommended.</Text>
               </View>
             )}
             <Text style={ov.fieldLabel}>REWARD</Text>
