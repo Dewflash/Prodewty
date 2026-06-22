@@ -338,7 +338,9 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = D88A11CA679CA11303BEA089 /* Pods-Prodewty.debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-icon-snow-night AppIcon-icon-snow-day AppIcon-icon-sunset AppIcon-icon-dusk";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Prodewty/Prodewty.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -378,7 +380,9 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = BEFC07603F0FE9A08EFA572E /* Pods-Prodewty.release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-icon-snow-night AppIcon-icon-snow-day AppIcon-icon-sunset AppIcon-icon-dusk";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Prodewty/Prodewty.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -412,6 +416,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-icon-snow-night AppIcon-icon-snow-day AppIcon-icon-sunset AppIcon-icon-dusk";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";
@@ -479,6 +486,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-icon-snow-night AppIcon-icon-snow-day AppIcon-icon-sunset AppIcon-icon-dusk";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
 				CLANG_CXX_LIBRARY = "libc++";

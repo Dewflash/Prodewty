@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Prodewty",
+    "name": "Dewty",
     "slug": "prodewty",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "prodewty",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icons/icon-starry.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
@@ -15,7 +15,16 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "@howincodes/expo-dynamic-app-icon",
+        {
+          "icon-snow-night": { "ios": "./assets/app-icons/icon-snow-night.png" },
+          "icon-snow-day": { "ios": "./assets/app-icons/icon-snow-day.png" },
+          "icon-sunset": { "ios": "./assets/app-icons/icon-sunset.png" },
+          "icon-dusk": { "ios": "./assets/app-icons/icon-dusk.png" }
+        }
+      ]
     ]
   }
 }

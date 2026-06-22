@@ -6,6 +6,7 @@
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
+    "@howincodes/expo-dynamic-app-icon": "^3.0.2",
     "@react-native-community/slider": "^5.0.1",
     "expo": "~54.0.35",
     "expo-av": "~16.0.8",
@@ -36,9 +37,10 @@
   },
   "scripts": {
     "start": "expo start",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "android": "expo run:android"
   },
   "private": true
 }

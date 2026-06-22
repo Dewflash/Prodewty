@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as DocumentPicker from 'expo-document-picker';
+import { setAppIcon, getAppIcon } from '@howincodes/expo-dynamic-app-icon';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
@@ -16,6 +17,16 @@ import { pickCustomWallpaper, removeCustomWallpaper, getCustomWallpaper } from '
 import { exportData, importData } from '../src/services/dataBackup';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
+
+const APP_ICONS = [
+  { key: null,               label: 'Starry',      source: require('../assets/app-icons/icon-starry.png') },
+  { key: 'icon-snow-night',  label: 'Snow Night',  source: require('../assets/app-icons/icon-snow-night.png') },
+  { key: 'icon-snow-day',    label: 'Snow Day',    source: require('../assets/app-icons/icon-snow-day.png') },
+  { key: 'icon-sunset',      label: 'Sunset',      source: require('../assets/app-icons/icon-sunset.png') },
+  { key: 'icon-dusk',        label: 'Dusk',        source: require('../assets/app-icons/icon-dusk.png') },
+] as const;
+
+type AppIconKey = typeof APP_ICONS[number]['key'];
 
 const BGM_ZONES = [
   { zone: 'progress',   label: 'Progress',     tracks: ['Track 1', 'Track 2', 'Track 3'] },
@@ -39,6 +50,22 @@ export default function SettingsScreen() {
   });
 
   const [wallpaper, setWallpaper] = useState<string | null>(() => getCustomWallpaper());
+  const [appIcon, setAppIconState] = useState<AppIconKey>(null);
+
+  React.useEffect(() => {
+    getAppIcon().then(current => {
+      setAppIconState(current && current !== 'DEFAULT' ? (current as AppIconKey) : null);
+    }).catch(() => {});
+  }, []);
+
+  async function handleSelectIcon(key: AppIconKey) {
+    try {
+      await setAppIcon(key);
+      setAppIconState(key);
+    } catch {
+      Alert.alert('Could not change icon', 'Please try again.');
+    }
+  }
   const [personalization, setPersonalization] = useState(() => isPersonalizationEnabled());
   const [bibleXP, setBibleXP] = useState(() => getSetting('bible_xp', '50'));
   const [currency, setCurrency] = useState(() => getSetting('finance_currency', '$') || '$');
@@ -174,6 +201,21 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
+
+        {/* ── App Icon ── */}
+        <Text style={s.sectionLabel}>APP ICON</Text>
+        <Text style={s.sectionHint}>Pick which icon shows on your home screen.</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.iconRow}>
+          {APP_ICONS.map(({ key, label, source }) => {
+            const active = appIcon === key;
+            return (
+              <Pressable key={key ?? 'default'} onPress={() => handleSelectIcon(key)} style={s.iconOption}>
+                <Image source={source} style={[s.iconThumb, active && s.iconThumbActive]} />
+                <Text style={[s.iconOptionLabel, active && { color: colors.primary }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
 
         {/* ── Wallpaper ── */}
         <Text style={s.sectionLabel}>BACKGROUND</Text>
@@ -340,6 +382,13 @@ const s = StyleSheet.create({
     fontFamily: fonts.ui.regular, fontSize: fontSize.xs,
     color: colors.textMuted, marginBottom: spacing.sm,
   },
+
+  // App Icon
+  iconRow:         { gap: spacing.md, paddingVertical: spacing.xs, paddingRight: spacing.md },
+  iconOption:      { alignItems: 'center', gap: 4, width: 64 },
+  iconThumb:       { width: 56, height: 56, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
+  iconThumbActive: { borderColor: colors.primary },
+  iconOptionLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'center' },
 
   // Wallpaper
   wallpaperRow:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
