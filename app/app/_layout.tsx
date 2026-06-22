@@ -103,7 +103,10 @@ export default function RootLayout() {
   }
 
   useEffect(() => {
-    if (shouldShowOnboarding()) { router.replace('/onboarding'); return; }
+    if (shouldShowOnboarding()) {
+      const id = setTimeout(() => router.replace('/onboarding'), 0);
+      return () => clearTimeout(id);
+    }
     void initAudio();
     const { gemAwarded } = checkVigor();
     if (gemAwarded) triggerGemBanner();
