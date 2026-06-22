@@ -4,7 +4,7 @@ PODS:
   - EXAV (16.0.8):
     - ExpoModulesCore
     - ReactCommon/turbomodule/core
-  - EXConstants (17.0.8):
+  - EXConstants (18.0.13):
     - ExpoModulesCore
   - EXImageLoader (6.0.0):
     - ExpoModulesCore
@@ -42,17 +42,18 @@ PODS:
     - ExpoModulesCore
   - ExpoFileSystem (19.0.23):
     - ExpoModulesCore
-  - ExpoFont (13.0.4):
+  - ExpoFont (14.0.12):
     - ExpoModulesCore
   - ExpoHaptics (15.0.8):
     - ExpoModulesCore
-  - ExpoHead (4.0.22):
+  - ExpoHead (6.0.24):
     - ExpoModulesCore
+    - RNScreens
   - ExpoImagePicker (17.0.11):
     - ExpoModulesCore
   - ExpoKeepAwake (15.0.8):
     - ExpoModulesCore
-  - ExpoLinking (7.0.5):
+  - ExpoLinking (8.0.12):
     - ExpoModulesCore
   - ExpoLocalAuthentication (17.0.8):
     - ExpoModulesCore
@@ -81,14 +82,10 @@ PODS:
     - Yoga
   - ExpoSharing (14.0.8):
     - ExpoModulesCore
-  - ExpoSplashScreen (0.29.24):
+  - ExpoSplashScreen (31.0.13):
     - ExpoModulesCore
-  - ExpoSQLite (14.0.6):
+  - ExpoSQLite (16.0.10):
     - ExpoModulesCore
-    - "sqlite3 (~> 3.45.3+1)"
-    - "sqlite3/bytecodevtab (~> 3.45.3+1)"
-    - "sqlite3/fts (~> 3.45.3+1)"
-    - "sqlite3/fts5 (~> 3.45.3+1)"
   - FBLazyVector (0.81.5)
   - hermes-engine (0.81.5):
     - hermes-engine/Pre-built (= 0.81.5)
@@ -1375,7 +1372,7 @@ PODS:
     - React-RCTFBReactNativeSpec
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-  - react-native-safe-area-context (5.8.0):
+  - react-native-safe-area-context (5.6.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1387,8 +1384,8 @@ PODS:
     - React-graphics
     - React-ImageManager
     - React-jsi
-    - react-native-safe-area-context/common (= 5.8.0)
-    - react-native-safe-area-context/fabric (= 5.8.0)
+    - react-native-safe-area-context/common (= 5.6.2)
+    - react-native-safe-area-context/fabric (= 5.6.2)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1399,7 +1396,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/common (5.8.0):
+  - react-native-safe-area-context/common (5.6.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1421,7 +1418,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - react-native-safe-area-context/fabric (5.8.0):
+  - react-native-safe-area-context/fabric (5.6.2):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1839,7 +1836,7 @@ PODS:
     - React-utils (= 0.81.5)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.81.5)
-  - RNScreens (4.25.2):
+  - RNScreens (4.16.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1861,9 +1858,9 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-    - RNScreens/common (= 4.25.2)
+    - RNScreens/common (= 4.16.0)
     - Yoga
-  - RNScreens/common (4.25.2):
+  - RNScreens/common (4.16.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1886,15 +1883,6 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - "sqlite3 (3.45.3+1)":
-    - "sqlite3/common (= 3.45.3+1)"
-  - "sqlite3/bytecodevtab (3.45.3+1)":
-    - sqlite3/common
-  - "sqlite3/common (3.45.3+1)"
-  - "sqlite3/fts (3.45.3+1)":
-    - sqlite3/common
-  - "sqlite3/fts5 (3.45.3+1)":
-    - sqlite3/common
   - SwiftDraw (0.27.0):
     - SwiftDrawDOM (~> 0.27.0)
   - SwiftDrawDOM (0.27.0)
@@ -1996,7 +1984,6 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
-    - sqlite3
     - SwiftDraw
     - SwiftDrawDOM
 
@@ -2188,24 +2175,24 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   EXApplication: 1e98d4b1dccdf30627f92917f4b2c5a53c330e5f
   EXAV: b60fcf142fae6684d295bc28cd7cfcb3335570ea
-  EXConstants: fcfc75800824ac2d5c592b5bc74130bad17b146b
+  EXConstants: fce59a631a06c4151602843667f7cfe35f81e271
   EXImageLoader: 189e3476581efe3ad4d1d3fb4735b7179eb26f05
   EXNotifications: c67e92b9fdfe785ff9dbdc5f4c0ff935de357da7
   Expo: edf5879dd9f83d2aa5b05d012412c810bc182ac1
   ExpoAsset: 9e5a7c9c0a9fb83ad5b2bb365141f2bd7f289b66
   ExpoDocumentPicker: 7cd9e71a0f66fb19eb0a586d6f26eee1284692e0
   ExpoFileSystem: a8e7fb1e958471764fb48d281cf9fa81a9e4d77c
-  ExpoFont: f354e926f8feae5e831ec8087f36652b44a0b188
+  ExpoFont: dfb7c572372b610da45b41e3b436321fd6a97215
   ExpoHaptics: d3a6375d8dcc3a1083d003bc2298ff654fafb536
-  ExpoHead: 2a14db58219c0a506e4a409ea83f884eab23f555
+  ExpoHead: 33924c5829f9a3f98a5bd432d23c0e02ef64afcc
   ExpoImagePicker: ade85e148f735fc7e6f27dfe3eef28eb3887e90a
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
-  ExpoLinking: 8d12bee174ba0cdf31239706578e29e74a417402
+  ExpoLinking: 2ef632ad5013e3f1568fae9408d56ab9af5efc55
   ExpoLocalAuthentication: 8a31808565da7af926dd9b595e98594d8b1553b6
   ExpoModulesCore: 9e6a5514828e7dd5ded9e99d33557be2d284e660
   ExpoSharing: 0d983394ed4a80334bab5a0d5384f75710feb7e8
-  ExpoSplashScreen: 8261985ce9778f904abc7e31bed3538dce67ed4d
-  ExpoSQLite: 9ed0c4fb3b432f68dee65e795ccd630a7cfabd3c
+  ExpoSplashScreen: bc3cffefca2716e5f22350ca109badd7e50ec14d
+  ExpoSQLite: 7eedbe476870a5f18d6b89c817c4ac6f299830ad
   FBLazyVector: e95a291ad2dadb88e42b06e0c5fb8262de53ec12
   hermes-engine: 9f4dfe93326146a1c99eb535b1cb0b857a3cd172
   ImageColors: 3019b37809023d67795162135628e367d70e1766
@@ -2242,7 +2229,7 @@ SPEC CHECKSUMS:
   React-logger: 50fdb9a8236da90c0b1072da5c32ee03aeb5bf28
   React-Mapbuffer: 9050ee10c19f4f7fca8963d0211b2854d624973e
   React-microtasksnativemodule: f775db9e991c6f3b8ccbc02bfcde22770f96e23b
-  react-native-safe-area-context: 5727bd761ca52fa393b40989a6483bf859622136
+  react-native-safe-area-context: 37e680fc4cace3c0030ee46e8987d24f5d3bdab2
   react-native-slider: 8c562583722c396a3682f451f0b6e68e351ec3b9
   React-NativeModulesApple: 8969913947d5b576de4ed371a939455a8daf28aa
   React-oscompat: ce47230ed20185e91de62d8c6d139ae61763d09c
@@ -2275,8 +2262,7 @@ SPEC CHECKSUMS:
   ReactCodegen: 7d4593f7591f002d137fe40cef3f6c11f13c88cc
   ReactCommon: 08810150b1206cc44aecf5f6ae19af32f29151a8
   ReactNativeDependencies: 71ce9c28beb282aa720ea7b46980fff9669f428a
-  RNScreens: d73d7ef79ae7b465a3f816288a7b6d895a873d56
-  sqlite3: 02d1f07eaaa01f80a1c16b4b31dfcbb3345ee01a
+  RNScreens: d8d6f1792f6e7ac12b0190d33d8d390efc0c1845
   SwiftDraw: c3fb77c08081f1255f33bcc0fd3c2e00fbc9bd46
   SwiftDrawDOM: 8e7d9812af1ef6e06230e72769e97838e6c7c765
   Yoga: 5934998fbeaef7845dbf698f698518695ab4cd1a
