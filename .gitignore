@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Personal notes
+iPhoneStart.md
+
 # Backend
 backend/venv/
 backend/__pycache__/
