@@ -12,6 +12,7 @@ export type BibleNote = {
   id: number;
   title: string;
   content: string;
+  html_content?: string;
   log_date: string;
   created_at: string;
   updated_at: string;
@@ -53,16 +54,23 @@ export function createNote(): number {
 
 // Saves content. On first real save (xp_awarded still 0 and content non-empty),
 // awards XP and logs to activity_logs. Subsequent saves just update content.
-export function saveNote(id: number, content: string): void {
+export function saveNote(id: number, content: string, htmlContent?: string): void {
   const title = content.split('\n')[0].trim().slice(0, 120) || 'Untitled';
   const now = sqlNow();
   const existing = getNoteById(id);
   if (!existing) return;
 
-  db.runSync(
-    'UPDATE bible_notes SET content = ?, title = ?, updated_at = ? WHERE id = ?',
-    content, title, now, id,
-  );
+  if (htmlContent !== undefined) {
+    db.runSync(
+      'UPDATE bible_notes SET content = ?, html_content = ?, title = ?, updated_at = ? WHERE id = ?',
+      content, htmlContent, title, now, id,
+    );
+  } else {
+    db.runSync(
+      'UPDATE bible_notes SET content = ?, title = ?, updated_at = ? WHERE id = ?',
+      content, title, now, id,
+    );
+  }
 
   if (existing.xp_awarded === 0 && content.trim()) {
     const xp = getBibleXP();

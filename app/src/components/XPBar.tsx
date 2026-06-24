@@ -59,7 +59,7 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = fa
           <Text style={[styles.rankText, { color: isUnranked ? `${rankColor}AA` : rankColor }]}>{rank}</Text>
         </View>
         <View style={styles.levelBadge}>
-          <Text style={styles.levelText}>LVL {level}</Text>
+          <Text style={styles.levelText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>LVL {level}</Text>
         </View>
         <View style={styles.meta}>
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -70,7 +70,7 @@ export function XPBar({ level, totalXP, xpToNext, title, streakDays, frozen = fa
         {streakDays > 0 && (
           <View style={[styles.streakBadge, { borderColor: streakColor, shadowColor: streakColor }]}>
             {frozen && <Text style={[styles.frozenIcon, { color: streakColor }]}>❄</Text>}
-            <Text style={[styles.streakText, { color: streakColor }]}>
+            <Text style={[styles.streakText, { color: streakColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
               Streak: {streakDays}
             </Text>
           </View>
