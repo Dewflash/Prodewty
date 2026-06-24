@@ -8,6 +8,8 @@ import { fonts, fontSize } from '../src/theme/typography';
 import { spacing } from '../src/theme/spacing';
 import { getNoteById, saveNote, deleteNote } from '../src/db/bible';
 import { RichJournalEditor, RichJournalEditorHandle } from '../src/components/rich-text/RichJournalEditor';
+import { EdgeSwipeBack } from '../src/components/EdgeSwipeBack';
+import BibleScreen from './bible';
 
 export default function BibleEditorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,6 +23,7 @@ export default function BibleEditorScreen() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Store the latest content so handleBack can save immediately
   const contentRef = useRef({ text: '', html: '' });
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   useEffect(() => {
     const note = getNoteById(noteId);
@@ -64,26 +67,28 @@ export default function BibleEditorScreen() {
   if (initialContent === null) return null;
 
   return (
-    <Screen style={s.root} edges={['top']}>
-      {/* Header */}
-      <View style={s.header}>
-        <Pressable onPress={handleBack} style={s.iconBtn}>
-          <Feather name="arrow-left" size={20} color={colors.textPrimary} />
-        </Pressable>
-        <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
-        <Text style={s.saveIndicator}>{saved ? '●' : '○'}</Text>
-      </View>
+    <EdgeSwipeBack peek={<BibleScreen />} onCommit={handleBack} topInset={headerHeight}>
+      <Screen style={s.root} edges={['top']}>
+        {/* Header */}
+        <View style={s.header} onLayout={e => setHeaderHeight(e.nativeEvent.layout.height)}>
+          <Pressable onPress={handleBack} style={s.iconBtn}>
+            <Feather name="arrow-left" size={20} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={s.headerTitle} numberOfLines={1}>{title}</Text>
+          <Text style={s.saveIndicator}>{saved ? '●' : '○'}</Text>
+        </View>
 
-      {/* Editor */}
-      <View style={s.editorContainer}>
-        <RichJournalEditor
-          ref={editorRef}
-          initialContent={initialContent}
-          placeholder="Start writing..."
-          onChange={handleChange}
-        />
-      </View>
-    </Screen>
+        {/* Editor */}
+        <View style={s.editorContainer}>
+          <RichJournalEditor
+            ref={editorRef}
+            initialContent={initialContent}
+            placeholder="Start writing..."
+            onChange={handleChange}
+          />
+        </View>
+      </Screen>
+    </EdgeSwipeBack>
   );
 }
 

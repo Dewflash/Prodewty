@@ -11,6 +11,8 @@ import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
 import { CategoryGrid, type CategoryGridHandle } from '../../src/components/CategoryGrid';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import HistoryScreen from './history';
+import RechargeScreen from './insights';
 import { MoodSelector } from '../../src/components/MoodSelector';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { TouchableOpacity } from 'react-native';
@@ -101,18 +103,21 @@ export default function LogScreen() {
 
   useFocusEffect(useCallback(() => { void switchBGM('historylog'); }, []));
 
-  useFocusEffect(
-    useCallback(() => {
-      setCategories(getCategories());
-      setHabits(getHabits());
-      if (logMode !== 'weekly') loadMoodForDate(selectedDate);
-      try {
-        const rpg = getRPGState();
-        if (rpg.current_mood) setCurrentMoodState(rpg.current_mood);
-        setCustomMoods(getCustomMoods());
-      } catch {}
-    }, []),
-  );
+  function loadLogScreenData() {
+    setCategories(getCategories());
+    setHabits(getHabits());
+    if (logMode !== 'weekly') loadMoodForDate(selectedDate);
+    try {
+      const rpg = getRPGState();
+      if (rpg.current_mood) setCurrentMoodState(rpg.current_mood);
+      setCustomMoods(getCustomMoods());
+    } catch {}
+  }
+
+  useFocusEffect(useCallback(loadLogScreenData, []));
+  // Also load on plain mount — needed so this screen renders real data when
+  // mounted as a non-focused "peek" behind a neighboring tab's swipe gesture.
+  useEffect(loadLogScreenData, []);
 
   useEffect(() => {
     if (logMode !== 'weekly') loadMoodForDate(selectedDate);
@@ -240,7 +245,7 @@ export default function LogScreen() {
 
   return (
     <>
-    <SwipeNavWrapper currentIndex={2}>
+    <SwipeNavWrapper currentIndex={2} prevPeek={<HistoryScreen />} nextPeek={<RechargeScreen />}>
     <Screen style={s.safe}>
       <TopRibbon title="Log" />
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

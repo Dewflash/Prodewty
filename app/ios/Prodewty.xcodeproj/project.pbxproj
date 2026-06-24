@@ -10,6 +10,7 @@
 		01C904D6CE6540FB8E4D6DD4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D7B482BEAAF53DDCD99506 /* ExpoModulesProvider.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		73533A4ADFFF2F26D818C3F1 /* JournalMediaBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = DD3BD50A6B959D7D106A7B99 /* JournalMediaBridge.m */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C5F9DCD62B8EC4E22F6D00B0 /* libPods-Prodewty.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9CB292264ED6423CD1F2E854 /* libPods-Prodewty.a */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
@@ -27,6 +28,7 @@
 		BEFC07603F0FE9A08EFA572E /* Pods-Prodewty.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Prodewty.release.xcconfig"; path = "Target Support Files/Pods-Prodewty/Pods-Prodewty.release.xcconfig"; sourceTree = "<group>"; };
 		C3D7B482BEAAF53DDCD99506 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Prodewty/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		D88A11CA679CA11303BEA089 /* Pods-Prodewty.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Prodewty.debug.xcconfig"; path = "Target Support Files/Pods-Prodewty/Pods-Prodewty.debug.xcconfig"; sourceTree = "<group>"; };
+		DD3BD50A6B959D7D106A7B99 /* JournalMediaBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Prodewty/JournalMediaBridge.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Prodewty/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* Prodewty-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Prodewty-Bridging-Header.h"; path = "Prodewty/Prodewty-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -54,6 +56,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				79430C4342D692DA6FA7FF1C /* PrivacyInfo.xcprivacy */,
+				DD3BD50A6B959D7D106A7B99 /* JournalMediaBridge.m */,
 			);
 			name = Prodewty;
 			sourceTree = "<group>";
@@ -334,6 +337,7 @@
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				01C904D6CE6540FB8E4D6DD4 /* ExpoModulesProvider.swift in Sources */,
+				73533A4ADFFF2F26D818C3F1 /* JournalMediaBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -2,6 +2,7 @@ import { Stack, usePathname, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   useFonts,
   Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
@@ -117,7 +118,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
@@ -131,7 +132,9 @@ export default function RootLayout() {
         <Stack.Screen name="suitup" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="bible" />
-        <Stack.Screen name="bible-editor" />
+        {/* Native swipe-back disabled — EdgeSwipeBack provides a custom one that
+            reveals the live Bible list underneath instead of a static snapshot. */}
+        <Stack.Screen name="bible-editor" options={{ gestureEnabled: false }} />
         <Stack.Screen name="finance" />
       </Stack>
 
@@ -179,7 +182,7 @@ export default function RootLayout() {
           </View>
         </View>
       </Modal>
-    </>
+    </GestureHandlerRootView>
   );
 }
 

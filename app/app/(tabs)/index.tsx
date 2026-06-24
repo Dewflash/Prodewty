@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, InteractionManager } from 'react-native';
 import { Screen } from '../../src/components/Screen';
 import { Surface, muted, dim, flatSurface } from '../../src/components/Surface';
@@ -15,6 +15,7 @@ import { spacing, radius } from '../../src/theme/spacing';
 import { XPBar } from '../../src/components/XPBar';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import HistoryScreen from './history';
 import { useAppStore } from '../../src/store/useAppStore';
 import {
   getLogs, getRecentLogs, getCategoryEffects, getActivityTimeStats,
@@ -323,46 +324,50 @@ export default function ProgressScreen() {
 
   useFocusEffect(useCallback(() => { void switchBGM('progress'); }, []));
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
+  const loadProgressData = useCallback(() => {
+    let active = true;
 
-      // ── Immediate: tiny reads rendered above the fold before navigation settles ──
-      const rpg = getRPGState();
-      const h   = getHealthState();
-      setRPGState(rpg);
-      setCurrentMoodState(rpg.current_mood ?? 'driven');
-      setCustomMoods(getCustomMoods());
-      setSdCount(rpg.self_destruct_count ?? 0);
-      setVigorCount(rpg.vigor ?? 0);
-      setHealth(h);
-      setHealthTierLabel(getHealthTier(Math.min(h.emotional, h.physical, h.mental)).label);
-      setShowRevival(isInDeathState() && (rpg.death_acknowledged ?? 0) === 1);
-      setDeathCount(getDeathCount());
-      setQuestCount(getQuestCompletedCount());
-      setDungeonClearCount(getDungeonClearedCount());
+    // ── Immediate: tiny reads rendered above the fold before navigation settles ──
+    const rpg = getRPGState();
+    const h   = getHealthState();
+    setRPGState(rpg);
+    setCurrentMoodState(rpg.current_mood ?? 'driven');
+    setCustomMoods(getCustomMoods());
+    setSdCount(rpg.self_destruct_count ?? 0);
+    setVigorCount(rpg.vigor ?? 0);
+    setHealth(h);
+    setHealthTierLabel(getHealthTier(Math.min(h.emotional, h.physical, h.mental)).label);
+    setShowRevival(isInDeathState() && (rpg.death_acknowledged ?? 0) === 1);
+    setDeathCount(getDeathCount());
+    setQuestCount(getQuestCompletedCount());
+    setDungeonClearCount(getDungeonClearedCount());
 
-      // ── Deferred: heavy reads run after animation frame so navigation stays smooth ──
-      const task = InteractionManager.runAfterInteractions(() => {
-        if (!active) return;
-        const today  = logicalToday();
-        const all    = getLogs();
-        const days   = period === 'week' ? 7 : 30;
-        const recent = getRecentLogs(period === 'year' ? 365 : days);
-        setAllLogs(all);
-        setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && (l.effective_date ?? l.log_date) === today).length);
-        const todayActivity = all.filter(l => (l.effective_date ?? l.log_date) === today && l.entry_type !== 'self_destruct');
-        setTodayLogCount(todayActivity.length);
-        setTodayXP(todayActivity.reduce((s, l) => s + l.xp_awarded, 0));
-        setPeriodLogs(recent);
-        setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
-        setCatEffects(getCategoryEffects());
-        setActStats(getActivityTimeStats(period));
-      });
+    // ── Deferred: heavy reads run after animation frame so navigation stays smooth ──
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!active) return;
+      const today  = logicalToday();
+      const all    = getLogs();
+      const days   = period === 'week' ? 7 : 30;
+      const recent = getRecentLogs(period === 'year' ? 365 : days);
+      setAllLogs(all);
+      setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && (l.effective_date ?? l.log_date) === today).length);
+      const todayActivity = all.filter(l => (l.effective_date ?? l.log_date) === today && l.entry_type !== 'self_destruct');
+      setTodayLogCount(todayActivity.length);
+      setTodayXP(todayActivity.reduce((s, l) => s + l.xp_awarded, 0));
+      setPeriodLogs(recent);
+      setChartData(period === 'year' ? buildWeeklyData(recent) : buildDailyData(recent, days));
+      setCatEffects(getCategoryEffects());
+      setActStats(getActivityTimeStats(period));
+    });
 
-      return () => { active = false; task.cancel(); };
-    }, [period]),
-  );
+    return () => { active = false; task.cancel(); };
+  }, [period]);
+
+  useFocusEffect(loadProgressData);
+  // Also load on plain mount/dep-change (not just focus) — needed so this
+  // screen renders real data when mounted as a non-focused "peek" behind a
+  // neighboring tab's swipe gesture (see SwipeNavWrapper).
+  useEffect(loadProgressData, [loadProgressData]);
 
   function handleSelfDestruct() {
     // Shake
@@ -441,7 +446,7 @@ export default function ProgressScreen() {
   }
 
   return (
-    <SwipeNavWrapper currentIndex={0}>
+    <SwipeNavWrapper currentIndex={0} nextPeek={<HistoryScreen />}>
     <Screen style={s.safe}>
       <TopRibbon title="Progress" />
       <Animated.ScrollView

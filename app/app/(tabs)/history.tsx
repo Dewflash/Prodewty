@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert,
   TextInput, KeyboardAvoidingView, Platform, LayoutAnimation,
@@ -17,6 +17,8 @@ import { db } from '../../src/db/schema';
 import { localDateStr } from '../../src/utils/date';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import ProgressScreen from './index';
+import LogScreen from './log';
 import { playSound, switchBGM } from '../../src/services/audio';
 import { Surface, muted } from '../../src/components/Surface';
 import { hasCustomWallpaper } from '../../src/services/wallpaperCustom';
@@ -461,6 +463,10 @@ export default function HistoryScreen() {
 
   useFocusEffect(useCallback(() => { void switchBGM('historylog'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, [tab, year, month, selected]));
+  // Also load on plain mount/dep-change (not just focus) — needed so this
+  // screen renders real data when mounted as a non-focused "peek" behind a
+  // neighboring tab's swipe gesture (see SwipeNavWrapper).
+  useEffect(() => { reload(); }, [tab, year, month, selected]);
 
   const moodByDate: Record<string, number> = {};
   for (const l of monthLogs) {
@@ -480,7 +486,7 @@ export default function HistoryScreen() {
   const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
 
   return (
-    <SwipeNavWrapper currentIndex={1}>
+    <SwipeNavWrapper currentIndex={1} prevPeek={<ProgressScreen />} nextPeek={<LogScreen />}>
     <Screen style={s.safe}>
       <TopRibbon title="History" />
 

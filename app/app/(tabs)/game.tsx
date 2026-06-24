@@ -11,6 +11,7 @@ import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import RechargeScreen from './insights';
 import { getRPGState, type RPGState } from '../../src/db/rpg';
 import {
   getComputedStats, getFatigue, getPendingQuests, getAcceptedQuests, getSkippedQuests,
@@ -132,6 +133,9 @@ export default function GameScreen() {
 
   useFocusEffect(useCallback(() => { void switchBGM('game'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, []));
+  // Also load on plain mount — needed so this screen renders real data when
+  // mounted as a non-focused "peek" behind a neighboring tab's swipe gesture.
+  useEffect(() => { reload(); }, []);
 
   // Countdown tick
   useEffect(() => {
@@ -290,7 +294,7 @@ export default function GameScreen() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <SwipeNavWrapper currentIndex={4}>
+    <SwipeNavWrapper currentIndex={4} prevPeek={<RechargeScreen />}>
     <Screen style={s.safe}>
 
       {/* Ribbon */}

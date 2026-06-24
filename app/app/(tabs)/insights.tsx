@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal,
   TextInput, KeyboardAvoidingView, Platform, Alert, TouchableOpacity,
@@ -7,6 +7,8 @@ import { Screen } from '../../src/components/Screen';
 import { useFocusEffect } from 'expo-router';
 import { TopRibbon } from '../../src/components/TopRibbon';
 import { SwipeNavWrapper } from '../../src/components/SwipeNavWrapper';
+import LogScreen from './log';
+import GameScreen from './game';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
 import { spacing, radius } from '../../src/theme/spacing';
@@ -204,6 +206,9 @@ export default function RechargeScreen() {
 
   useFocusEffect(useCallback(() => { void switchBGM('recharge'); }, []));
   useFocusEffect(useCallback(() => { reload(); }, []));
+  // Also load on plain mount — needed so this screen renders real data when
+  // mounted as a non-focused "peek" behind a neighboring tab's swipe gesture.
+  useEffect(() => { reload(); }, []);
 
   function handleBuy(activityId: number) {
     const result = purchaseRestoration(activityId);
@@ -273,7 +278,7 @@ export default function RechargeScreen() {
     : null;
 
   return (
-    <SwipeNavWrapper currentIndex={3}>
+    <SwipeNavWrapper currentIndex={3} prevPeek={<LogScreen />} nextPeek={<GameScreen />}>
     <Screen style={s.safe}>
       <TopRibbon title="Recharge" />
       <ScrollView contentContainerStyle={s.content}>
