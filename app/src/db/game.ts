@@ -6,6 +6,7 @@ import { sqlNow, pad, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
 import { getOrRefreshSnapshot, buildCandidates, drawDailyPool, fillTemplate, fillDungeonTemplate, recommendedDurationMinutes, weightedSample } from './questEngine';
+import { logicalToday } from './dayBoundary';
 import type { Rarity } from '../constants/rarity';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -967,7 +968,7 @@ export function getAcceptedQuests(): Quest[] {
 // start of the new day, active runs excluded — same exception as Extra Gates).
 export function generateDailyContent(): void {
   try {
-    const today = localDateStr();
+    const today = logicalToday();
     if (getRPGState().last_daily_gen_date === today) return;
 
     db.runSync(`DELETE FROM quests WHERE quest_type = 'daily'`);

@@ -1325,6 +1325,22 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 49');
   }
+
+  if (version < 50) {
+    try { db.execSync(`ALTER TABLE bible_notes ADD COLUMN html_content TEXT`); } catch {}
+    db.execSync('PRAGMA user_version = 50');
+  }
+
+  if (version < 51) {
+    // Custom "day start hour" support — log_date stays the real calendar date
+    // an entry was logged on; effective_date is the logical day it counts
+    // toward for streaks/vigor/mood/daily-content cadence (see dayBoundary.ts).
+    // Defaults to log_date for all existing rows (no behavior change until the
+    // user sets a non-midnight day_start_hour in Settings).
+    try { db.execSync(`ALTER TABLE activity_logs ADD COLUMN effective_date TEXT`); } catch {}
+    db.runSync(`UPDATE activity_logs SET effective_date = log_date WHERE effective_date IS NULL`);
+    db.execSync('PRAGMA user_version = 51');
+  }
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES

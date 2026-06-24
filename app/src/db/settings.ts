@@ -19,6 +19,17 @@ export function deleteSettingsByPrefix(prefix: string): void {
   } catch {}
 }
 
+// Hour (0–23) at which the user's "day" rolls over for streaks/vigor/mood/daily-
+// content cadence — default 0 (midnight) preserves the original behaviour.
+export function getDayStartHour(): number {
+  const n = parseInt(getSetting('day_start_hour', '0'), 10);
+  return Number.isFinite(n) && n >= 0 && n <= 23 ? n : 0;
+}
+
+export function setDayStartHour(hour: number): void {
+  setSetting('day_start_hour', String(Math.max(0, Math.min(23, Math.round(hour)))));
+}
+
 export function getBGMSelection(zone: string): number {
   return parseInt(getSetting(`bgm_${zone}`, '0'), 10);
 }

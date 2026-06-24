@@ -61,6 +61,18 @@ const chip = StyleSheet.create({
   val:   { fontFamily:fonts.mono.bold,  fontSize:fontSize.xs },
 });
 
+// Shown next to a log's time when it was logged after midnight but before the
+// user's configured day-start hour — it's still filed under today's real
+// calendar date, but its effects (XP/streak/vigor/mood/health) count toward
+// yesterday instead.
+function YtdBadge({ log }: { log: ActivityLog }) {
+  if (!log.effective_date || log.effective_date === log.log_date) return null;
+  return <Feather name="corner-up-left" size={11} color={colors.textMuted} style={ytd.icon} />;
+}
+const ytd = StyleSheet.create({
+  icon: { marginHorizontal: 2 },
+});
+
 // ─── Edit modal ──────────────────────────────────────────────────────────────
 
 function EditModal({ log, onClose, onSaved }: { log: ActivityLog; onClose: () => void; onSaved: () => void }) {
@@ -129,7 +141,10 @@ function MoodCard({ log, onSaved }: { log: ActivityLog; onSaved: () => void }) {
         </View>
       </View>
       {log.journal_entry ? <Text style={cd.journal}>{log.journal_entry}</Text> : null}
-      <Text style={cd.time}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
+      <View style={cd.timeRow}>
+        <YtdBadge log={log} />
+        <Text style={cd.time}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
+      </View>
       {editing && <EditModal log={log} onClose={() => setEditing(false)} onSaved={onSaved} />}
     </View>
   );
@@ -199,7 +214,10 @@ function ActivityCard({ log, onDelete, catColors }: { log: ActivityLog; onDelete
             <Text style={cd.emptyPrompt}>Revelation —</Text>
           )}
           <View style={cd.expandedActions}>
-            <Text style={cd.timeSm}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
+            <View style={cd.timeRow}>
+              <YtdBadge log={log} />
+              <Text style={cd.timeSm}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
+            </View>
             <View style={{ flexDirection:'row', gap:spacing.md, alignItems: 'center' }}>
               {archived ? (
                 <View style={cd.archivedTag}><Text style={cd.archivedTagText}>Archived — read-only</Text></View>
@@ -304,6 +322,7 @@ function SelfDestructBanner({ log, onSaved }: { log: ActivityLog; onSaved: () =>
         <Feather name="alert-triangle" size={14} color={colors.danger} />
         <Text style={cd.sdText}>Self Destructed :(</Text>
         {hasNotes && <Text style={cd.sdNoted}>Noted</Text>}
+        <YtdBadge log={log} />
         <Text style={cd.sdTime}>{log.created_at.split(' ')[1]?.slice(0,5) ?? ''}</Text>
       </Pressable>
 
@@ -365,6 +384,7 @@ const cd = StyleSheet.create({
   journal:     { fontFamily:fonts.ui.regular, fontSize:fontSize.sm, color:colors.textPrimary, lineHeight:20 },
   time:        { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted, alignSelf:'flex-end' },
   timeSm:      { fontFamily:fonts.mono.regular, fontSize:fontSize.xs, color:colors.textMuted },
+  timeRow:     { flexDirection:'row', alignItems:'center', alignSelf:'flex-end' },
 
   divider:     { height:1, backgroundColor:colors.border, marginVertical:2 },
   noteBlock:   { gap:2 },

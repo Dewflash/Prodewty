@@ -9,7 +9,7 @@ import { setAppIcon, getAppIcon } from '@howincodes/expo-dynamic-app-icon';
 import { colors } from '../src/theme/colors';
 import { fonts, fontSize } from '../src/theme/typography';
 import { spacing, radius } from '../src/theme/spacing';
-import { getBGMSelection, setBGMSelection, getSetting, setSetting } from '../src/db/settings';
+import { getBGMSelection, setBGMSelection, getSetting, setSetting, getDayStartHour, setDayStartHour } from '../src/db/settings';
 import { isPersonalizationEnabled } from '../src/db/insights';
 import { switchBGM, getCurrentBGMZone, reloadCurrentBGM } from '../src/services/audio';
 import { pickCustomBGM, removeCustomBGM, getCustomBGMName, clearAllCustomBGM } from '../src/services/bgmCustom';
@@ -17,6 +17,12 @@ import { pickCustomWallpaper, removeCustomWallpaper, getCustomWallpaper } from '
 import { exportData, importData } from '../src/services/dataBackup';
 import { performFullReset } from '../src/db/schema';
 import { triggerCurrencyRefresh } from '../src/db/currencySignal';
+
+const DAY_START_HOURS = [0, 1, 2, 3, 4, 5, 6];
+function fmtHour(h: number): string {
+  if (h === 0) return 'Midnight';
+  return `${h}am`;
+}
 
 const APP_ICONS = [
   { key: null,               label: 'Starry',      source: require('../assets/app-icons/icon-starry.png') },
@@ -69,6 +75,7 @@ export default function SettingsScreen() {
   const [personalization, setPersonalization] = useState(() => isPersonalizationEnabled());
   const [bibleXP, setBibleXP] = useState(() => getSetting('bible_xp', '50'));
   const [currency, setCurrency] = useState(() => getSetting('finance_currency', '$') || '$');
+  const [dayStartHour, setDayStartHourState] = useState(() => getDayStartHour());
 
   const bibleXPRef = useRef(bibleXP);
   const currencyRef = useRef(currency);
@@ -76,6 +83,11 @@ export default function SettingsScreen() {
   function togglePersonalization(value: boolean) {
     setSetting('personalization_enabled', value ? '1' : '0');
     setPersonalization(value);
+  }
+
+  function handleSelectDayStartHour(hour: number) {
+    setDayStartHour(hour);
+    setDayStartHourState(hour);
   }
 
   function handleSelect(zone: string, index: number) {
@@ -212,6 +224,24 @@ export default function SettingsScreen() {
               <Pressable key={key ?? 'default'} onPress={() => handleSelectIcon(key)} style={s.iconOption}>
                 <Image source={source} style={[s.iconThumb, active && s.iconThumbActive]} />
                 <Text style={[s.iconOptionLabel, active && { color: colors.primary }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* ── Day Start ── */}
+        <Text style={s.sectionLabel}>DAY START</Text>
+        <Text style={s.sectionHint}>
+          If you stay up late, pick the hour your "day" actually rolls over at. Logs made
+          before that hour still show under today's date, marked with a small back-arrow,
+          but count toward streaks, vigor, mood and XP tallies as yesterday.
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.hourRow}>
+          {DAY_START_HOURS.map(h => {
+            const active = dayStartHour === h;
+            return (
+              <Pressable key={h} onPress={() => handleSelectDayStartHour(h)} style={[s.hourChip, active && s.hourChipActive]}>
+                <Text style={[s.hourChipText, active && { color: colors.primary }]}>{fmtHour(h)}</Text>
               </Pressable>
             );
           })}
@@ -389,6 +419,12 @@ const s = StyleSheet.create({
   iconThumb:       { width: 56, height: 56, borderRadius: radius.md, borderWidth: 2, borderColor: 'transparent' },
   iconThumbActive: { borderColor: colors.primary },
   iconOptionLabel: { fontFamily: fonts.ui.regular, fontSize: fontSize.xs, color: colors.textMuted, textAlign: 'center' },
+
+  // Day Start
+  hourRow:       { gap: spacing.sm, paddingVertical: spacing.xs, paddingRight: spacing.md },
+  hourChip:      { borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  hourChipActive:{ borderColor: colors.primary },
+  hourChipText:  { fontFamily: fonts.mono.regular, fontSize: fontSize.sm, color: colors.textMuted },
 
   // Wallpaper
   wallpaperRow:     { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

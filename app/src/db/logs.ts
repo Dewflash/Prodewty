@@ -4,6 +4,7 @@ import { calculateXP } from '../services/xpEngine';
 import { applyXP, getWeeklyBoostMult, activateWeeklyBoost } from './rpg';
 import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
 import { grantAttributeStatGain } from './game';
+import { computeEffectiveDate } from './dayBoundary';
 
 const MOOD_XP    = 20;
 const JOURNAL_XP = 15;
@@ -15,7 +16,8 @@ export type ActivityLog = {
   created_at: string;
   log_type: string;       // 'daily' | 'weekly'
   entry_type: string;     // 'activity' | 'mood'
-  log_date: string;       // effective date YYYY-MM-DD
+  log_date: string;       // real calendar date YYYY-MM-DD this was logged on
+  effective_date: string | null; // logical day it counts toward (day_start_hour shift) — null on rows from before this feature, treat as log_date
   week_start: string | null;
   categories: string;     // JSON array
   description: string | null; // note/title for activity
@@ -158,15 +160,17 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
   }
 
   // mood_rating is NOT NULL in original schema — use 0 as sentinel for activity logs
+  const effDate = computeEffectiveDate(input.log_date);
   db.runSync(
     `INSERT INTO activity_logs
-       (category, description, log_type, entry_type, log_date, week_start,
+       (category, description, log_type, entry_type, log_date, effective_date, week_start,
         categories, mood_rating, duration_mins, journal_entry, what_went_well, what_to_improve, xp_awarded)
-     VALUES (?, ?, ?, 'activity', ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, 'activity', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
     input.selectedCategories[0]?.name ?? '',
     input.note?.trim() || '',
     input.log_type,
     input.log_date,
+    effDate,
     input.week_start ?? null,
     JSON.stringify(input.selectedCategories.map(c => c.name)),
     input.duration_mins ?? null,
@@ -195,7 +199,7 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
         flags.some(f => f.is_physical === 1),
         flags.some(f => f.is_recreational === 1),
         flags.some(f => f.is_communal === 1),
-        input.log_date,
+        effDate,
       );
       db.runSync(`UPDATE categories SET used = 1 WHERE name IN (${ph})`, ...names);
 
@@ -251,11 +255,11 @@ export function upsertMoodLog(input: MoodLogInput): CreateLogResult {
 
   db.runSync(
     `INSERT INTO activity_logs
-       (category, description, log_type, entry_type, log_date, mood_name,
+       (category, description, log_type, entry_type, log_date, effective_date, mood_name,
         mood_rating, energy_rating, productivity_rating, journal_entry,
         what_went_well, what_to_improve, categories, xp_awarded)
-     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
-    input.log_date, input.mood_name ?? null,
+     VALUES ('', '', 'daily', 'mood', ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)`,
+    input.log_date, computeEffectiveDate(input.log_date), input.mood_name ?? null,
     input.mood_rating, input.energy_rating, input.productivity_rating,
     input.journal_entry?.trim() || null,
     input.what_went_well?.trim() || null,

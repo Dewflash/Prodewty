@@ -7,6 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { db } from '../../src/db/schema';
 import { localDateStr } from '../../src/utils/date';
+import { logicalToday } from '../../src/db/dayBoundary';
 import { MoodSettingsSheet } from '../../src/components/MoodSettingsSheet';
 import { colors } from '../../src/theme/colors';
 import { fonts, fontSize } from '../../src/theme/typography';
@@ -344,13 +345,13 @@ export default function ProgressScreen() {
       // ── Deferred: heavy reads run after animation frame so navigation stays smooth ──
       const task = InteractionManager.runAfterInteractions(() => {
         if (!active) return;
-        const today  = localDateStr();
+        const today  = logicalToday();
         const all    = getLogs();
         const days   = period === 'week' ? 7 : 30;
         const recent = getRecentLogs(period === 'year' ? 365 : days);
         setAllLogs(all);
-        setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && l.log_date === today).length);
-        const todayActivity = all.filter(l => l.log_date === today && l.entry_type !== 'self_destruct');
+        setTodaySdCount(all.filter(l => l.entry_type === 'self_destruct' && (l.effective_date ?? l.log_date) === today).length);
+        const todayActivity = all.filter(l => (l.effective_date ?? l.log_date) === today && l.entry_type !== 'self_destruct');
         setTodayLogCount(todayActivity.length);
         setTodayXP(todayActivity.reduce((s, l) => s + l.xp_awarded, 0));
         setPeriodLogs(recent);
@@ -599,8 +600,8 @@ export default function ProgressScreen() {
           ].map((item, i, arr) => (
             <React.Fragment key={item.label}>
               <View style={s.stripItem}>
-                <Text style={s.stripVal}>{item.val}</Text>
-                <Text style={s.stripLabel}>{item.label}</Text>
+                <Text style={s.stripVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{item.val}</Text>
+                <Text style={s.stripLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{item.label}</Text>
               </View>
               {i < arr.length - 1 && <View style={s.stripDiv} />}
             </React.Fragment>
@@ -609,7 +610,7 @@ export default function ProgressScreen() {
 
         {/* Today at a glance */}
         <Surface style={s.todayRow} pad={spacing.sm}>
-          <Text style={[s.todayLabel, { color: muted(wallpaperActive) }]}>today</Text>
+          <Text style={[s.todayLabel, { color: muted(wallpaperActive) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>today</Text>
           <View style={s.todayDivider} />
           <Text style={[s.todayStat, { color: muted(wallpaperActive) }]}>{todayLogCount} {todayLogCount === 1 ? 'log' : 'logs'}</Text>
           <Text style={[s.todayDot, { color: dim(wallpaperActive) }]}>·</Text>
@@ -944,7 +945,7 @@ const s = StyleSheet.create({
   moodStateTxt:      { fontFamily: fonts.ui.medium, fontSize: fontSize.xs },
 
   strip:      { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', justifyContent: 'space-evenly' },
-  stripItem:  { alignItems: 'center', gap: 2, paddingHorizontal: spacing.sm },
+  stripItem:  { alignItems: 'center', gap: 2, paddingHorizontal: spacing.sm, flexShrink: 1 },
   stripVal:   { fontFamily: fonts.mono.regular, fontSize: fontSize.md, color: colors.textPrimary },
   stripLabel: { fontFamily: fonts.mono.regular, fontSize: fontSize.xs, color: colors.textMuted },
   stripDiv:   { width: 1, height: 32, backgroundColor: colors.border },

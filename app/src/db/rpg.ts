@@ -3,6 +3,7 @@ import { xpRequiredForLevel, titleForLevel } from '../services/xpEngine';
 import { sqlNow, localDateStr } from '../utils/date';
 import { triggerCurrencyRefresh } from './currencySignal';
 import { triggerDeathCheck } from './deathCheckSignal';
+import { logicalToday, logicalYesterday } from './dayBoundary';
 
 export type RPGState = {
   current_level: number;
@@ -65,13 +66,13 @@ export function getRPGState(): RPGState {
 export function checkVigor(): { gemAwarded: boolean } {
   try {
     const state = getRPGState();
-    const today = localDateStr();
+    const today = logicalToday();
     const lastVigor = (state as any).last_vigor_date as string | null;
     if (lastVigor === today) return { gemAwarded: false }; // already ran today
 
-    const yesterday = localDateStr(new Date(Date.now() - 86400000));
+    const yesterday = logicalYesterday();
     const sdRow = db.getFirstSync<{ cnt: number }>(
-      `SELECT COUNT(*) as cnt FROM activity_logs WHERE entry_type = 'self_destruct' AND log_date = ?`,
+      `SELECT COUNT(*) as cnt FROM activity_logs WHERE entry_type = 'self_destruct' AND COALESCE(effective_date, log_date) = ?`,
       yesterday,
     );
     const yesterdayClean = (sdRow?.cnt ?? 0) === 0;
@@ -115,7 +116,7 @@ export function getWeeklyBoostMult(): number {
       'SELECT weekly_boost_until FROM rpg_state WHERE id = 1',
     );
     if (!row?.weekly_boost_until) return 1.0;
-    const today = localDateStr();
+    const today = logicalToday();
     return row.weekly_boost_until >= today ? 1.05 : 1.0;
   } catch { return 1.0; }
 }
@@ -134,7 +135,7 @@ export function checkStreakFreeze(): void {
   try {
     const state = getRPGState();
     if (!state.last_active_date) return;
-    const today = localDateStr();
+    const today = logicalToday();
     if (state.last_active_date >= today) return;
     const daysMissed = Math.floor(
       (new Date(today).getTime() - new Date(state.last_active_date).getTime()) / 86400000,
@@ -143,7 +144,7 @@ export function checkStreakFreeze(): void {
     if (daysMissed === 2 && (state.streak_freezes ?? 0) > 0) {
       // Consume freeze and back-date last_active_date to yesterday so next
       // applyXP call sees diff=1 and extends the streak instead of resetting it.
-      const yesterday = localDateStr(new Date(Date.now() - 86400000));
+      const yesterday = logicalYesterday();
       db.runSync(
         'UPDATE rpg_state SET streak_freezes = streak_freezes - 1, last_active_date = ? WHERE id = 1',
         yesterday,
@@ -167,7 +168,8 @@ export function isInDeathState(): boolean {
 }
 
 export function selfDestruct(): { count: number; date: string } {
-  const today = localDateStr();
+  const realToday = localDateStr();
+  const today = logicalToday(); // logical day — drives dedup/vigor, not display
   const state = getRPGState();
   const isFirstSDToday = (state.last_self_destruct ?? '') !== today;
   db.runSync(
@@ -192,12 +194,12 @@ export function selfDestruct(): { count: number; date: string } {
   triggerDeathCheck();
   try {
     db.runSync(
-      `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, created_at, categories, xp_awarded, mood_rating)
-       VALUES ('', '', 'daily', 'self_destruct', ?, ?, '[]', 0, 0)`,
-      today, sqlNow(),
+      `INSERT INTO activity_logs (category, description, log_type, entry_type, log_date, effective_date, created_at, categories, xp_awarded, mood_rating)
+       VALUES ('', '', 'daily', 'self_destruct', ?, ?, ?, '[]', 0, 0)`,
+      realToday, today, sqlNow(),
     );
   } catch {}
-  return { count: getRPGState().self_destruct_count, date: today };
+  return { count: getRPGState().self_destruct_count, date: realToday };
 }
 
 export function setCurrentMood(mood: string): void {
@@ -216,12 +218,12 @@ function getMoodByName(name: string): CustomMood | null {
   } catch { return null; }
 }
 
-// Looks up the named mood logged against a given calendar date (most recent
+// Looks up the named mood logged against a given logical day (most recent
 // entry that day with a mood_name set) — sourced from the daily-log mood selector.
 function getLoggedMoodName(dateStr: string): string | null {
   try {
     const row = db.getFirstSync<{ mood_name: string | null }>(
-      `SELECT mood_name FROM activity_logs WHERE log_date = ? AND mood_name IS NOT NULL ORDER BY created_at DESC LIMIT 1`,
+      `SELECT mood_name FROM activity_logs WHERE COALESCE(effective_date, log_date) = ? AND mood_name IS NOT NULL ORDER BY created_at DESC LIMIT 1`,
       dateStr,
     );
     return row?.mood_name ?? null;
@@ -255,7 +257,7 @@ function _applyMpRegen(): void {
 
   // MP regen reflects *yesterday's* logged mood, not today's — e.g. yesterday's
   // "terrible" (mp_rate -50) zeroes out today's grant: 50 - 50 = 0.
-  const yesterday = localDateStr(new Date(Date.now() - 86400000));
+  const yesterday = logicalYesterday();
   const yesterdayMoodName = getLoggedMoodName(yesterday);
   const mood = yesterdayMoodName ? getMoodByName(yesterdayMoodName) : null;
   const dailyRate = MP_REGEN_PER_DAY + (mood?.mp_rate ?? 0);
@@ -402,7 +404,7 @@ export function applyXP(xp: number): { levelUp: boolean; newLevel?: number; stat
   const title = titleForLevel(current_level);
 
   // Streak update
-  const today = localDateStr();
+  const today = logicalToday();
   let { streak_days } = state;
   if (state.last_active_date === today) {
     // no change
