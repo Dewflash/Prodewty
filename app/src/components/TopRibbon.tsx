@@ -54,6 +54,7 @@ export function TopRibbon({ title }: Props) {
   const MENU_ITEMS: { icon: React.ComponentProps<typeof Feather>['name']; label: string; hint: string; onPress: () => void; locked?: boolean }[] = [
     { icon: 'book',         label: 'Bible',    hint: 'Devotion notes — each new note counts as a devotion log', onPress: () => router.push('/bible') },
     { icon: 'dollar-sign',  label: 'Finance',  hint: 'Track monthly net worth and view trends',           onPress: () => router.push('/finance') },
+    { icon: 'image',        label: 'RPG',      hint: 'Your visual sanctuary and expeditions',             onPress: () => router.push('/rpg') },
     { icon: 'settings',     label: 'Settings', hint: 'BGM selection and app preferences',                onPress: () => router.push('/settings') },
     { icon: 'info',         label: 'About',    hint: 'Version info and how your data is used',          onPress: () => setAboutVisible(true) },
   ];

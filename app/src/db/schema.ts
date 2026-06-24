@@ -1341,6 +1341,39 @@ function runMigrations() {
     db.runSync(`UPDATE activity_logs SET effective_date = log_date WHERE effective_date IS NULL`);
     db.execSync('PRAGMA user_version = 51');
   }
+
+  if (version < 52) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS bible_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    try { db.execSync(`ALTER TABLE bible_notes ADD COLUMN folder_id INTEGER`); } catch {}
+    try { db.execSync(`ALTER TABLE bible_notes ADD COLUMN is_pinned INTEGER DEFAULT 0`); } catch {}
+    db.execSync('PRAGMA user_version = 52');
+  }
+
+  if (version < 53) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS garden_plots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT NOT NULL,
+        grid_x INTEGER NOT NULL,
+        grid_y INTEGER NOT NULL,
+        planted_at TEXT NOT NULL,
+        growth_stage INTEGER DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS user_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT NOT NULL UNIQUE,
+        quantity INTEGER DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 53');
+  }
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
@@ -1389,7 +1422,7 @@ const DEFAULT_DUNGEON_TEMPLATES: { kind: string; name: string; flavor: string; o
 // Either way, a true blank slate follows: rpg_state/health_state/categories/moods/
 // restoratives are wiped, and onboarding_answers.completed_at is cleared (raw answers
 // are KEPT so the onboarding re-run can offer "retain your previous answers").
-export function performFullReset(archiveHistory: boolean = false): void {
+export function performFullReset(archiveHistory: boolean = false, retainCustomizations: boolean = false): void {
   if (archiveHistory) {
     try { db.execSync(`UPDATE activity_logs SET archived_at = datetime('now') WHERE archived_at IS NULL`); } catch {}
   } else {
@@ -1402,6 +1435,7 @@ export function performFullReset(archiveHistory: boolean = false): void {
     'game_logs', 'dungeon_runs',
     'habit_completions', 'habits',
     'dungeon_unlocks',
+    'garden_plots', 'user_inventory',
   ];
   for (const t of wipeTables) {
     try { db.execSync(`DELETE FROM ${t}`); } catch {}
@@ -1421,16 +1455,18 @@ export function performFullReset(archiveHistory: boolean = false): void {
   // which deriveAndApplyAnswers() turns into category rows, or manually). If onboarding
   // is skipped, categories stays empty and quests/dungeons simply won't generate until
   // the user adds categories themselves — that's intentional, not a bug.
-  db.execSync(`DELETE FROM custom_moods`);
-  db.execSync(`DELETE FROM categories`);
-  db.execSync(`DELETE FROM restorative_activities`);
+  if (!retainCustomizations) {
+    db.execSync(`DELETE FROM custom_moods`);
+    db.execSync(`DELETE FROM categories`);
+    db.execSync(`DELETE FROM restorative_activities`);
 
-  for (const a of DEFAULT_RESTORATIVE) {
-    db.runSync(
-      `INSERT OR IGNORE INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      a.name, a.desc, a.cost, a.e, a.p, a.m,
-    );
+    for (const a of DEFAULT_RESTORATIVE) {
+      db.runSync(
+        `INSERT OR IGNORE INTO restorative_activities (name, description, xp_cost, emotional_restore, physical_restore, mental_restore, is_default)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`,
+        a.name, a.desc, a.cost, a.e, a.p, a.m,
+      );
+    }
   }
 
   // Clear completion (not the raw answers) — this is what re-arms the onboarding

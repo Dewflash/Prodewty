@@ -77,8 +77,8 @@ export function MoodSettingsSheet({ visible, currentMood, onClose }: Props) {
       }
       const mpFinal = mpSign === '-' ? -mpMag : mpMag;
       db.runSync(
-        `INSERT INTO custom_moods (name, color, passive_effect, mp_rate, xp_change) VALUES (?,?,?,?,?)
-         ON CONFLICT(name) DO UPDATE SET color=excluded.color, passive_effect=excluded.passive_effect, mp_rate=excluded.mp_rate, xp_change=excluded.xp_change`,
+        `INSERT INTO custom_moods (name, color, passive_effect, mp_rate, xp_change, is_active) VALUES (?,?,?,?,?,1)
+         ON CONFLICT(name) DO UPDATE SET color=excluded.color, passive_effect=excluded.passive_effect, mp_rate=excluded.mp_rate, xp_change=excluded.xp_change, is_active=1`,
         name.trim() || currentMood, color, effect.trim() || null, mpFinal, xpFinal,
       );
     } catch {}

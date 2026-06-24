@@ -8,8 +8,18 @@ function getBibleXP(): number {
   return isNaN(val) ? 50 : Math.max(10, Math.min(200, val));
 }
 
+export type BibleFolder = {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  note_count?: number; // Populated via join
+};
+
 export type BibleNote = {
   id: number;
+  folder_id: number | null;
+  is_pinned: number; // 0 or 1
   title: string;
   content: string;
   html_content?: string;
@@ -17,11 +27,60 @@ export type BibleNote = {
   created_at: string;
   updated_at: string;
   xp_awarded: number;
+  folder_name?: string; // Populated via join in "All Notes" view
 };
 
-export function getNotes(): BibleNote[] {
+// --- Folders ---
+
+export function getFolders(): BibleFolder[] {
   try {
-    return db.getAllSync<BibleNote>('SELECT * FROM bible_notes ORDER BY updated_at DESC');
+    return db.getAllSync<BibleFolder>(`
+      SELECT f.*, COUNT(n.id) as note_count 
+      FROM bible_folders f 
+      LEFT JOIN bible_notes n ON n.folder_id = f.id 
+      GROUP BY f.id 
+      ORDER BY f.created_at ASC
+    `);
+  } catch { return []; }
+}
+
+export function createFolder(name: string): number {
+  const now = sqlNow();
+  const result = db.runSync(
+    'INSERT INTO bible_folders (name, created_at, updated_at) VALUES (?, ?, ?)',
+    name, now, now
+  );
+  return result.lastInsertRowId;
+}
+
+export function renameFolder(id: number, name: string): void {
+  const now = sqlNow();
+  db.runSync('UPDATE bible_folders SET name = ?, updated_at = ? WHERE id = ?', name, now, id);
+}
+
+export function deleteFolder(id: number): void {
+  db.runSync('UPDATE bible_notes SET folder_id = NULL WHERE folder_id = ?', id);
+  db.runSync('DELETE FROM bible_folders WHERE id = ?', id);
+}
+
+// --- Notes ---
+
+export function getNotes(folderId: number | 'all' | null = 'all'): BibleNote[] {
+  try {
+    if (folderId === 'all' || folderId === null) {
+      return db.getAllSync<BibleNote>(`
+        SELECT n.*, f.name as folder_name 
+        FROM bible_notes n 
+        LEFT JOIN bible_folders f ON n.folder_id = f.id 
+        ORDER BY n.is_pinned DESC, n.updated_at DESC
+      `);
+    } else {
+      return db.getAllSync<BibleNote>(`
+        SELECT * FROM bible_notes 
+        WHERE folder_id = ? 
+        ORDER BY is_pinned DESC, updated_at DESC
+      `, folderId);
+    }
   } catch { return []; }
 }
 
@@ -40,14 +99,24 @@ export function getNoteById(id: number): BibleNote | null {
   } catch { return null; }
 }
 
+export function togglePinNote(id: number, currentPinned: number): void {
+  db.runSync('UPDATE bible_notes SET is_pinned = ? WHERE id = ?', currentPinned ? 0 : 1, id);
+}
+
+export function getAllNotesCount(): number {
+  try {
+    return db.getFirstSync<{ count: number }>('SELECT COUNT(id) as count FROM bible_notes')?.count ?? 0;
+  } catch { return 0; }
+}
+
 // Creates a blank placeholder note, returns its ID. No XP awarded yet.
-export function createNote(): number {
+export function createNote(folderId: number | null = null): number {
   const today = localDateStr();
   const now = sqlNow();
   const result = db.runSync(
-    `INSERT INTO bible_notes (title, content, log_date, created_at, updated_at, xp_awarded)
-     VALUES ('', '', ?, ?, ?, 0)`,
-    today, now, now,
+    `INSERT INTO bible_notes (folder_id, title, content, log_date, created_at, updated_at, xp_awarded, is_pinned)
+     VALUES (?, '', '', ?, ?, ?, 0, 0)`,
+    folderId, today, now, now,
   );
   return result.lastInsertRowId;
 }
