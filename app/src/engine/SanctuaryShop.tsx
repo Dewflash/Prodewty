@@ -13,6 +13,7 @@ type InventoryItem = {
 export type ShopCatalogItem = {
   name: string;
   price: number;
+  // Base footprint blocks movement and placement; visual footprint can be larger for canopies.
   colWidth: number;
   colHeight: number;
   visWidth: number;
@@ -21,12 +22,12 @@ export type ShopCatalogItem = {
 };
 
 export const SHOP_CATALOG: Record<string, ShopCatalogItem> = {
-  'White_tree1': { name: 'White Tree', price: 100, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png') },
-  'Curved_tree1': { name: 'Curved Tree', price: 150, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png') },
-  'Luminous_tree1': { name: 'Luminous Tree', price: 300, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png') },
-  'Living gazebo1': { name: 'Living Gazebo', price: 500, colWidth: 3, colHeight: 3, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png') },
-  'Blue-green_balls_tree1': { name: 'Blue-Green Tree', price: 200, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png') },
-  'Mega_tree1': { name: 'Mega Tree', price: 1000, colWidth: 4, colHeight: 4, visWidth: 4, visHeight: 4, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png') },
+  'White_tree1': { name: 'White Tree', price: 100, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png') },
+  'Curved_tree1': { name: 'Curved Tree', price: 150, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png') },
+  'Luminous_tree1': { name: 'Luminous Tree', price: 300, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png') },
+  'Living gazebo1': { name: 'Living Gazebo', price: 500, colWidth: 2, colHeight: 2, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png') },
+  'Blue-green_balls_tree1': { name: 'Blue-Green Tree', price: 200, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png') },
+  'Mega_tree1': { name: 'Mega Tree', price: 1000, colWidth: 2, colHeight: 2, visWidth: 4, visHeight: 4, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png') },
 };
 
 interface Props {

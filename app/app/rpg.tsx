@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  runOnJS,
   useAnimatedStyle,
   useDerivedValue,
   useFrameCallback,
@@ -35,7 +34,12 @@ const ATTACK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-
 
 type Zone = 'sanctuary' | 'dungeon';
 type MapObject = { id: number; type: string; row: number; col: number };
-type PlacementItem = { itemId: string; label: string };
+type BuildItem = {
+  mode: 'place' | 'edit';
+  itemId: string;
+  label: string;
+  objectId: number | null;
+};
 
 function clamp(value: number, min: number, max: number) {
   'worklet';
@@ -76,8 +80,7 @@ export default function RpgScreen() {
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [coins, setCoins] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
-  const [placingItem, setPlacingItem] = useState<PlacementItem | null>(null);
-  const [editingObjectId, setEditingObjectId] = useState<number | null>(null);
+  const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
 
@@ -97,15 +100,27 @@ export default function RpgScreen() {
   const mapScale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
   const collisionMap = useSharedValue<number[]>([]);
+  const placementCollisionMap = useSharedValue<number[]>([]);
   const mapCols = useSharedValue(mapColsCount);
   const mapRows = useSharedValue(mapRowsCount);
-  const placingColWidth = useSharedValue(0);
-  const placingColHeight = useSharedValue(0);
+  const buildActive = useSharedValue(0);
+  const buildCol = useSharedValue(0);
+  const buildRow = useSharedValue(0);
+  const buildColWidth = useSharedValue(0);
+  const buildColHeight = useSharedValue(0);
+  const buildVisWidth = useSharedValue(0);
+  const buildVisHeight = useSharedValue(0);
 
   const selectedObject = useMemo(
-    () => mapObjects.find(obj => obj.id === editingObjectId) ?? null,
-    [editingObjectId, mapObjects],
+    () => (
+      buildItem?.mode === 'edit'
+        ? mapObjects.find(obj => obj.id === buildItem.objectId) ?? null
+        : null
+    ),
+    [buildItem, mapObjects],
   );
+
+  const buildCatalogItem = getItem(buildItem?.itemId ?? null);
 
   const refreshMapObjects = () => {
     setMapObjects(db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects'));
@@ -118,14 +133,57 @@ export default function RpgScreen() {
 
   const enterZone = (zone: Zone) => {
     setActiveZone(zone);
-    setPlacingItem(null);
-    setEditingObjectId(null);
+    setBuildItem(null);
     joyX.value = 0;
     joyY.value = 0;
     avatarIsPlaying.value = false;
     avatarDirection.value = 0;
     avatarX.value = TILE_SIZE * 2;
     avatarY.value = zone === 'sanctuary' ? TILE_SIZE * 2 : TILE_SIZE;
+  };
+
+  const setBuildAnchor = (row: number, col: number, item: ShopCatalogItem) => {
+    buildCol.value = clamp(col, 0, Math.max(0, mapColsCount - item.colWidth));
+    buildRow.value = clamp(row, 0, Math.max(0, mapRowsCount - item.colHeight));
+  };
+
+  const beginBuildMode = (
+    mode: BuildItem['mode'],
+    itemId: string,
+    objectId: number | null = null,
+    origin?: { row: number; col: number },
+  ) => {
+    const item = getItem(itemId);
+    if (!item || activeZone !== 'sanctuary') return;
+
+    buildColWidth.value = item.colWidth;
+    buildColHeight.value = item.colHeight;
+    buildVisWidth.value = item.visWidth;
+    buildVisHeight.value = item.visHeight;
+
+    if (origin) {
+      setBuildAnchor(origin.row, origin.col, item);
+    } else {
+      const avatarBaseCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
+      const avatarBaseRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
+      const nearby = findNearbyValidBuildAnchor(itemId, avatarBaseRow + 2, avatarBaseCol);
+      setBuildAnchor(nearby?.row ?? avatarBaseRow + 2, nearby?.col ?? avatarBaseCol, item);
+    }
+
+    joyX.value = 0;
+    joyY.value = 0;
+    avatarIsPlaying.value = false;
+    setBuildItem({ mode, itemId, label: item.name, objectId });
+    setIsShopOpen(false);
+  };
+
+  const clearBuildMode = () => {
+    setBuildItem(null);
+    buildActive.value = 0;
+    buildColWidth.value = 0;
+    buildColHeight.value = 0;
+    buildVisWidth.value = 0;
+    buildVisHeight.value = 0;
   };
 
   const getTargetedTile = () => {
@@ -188,47 +246,54 @@ export default function RpgScreen() {
     return true;
   };
 
-  const placeInventoryItemAtTarget = () => {
-    if (!placingItem) return;
-    const target = getTargetedTile();
-    if (!isPlacementValid(target.row, target.col, placingItem.itemId)) return;
+  const findNearbyValidBuildAnchor = (itemId: string, preferredRow: number, preferredCol: number) => {
+    for (let radius = 0; radius <= 6; radius++) {
+      for (let row = preferredRow - radius; row <= preferredRow + radius; row++) {
+        for (let col = preferredCol - radius; col <= preferredCol + radius; col++) {
+          if (Math.abs(row - preferredRow) !== radius && Math.abs(col - preferredCol) !== radius) {
+            continue;
+          }
+          if (isPlacementValid(row, col, itemId)) return { row, col };
+        }
+      }
+    }
+    return null;
+  };
+
+  const confirmBuildPlacement = () => {
+    if (!buildItem) return;
+    const row = buildRow.value;
+    const col = buildCol.value;
+    const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
+    if (!isPlacementValid(row, col, buildItem.itemId, ignoreObjectId)) return;
 
     try {
-      db.execSync('BEGIN TRANSACTION');
-      const result = db.runSync(
-        'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
-        placingItem.itemId,
-      );
-      if (result.changes <= 0) {
-        db.execSync('ROLLBACK');
-        return;
+      if (buildItem.mode === 'edit' && buildItem.objectId !== null) {
+        db.runSync(
+          'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
+          row, col, buildItem.objectId,
+        );
+      } else {
+        db.execSync('BEGIN TRANSACTION');
+        const result = db.runSync(
+          'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
+          buildItem.itemId,
+        );
+        if (result.changes <= 0) {
+          db.execSync('ROLLBACK');
+          return;
+        }
+        db.runSync(
+          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+          buildItem.itemId, row, col,
+        );
+        db.execSync('COMMIT');
       }
-      db.runSync(
-        'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
-        placingItem.itemId, target.row, target.col,
-      );
-      db.execSync('COMMIT');
-      setPlacingItem(null);
+      clearBuildMode();
       refreshMapObjects();
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
-      console.warn('Failed to place inventory item', e);
-    }
-  };
-
-  const moveEditingObjectTo = (row: number, col: number) => {
-    if (!selectedObject) return;
-    if (!isPlacementValid(row, col, selectedObject.type, selectedObject.id)) return;
-
-    try {
-      db.runSync(
-        'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
-        row, col, selectedObject.id,
-      );
-      setEditingObjectId(null);
-      refreshMapObjects();
-    } catch (e) {
-      console.warn('Failed to move object', e);
+      console.warn('Failed to confirm build placement', e);
     }
   };
 
@@ -244,7 +309,7 @@ export default function RpgScreen() {
         selectedObject.type,
       );
       db.execSync('COMMIT');
-      setEditingObjectId(null);
+      clearBuildMode();
       refreshMapObjects();
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
@@ -252,32 +317,14 @@ export default function RpgScreen() {
     }
   };
 
-  const screenToWorld = (screenX: number, screenY: number) => {
-    const worldX = (screenX - cameraX.value) / mapScale.value;
-    const worldY = (screenY - cameraY.value) / mapScale.value;
-    return {
-      col: Math.floor(worldX / TILE_SIZE),
-      row: Math.floor(worldY / TILE_SIZE),
-    };
-  };
-
-  const handleWorldTap = (screenX: number, screenY: number) => {
-    if (!selectedObject) return;
-    const target = screenToWorld(screenX, screenY);
-    moveEditingObjectTo(target.row, target.col);
-  };
-
   const handleObjectLongPress = (objectId: number) => {
-    setPlacingItem(null);
-    setEditingObjectId(objectId);
+    const object = mapObjects.find(obj => obj.id === objectId);
+    if (!object) return;
+    beginBuildMode('edit', object.type, object.id, { row: object.row, col: object.col });
   };
 
   const handleShopSelectInventoryItem = (itemId: string) => {
-    const item = getItem(itemId);
-    if (!item) return;
-    setEditingObjectId(null);
-    setPlacingItem({ itemId, label: item.name });
-    setIsShopOpen(false);
+    beginBuildMode('place', itemId);
   };
 
   useEffect(() => {
@@ -295,13 +342,18 @@ export default function RpgScreen() {
   }, []);
 
   useEffect(() => {
-    const item = getItem(placingItem?.itemId ?? null);
-    placingColWidth.value = item?.colWidth ?? 0;
-    placingColHeight.value = item?.colHeight ?? 0;
-  }, [placingItem]);
+    const item = getItem(buildItem?.itemId ?? null);
+    buildActive.value = buildItem ? 1 : 0;
+    buildColWidth.value = item?.colWidth ?? 0;
+    buildColHeight.value = item?.colHeight ?? 0;
+    buildVisWidth.value = item?.visWidth ?? 0;
+    buildVisHeight.value = item?.visHeight ?? 0;
+  }, [buildItem]);
 
   useEffect(() => {
-    const flat = mapData.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
+    const movementFlat = mapData.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
+    const placementFlat = [...movementFlat];
+    const editedObjectId = buildItem?.mode === 'edit' ? buildItem.objectId : null;
 
     if (activeZone === 'sanctuary') {
       mapObjects.forEach(obj => {
@@ -313,16 +365,20 @@ export default function RpgScreen() {
             const row = obj.row + dr;
             const col = obj.col + dc;
             if (row < 0 || row >= mapRowsCount || col < 0 || col >= mapColsCount) continue;
-            flat[row * mapColsCount + col] = 1;
+            movementFlat[row * mapColsCount + col] = 1;
+            if (obj.id !== editedObjectId) {
+              placementFlat[row * mapColsCount + col] = 1;
+            }
           }
         }
       });
     }
 
-    collisionMap.value = flat;
+    collisionMap.value = movementFlat;
+    placementCollisionMap.value = placementFlat;
     mapCols.value = mapColsCount;
     mapRows.value = mapRowsCount;
-  }, [activeZone, mapObjects, mapData, mapColsCount, mapRowsCount]);
+  }, [activeZone, mapObjects, mapData, mapColsCount, mapRowsCount, buildItem]);
 
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
@@ -337,6 +393,11 @@ export default function RpgScreen() {
   useFrameCallback((frameInfo) => {
     if (!frameInfo.timeSincePreviousFrame) return;
     const dt = frameInfo.timeSincePreviousFrame / 1000;
+
+    if (buildActive.value) {
+      avatarIsPlaying.value = false;
+      return;
+    }
 
     if (isAttacking.value) return;
 
@@ -411,36 +472,28 @@ export default function RpgScreen() {
     zIndex: Math.floor((avatarY.value + AVATAR_SIZE) / TILE_SIZE),
   }));
 
-  const placementPreviewStyle = useAnimatedStyle(() => {
-    if (placingColWidth.value <= 0 || placingColHeight.value <= 0) {
+  const buildPreviewBaseStyle = useAnimatedStyle(() => {
+    if (!buildActive.value || buildColWidth.value <= 0 || buildColHeight.value <= 0) {
       return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
     }
 
-    const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
-    const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
-    let col = Math.floor(footX / TILE_SIZE);
-    let row = Math.floor(footY / TILE_SIZE);
-    const dir = avatarDirection.value;
-    if (dir === 0) row += 1;
-    else if (dir === 1) col -= 1;
-    else if (dir === 2) col += 1;
-    else if (dir === 3) row -= 1;
-
     let valid = true;
+    const row = buildRow.value;
+    const col = buildCol.value;
     const avatarStartCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
     const avatarEndCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width - 1) / TILE_SIZE);
     const avatarStartRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
     const avatarEndRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height - 1) / TILE_SIZE);
 
-    for (let dr = 0; dr < placingColHeight.value; dr++) {
-      for (let dc = 0; dc < placingColWidth.value; dc++) {
+    for (let dr = 0; dr < buildColHeight.value; dr++) {
+      for (let dc = 0; dc < buildColWidth.value; dc++) {
         const checkRow = row + dr;
         const checkCol = col + dc;
         if (checkRow < 0 || checkRow >= mapRows.value || checkCol < 0 || checkCol >= mapCols.value) {
           valid = false;
           break;
         }
-        if (collisionMap.value[checkRow * mapCols.value + checkCol] === 1) {
+        if (placementCollisionMap.value[checkRow * mapCols.value + checkCol] === 1) {
           valid = false;
           break;
         }
@@ -460,13 +513,34 @@ export default function RpgScreen() {
       position: 'absolute',
       left: col * TILE_SIZE,
       top: row * TILE_SIZE,
-      width: placingColWidth.value * TILE_SIZE,
-      height: placingColHeight.value * TILE_SIZE,
+      width: buildColWidth.value * TILE_SIZE,
+      height: buildColHeight.value * TILE_SIZE,
       borderWidth: 2,
-      borderColor: valid ? '#2ecc71' : '#e74c3c',
-      backgroundColor: valid ? 'rgba(46, 204, 113, 0.28)' : 'rgba(231, 76, 60, 0.3)',
+      borderColor: valid ? '#35ff70' : '#ff3b30',
+      backgroundColor: valid ? 'rgba(53, 255, 112, 0.18)' : 'rgba(255, 59, 48, 0.2)',
       opacity: 1,
-      zIndex: 1000,
+      zIndex: 2000,
+    };
+  });
+
+  const buildGhostStyle = useAnimatedStyle(() => {
+    if (!buildActive.value || buildVisWidth.value <= 0 || buildVisHeight.value <= 0) {
+      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
+    }
+
+    const width = buildVisWidth.value * TILE_SIZE;
+    const height = buildVisHeight.value * TILE_SIZE;
+    const left = (buildCol.value + buildColWidth.value / 2) * TILE_SIZE - width / 2;
+    const top = (buildRow.value + buildColHeight.value) * TILE_SIZE - height;
+
+    return {
+      position: 'absolute',
+      left,
+      top,
+      width,
+      height,
+      opacity: 0.72,
+      zIndex: buildRow.value + buildColHeight.value + 1001,
     };
   });
 
@@ -478,15 +552,30 @@ export default function RpgScreen() {
       mapScale.value = clamp(pinchStartScale.value * event.scale, MIN_ZOOM, MAX_ZOOM);
     });
 
-  const tapGesture = Gesture.Tap()
-    .enabled(editingObjectId !== null)
-    .onEnd(event => {
-      runOnJS(handleWorldTap)(event.absoluteX, event.absoluteY);
+  const buildPanGesture = Gesture.Pan()
+    .enabled(buildItem !== null)
+    .minDistance(1)
+    .onBegin(event => {
+      const maxCol = Math.max(0, mapCols.value - buildColWidth.value);
+      const maxRow = Math.max(0, mapRows.value - buildColHeight.value);
+      const worldX = (event.absoluteX - cameraX.value) / mapScale.value;
+      const worldY = (event.absoluteY - cameraY.value) / mapScale.value;
+      buildCol.value = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), 0, maxCol);
+      buildRow.value = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), 0, maxRow);
+    })
+    .onUpdate(event => {
+      const maxCol = Math.max(0, mapCols.value - buildColWidth.value);
+      const maxRow = Math.max(0, mapRows.value - buildColHeight.value);
+      const worldX = (event.absoluteX - cameraX.value) / mapScale.value;
+      const worldY = (event.absoluteY - cameraY.value) / mapScale.value;
+      buildCol.value = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), 0, maxCol);
+      buildRow.value = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), 0, maxRow);
     });
 
-  const worldGesture = Gesture.Simultaneous(pinchGesture, tapGesture);
+  const worldGesture = Gesture.Simultaneous(pinchGesture, buildPanGesture);
 
   function handleAttack() {
+    if (buildItem) return;
     if (isAttacking.value) return;
     isAttacking.value = true;
     avatarIsPlaying.value = true;
@@ -514,8 +603,8 @@ export default function RpgScreen() {
   function handleInteract() {
     if (isAttacking.value) return;
 
-    if (placingItem) {
-      placeInventoryItemAtTarget();
+    if (buildItem) {
+      confirmBuildPlacement();
       return;
     }
 
@@ -537,12 +626,12 @@ export default function RpgScreen() {
 
   function getTileColor(type: TileType) {
     switch (type) {
-      case TileType.GRASS: return '#2ecc71';
-      case TileType.WALL: return '#7f8c8d';
-      case TileType.WATER: return '#3498db';
-      case TileType.PORTAL_DUNGEON: return '#9b59b6';
-      case TileType.PORTAL_SANCTUARY: return '#f1c40f';
-      default: return '#000';
+      case TileType.GRASS: return '#5c8f56';
+      case TileType.WALL: return '#56615b';
+      case TileType.WATER: return '#4d8aa8';
+      case TileType.PORTAL_DUNGEON: return '#8f63b8';
+      case TileType.PORTAL_SANCTUARY: return '#d7b84b';
+      default: return '#1b1f1b';
     }
   }
 
@@ -562,6 +651,7 @@ export default function RpgScreen() {
           ))}
 
           {activeZone === 'sanctuary' && mapObjects.map(obj => (
+            buildItem?.mode === 'edit' && buildItem.objectId === obj.id ? null :
             <SanctuaryObject
               key={obj.id}
               id={obj.id}
@@ -570,12 +660,20 @@ export default function RpgScreen() {
               col={obj.col}
               avatarX={avatarX}
               avatarY={avatarY}
-              isEditing={obj.id === editingObjectId}
               onMoveRequest={handleObjectLongPress}
             />
           ))}
 
-          <Animated.View style={placementPreviewStyle} />
+          {buildCatalogItem && (
+            <>
+              <Animated.Image
+                source={buildCatalogItem.source}
+                style={buildGhostStyle}
+                resizeMode="contain"
+              />
+              <Animated.View style={buildPreviewBaseStyle} />
+            </>
+          )}
 
           <Animated.View style={avatarStyle}>
             <SpriteAnimator
@@ -617,27 +715,23 @@ export default function RpgScreen() {
         </View>
       </View>
 
-      {placingItem && (
+      {buildItem && (
         <View style={styles.modePill}>
-          <Feather name="plus-square" size={15} color="#fff" />
-          <Text style={styles.modeText}>{placingItem.label}: face a free tile, then Interact</Text>
+          <Feather name={buildItem.mode === 'edit' ? 'move' : 'plus-square'} size={15} color="#fff" />
+          <Text style={styles.modeText}>{buildItem.label}: drag ghost, Interact confirms</Text>
+          <Pressable style={styles.modeCloseBtn} onPress={clearBuildMode}>
+            <Feather name="x" size={14} color="#fff" />
+          </Pressable>
         </View>
       )}
 
       {selectedObject && (
         <View style={styles.editBar}>
-          <Pressable style={styles.editBtn} onPress={() => {
-            const target = getTargetedTile();
-            moveEditingObjectTo(target.row, target.col);
-          }}>
-            <Feather name="move" size={17} color="#fff" />
-            <Text style={styles.editText}>Move</Text>
-          </Pressable>
           <Pressable style={styles.editBtn} onPress={stashEditingObject}>
             <Feather name="archive" size={17} color="#fff" />
             <Text style={styles.editText}>Stash</Text>
           </Pressable>
-          <Pressable style={styles.editBtn} onPress={() => setEditingObjectId(null)}>
+          <Pressable style={styles.editBtn} onPress={clearBuildMode}>
             <Feather name="x" size={17} color="#fff" />
             <Text style={styles.editText}>Cancel</Text>
           </Pressable>
@@ -649,9 +743,12 @@ export default function RpgScreen() {
       <View style={styles.actionBtns}>
         <Pressable style={styles.actionBtn} onPress={handleInteract}>
           <Feather name="mouse-pointer" size={20} color="#fff" />
-          <Text style={styles.actionText}>Interact</Text>
+          <Text style={styles.actionText}>{buildItem ? 'Place' : 'Interact'}</Text>
         </Pressable>
-        <Pressable style={[styles.actionBtn, styles.attackBtn]} onPress={handleAttack}>
+        <Pressable
+          style={[styles.actionBtn, styles.attackBtn, buildItem && styles.disabledBtn]}
+          onPress={handleAttack}
+        >
           <Feather name="crosshair" size={20} color="#fff" />
           <Text style={styles.actionText}>Attack</Text>
         </Pressable>
@@ -701,7 +798,7 @@ const styles = StyleSheet.create({
     width: TILE_SIZE,
     height: TILE_SIZE,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderColor: 'rgba(9,20,12,0.18)',
   },
   header: {
     position: 'absolute',
@@ -790,10 +887,21 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   modeText: {
+    flexShrink: 1,
     color: '#fff',
     fontFamily: fonts.ui.bold,
     fontSize: 12,
     marginLeft: 8,
+    marginRight: 8,
+    textAlign: 'center',
+  },
+  modeCloseBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   editBar: {
     position: 'absolute',
@@ -840,6 +948,9 @@ const styles = StyleSheet.create({
   attackBtn: {
     backgroundColor: '#e74c3c',
     borderColor: 'rgba(255,255,255,0.75)',
+  },
+  disabledBtn: {
+    opacity: 0.42,
   },
   actionText: {
     color: '#fff',

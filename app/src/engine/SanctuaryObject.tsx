@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, View } from 'react-native';
+import { Image } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TILE_SIZE } from './MapData';
@@ -12,13 +12,12 @@ interface Props {
   col: number;
   avatarX: SharedValue<number>;
   avatarY: SharedValue<number>;
-  isEditing?: boolean;
   onMoveRequest?: (id: number) => void;
 }
 
 const AVATAR_SIZE = 64;
 
-export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isEditing = false, onMoveRequest }: Props) {
+export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, onMoveRequest }: Props) {
   const catalogItem = SHOP_CATALOG[type as keyof typeof SHOP_CATALOG];
   const source = catalogItem?.source || require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png');
 
@@ -75,22 +74,6 @@ export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isEditin
           }
         ]}
       >
-        {isEditing && (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: (col * TILE_SIZE) - left,
-              top: (row * TILE_SIZE) - top,
-              width: colWidth * TILE_SIZE,
-              height: colHeight * TILE_SIZE,
-              borderWidth: 2,
-              borderColor: '#ffffff',
-              backgroundColor: 'rgba(255,255,255,0.16)',
-              zIndex: 2,
-            }}
-          />
-        )}
         <Image
           source={source}
           style={{ width: '100%', height: '100%' }}
