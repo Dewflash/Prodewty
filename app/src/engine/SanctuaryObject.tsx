@@ -1,18 +1,21 @@
 import React from 'react';
 import { View, Image } from 'react-native';
-import Animated, { useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TILE_SIZE } from './MapData';
 import { SHOP_CATALOG } from './SanctuaryShop';
 
 interface Props {
+  id: number;
   type: string;
   row: number;
   col: number;
   avatarX: SharedValue<number>;
   avatarY: SharedValue<number>;
+  onMoveRequest?: (id: number) => void;
 }
 
-export function SanctuaryObject({ type, row, col, avatarX, avatarY }: Props) {
+export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, onMoveRequest }: Props) {
   const catalogItem = SHOP_CATALOG[type as keyof typeof SHOP_CATALOG];
   const source = catalogItem?.source || require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png');
 
@@ -53,26 +56,34 @@ export function SanctuaryObject({ type, row, col, avatarX, avatarY }: Props) {
     };
   });
 
+  const longPress = Gesture.LongPress()
+    .minDuration(350)
+    .onStart(() => {
+      if (onMoveRequest) runOnJS(onMoveRequest)(id);
+    });
+
   return (
-    <Animated.View
-      style={[
-        animatedStyle,
-        {
-          position: 'absolute',
-          left,
-          top,
-          width,
-          height,
-          // 2.5D Z-Index Illusion: zIndex is identical to the Grid Row!
-          zIndex: row,
-        }
-      ]}
-    >
-      <Image
-        source={source}
-        style={{ width: '100%', height: '100%' }}
-        resizeMode="contain"
-      />
-    </Animated.View>
+    <GestureDetector gesture={longPress}>
+      <Animated.View
+        style={[
+          animatedStyle,
+          {
+            position: 'absolute',
+            left,
+            top,
+            width,
+            height,
+            // 2.5D Z-Index Illusion: zIndex is identical to the Grid Row!
+            zIndex: row,
+          }
+        ]}
+      >
+        <Image
+          source={source}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="contain"
+        />
+      </Animated.View>
+    </GestureDetector>
   );
 }

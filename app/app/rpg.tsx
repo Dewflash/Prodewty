@@ -17,12 +17,18 @@ import { SanctuaryObject } from '../src/engine/SanctuaryObject';
 import { SanctuaryShop, SHOP_CATALOG } from '../src/engine/SanctuaryShop';
 import { SanctuaryMap, DungeonMap, TILE_SIZE, TileType, TILE_COLLISION } from '../src/engine/MapData';
 import { db } from '../src/db/schema';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 const AVATAR_SIZE = 64;
 const SPEED = 200; // pixels per second
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 1.75;
 
 const WALK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_Walk_with_shadow.png');
 const ATTACK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_attack_with_shadow.png');
+
+type MapObject = { id: number, type: string, row: number, col: number };
+type HeldItem = { itemId: string; objectId: number | null; label: string };
 
 export default function RpgScreen() {
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
@@ -48,12 +54,17 @@ export default function RpgScreen() {
   const avatarDirection = useSharedValue(0);
   const avatarIsPlaying = useSharedValue(false);
   const isAttacking = useSharedValue(false);
+  const isCarrying = useSharedValue(false);
+  const mapScale = useSharedValue(1);
+  const pinchStartScale = useSharedValue(1);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
-  const [mapObjects, setMapObjects] = useState<{id: number, type: string, row: number, col: number}[]>([]);
+  const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [coins, setCoins] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [dragImageSource, setDragImageSource] = useState<any>(null);
+  const [heldItem, setHeldItem] = useState<HeldItem | null>(null);
+  const [zoomLabel, setZoomLabel] = useState('100%');
 
   // Drag & Drop Physics State
   const dragX = useSharedValue(0);
@@ -67,7 +78,7 @@ export default function RpgScreen() {
   const hoverCol = useSharedValue(0);
   const hoverRow = useSharedValue(0);
 
-  const isPlacementValid = (r: number, c: number, itemId: string | null) => {
+  const isPlacementValid = (r: number, c: number, itemId: string | null, ignoreObjectId: number | null = null) => {
     if (activeZone !== 'sanctuary' || !itemId) return false;
     const catalogItem = SHOP_CATALOG[itemId as keyof typeof SHOP_CATALOG];
     const widthTiles = catalogItem?.colWidth || 1;
@@ -84,6 +95,7 @@ export default function RpgScreen() {
         if (TILE_COLLISION[tileType]) return false;
 
         const hasObject = mapObjects.some(obj => {
+          if (obj.id === ignoreObjectId) return false;
           const existingItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
           const existingW = existingItem?.colWidth || 1;
           const existingH = existingItem?.colHeight || 1;
@@ -99,6 +111,120 @@ export default function RpgScreen() {
     }
 
     return true;
+  };
+
+  const refreshMapObjects = () => {
+    const data = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+    setMapObjects(data);
+  };
+
+  const getObjectAtTile = (r: number, c: number) => {
+    return mapObjects.find(obj => {
+      const catalogItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
+      const w = catalogItem?.colWidth || 1;
+      const h = catalogItem?.colHeight || 1;
+      return r >= obj.row && r < obj.row + h && c >= obj.col && c < obj.col + w;
+    }) ?? null;
+  };
+
+  const clearHeldItem = () => {
+    setHeldItem(null);
+    setDragImageSource(null);
+    isCarrying.value = false;
+  };
+
+  const beginHoldingItem = (itemId: string, objectId: number | null = null) => {
+    const catalogItem = SHOP_CATALOG[itemId as keyof typeof SHOP_CATALOG];
+    if (!catalogItem) return;
+    setHeldItem({ itemId, objectId, label: catalogItem.name });
+    setDragImageSource(catalogItem.source);
+    dragItemId.value = itemId;
+    dragItemColWidth.value = catalogItem.colWidth;
+    dragItemColHeight.value = catalogItem.colHeight;
+    dragItemVisWidth.value = catalogItem.visWidth;
+    dragItemVisHeight.value = catalogItem.visHeight;
+    isCarrying.value = true;
+    setIsShopOpen(false);
+  };
+
+  const beginMovingObject = (objectId: number) => {
+    const object = mapObjects.find(obj => obj.id === objectId);
+    if (!object) return;
+    beginHoldingItem(object.type, object.id);
+  };
+
+  const handlePlaceHeldItem = () => {
+    if (!heldItem) return;
+    const target = getTargetedTile();
+    if (!isPlacementValid(target.row, target.col, heldItem.itemId, heldItem.objectId)) {
+      console.warn("Cannot place item on blocked tile");
+      return;
+    }
+
+    try {
+      if (heldItem.objectId !== null) {
+        db.runSync(
+          'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
+          target.row, target.col, heldItem.objectId,
+        );
+      } else {
+        const result = db.runSync(
+          'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
+          heldItem.itemId,
+        );
+        if (result.changes <= 0) {
+          console.warn("Item not in inventory or quantity 0");
+          return;
+        }
+        db.runSync(
+          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+          heldItem.itemId, target.row, target.col,
+        );
+      }
+      refreshMapObjects();
+      clearHeldItem();
+    } catch (e) {
+      console.warn("Failed to place held item", e);
+    }
+  };
+
+  const stashObject = (object: MapObject) => {
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', object.id);
+      db.runSync(`
+        INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
+        ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1
+      `, object.type);
+      db.execSync('COMMIT');
+      refreshMapObjects();
+      if (heldItem?.objectId === object.id) clearHeldItem();
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn("Failed to stash object", e);
+    }
+  };
+
+  const handleStashHeldItem = () => {
+    if (!heldItem) return;
+    if (heldItem.objectId === null) {
+      clearHeldItem();
+      return;
+    }
+    const object = mapObjects.find(obj => obj.id === heldItem.objectId);
+    if (object) stashObject(object);
+  };
+
+  const handleMoveTargetObject = () => {
+    const target = getTargetedTile();
+    const object = getObjectAtTile(target.row, target.col);
+    if (object) beginMovingObject(object.id);
+  };
+
+  const handleStashTargetObject = () => {
+    const target = getTargetedTile();
+    const object = getObjectAtTile(target.row, target.col);
+    if (object) stashObject(object);
   };
 
   const handleDrop = (r: number, c: number, itemId: string | null) => {
@@ -139,8 +265,7 @@ export default function RpgScreen() {
   // Fetch sanctuary objects and currency on mount
   useEffect(() => {
     try {
-      const data = db.getAllSync<{id: number, type: string, row: number, col: number}>('SELECT * FROM sanctuary_objects');
-      setMapObjects(data);
+      refreshMapObjects();
 
       const state = db.getFirstSync<{coins: number}>('SELECT coins FROM rpg_state WHERE id = 1');
       if (state) setCoins(state.coins);
@@ -155,10 +280,12 @@ export default function RpgScreen() {
     const mapWidth = currentMap[0].length;
 
     const flat = currentMap.flat().map(t => TILE_COLLISION[t as TileType] ? 1 : 0);
+    const heldObjectId = heldItem?.objectId ?? null;
 
     // Inject dynamic objects into the collision map
     if (activeZone === 'sanctuary') {
       mapObjects.forEach(obj => {
+        if (obj.id === heldObjectId) return;
         const catalogItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
         const w = catalogItem?.colWidth || 1;
         const h = catalogItem?.colHeight || 1;
@@ -177,7 +304,7 @@ export default function RpgScreen() {
     collisionMap.value = flat;
     mapCols.value = currentMap[0].length;
     mapRows.value = currentMap.length;
-  }, [activeZone, mapObjects]);
+  }, [activeZone, mapObjects, heldItem]);
 
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
@@ -203,6 +330,25 @@ export default function RpgScreen() {
 
     // delta time in seconds
     const dt = frameInfo.timeSincePreviousFrame / 1000;
+
+    // Edge panning during drag/build mode. This runs before movement idles out,
+    // so the camera still pans while the user holds an object at the edge.
+    if (isDragging.value && dt) {
+      const PAN_SPEED = 420 / mapScale.value;
+      const margin = 50;
+      let dx = 0;
+      let dy = 0;
+
+      if (dragX.value < margin) dx = PAN_SPEED * dt;
+      if (dragX.value > dimensions.width - margin) dx = -PAN_SPEED * dt;
+      if (dragY.value < margin) dy = PAN_SPEED * dt;
+      if (dragY.value > dimensions.height - margin) dy = -PAN_SPEED * dt;
+
+      if (dx !== 0 || dy !== 0) {
+        avatarX.value = Math.max(0, Math.min(MAP_WIDTH, avatarX.value - dx));
+        avatarY.value = Math.max(0, Math.min(MAP_HEIGHT, avatarY.value - dy));
+      }
+    }
 
     // Lock movement if attacking
     if (isAttacking.value) return;
@@ -250,25 +396,6 @@ export default function RpgScreen() {
       avatarY.value = nextY;
     }
 
-    // Edge Panning during Drag Mode
-    if (isDragging.value && dt) {
-      const PAN_SPEED = 500;
-      const margin = 100;
-      let dx = 0;
-      let dy = 0;
-
-      // We check absolute coordinates of the drag pointer against the screen
-      if (dragX.value < margin) dx = PAN_SPEED * dt;
-      if (dragX.value > dimensions.width - margin) dx = -PAN_SPEED * dt;
-      if (dragY.value < margin) dy = PAN_SPEED * dt;
-      if (dragY.value > dimensions.height - margin) dy = -PAN_SPEED * dt;
-
-      if (dx !== 0 || dy !== 0) {
-        // Move avatar to automatically pan the camera mapTranslate
-        avatarX.value = Math.max(0, Math.min(MAP_WIDTH, avatarX.value - dx));
-        avatarY.value = Math.max(0, Math.min(MAP_HEIGHT, avatarY.value - dy));
-      }
-    }
   });
 
   function getTargetedTile() {
@@ -317,36 +444,72 @@ export default function RpgScreen() {
 
   function handleInteract() {
     if (isAttacking.value) return;
+    if (heldItem) {
+      handlePlaceHeldItem();
+      return;
+    }
+
     const target = getTargetedTile();
 
-    // Check if target tile is a specific type (e.g., Grass/Soil in Sanctuary)
     if (activeZone === 'sanctuary') {
-      const tileType = SanctuaryMap[target.row]?.[target.col];
-      if (tileType === TileType.GRASS) {
-        // TODO: Open planting UI
-        console.log(`[Interact] Inspecting soil at [${target.row}, ${target.col}]`);
+      const object = getObjectAtTile(target.row, target.col);
+      if (object) {
+        beginMovingObject(object.id);
+        return;
       }
+
+      const tileType = SanctuaryMap[target.row]?.[target.col];
+      if (tileType === TileType.PORTAL_DUNGEON) {
+        setActiveZone('dungeon');
+        return;
+      }
+      console.log(`[Interact] Inspecting sanctuary tile [${target.row}, ${target.col}]`);
+      return;
     }
+
+    const tileType = DungeonMap[target.row]?.[target.col];
+    if (tileType === TileType.PORTAL_SANCTUARY) {
+      setActiveZone('sanctuary');
+      return;
+    }
+    console.log(`[Interact] Inspecting dungeon tile [${target.row}, ${target.col}]`);
   }
 
-  const mapTranslateX = useDerivedValue(() => -(avatarX.value - (dimensions.width / 2) + (AVATAR_SIZE / 2)));
-  const mapTranslateY = useDerivedValue(() => -(avatarY.value - (dimensions.height / 2) + (AVATAR_SIZE / 2)));
+  const mapTranslateX = useDerivedValue(() => dimensions.width / 2 - (avatarX.value + AVATAR_SIZE / 2) * mapScale.value);
+  const mapTranslateY = useDerivedValue(() => dimensions.height / 2 - (avatarY.value + AVATAR_SIZE / 2) * mapScale.value);
 
   const animatedWorldStyle = useAnimatedStyle(() => {
     return {
       transform: [
         { translateX: mapTranslateX.value },
         { translateY: mapTranslateY.value },
+        { scale: mapScale.value },
       ],
     };
   });
 
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      pinchStartScale.value = mapScale.value;
+    })
+    .onUpdate((event) => {
+      mapScale.value = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartScale.value * event.scale));
+    })
+    .onEnd(() => {
+      runOnJS(setZoomLabel)(`${Math.round(mapScale.value * 100)}%`);
+    });
+
+  const setZoom = (nextScale: number) => {
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextScale));
+    mapScale.value = clamped;
+    setZoomLabel(`${Math.round(clamped * 100)}%`);
+  };
+
   // Build Mode: Hover Preview Box Math
   useFrameCallback(() => {
     if (isDragging.value) {
-      // Hardcoded mapScale = 1 since we haven't added pinch-to-zoom yet
-      hoverCol.value = Math.floor((dragX.value - mapTranslateX.value) / TILE_SIZE);
-      hoverRow.value = Math.floor((dragY.value - mapTranslateY.value) / TILE_SIZE);
+      hoverCol.value = Math.floor((dragX.value - mapTranslateX.value) / mapScale.value / TILE_SIZE);
+      hoverRow.value = Math.floor((dragY.value - mapTranslateY.value) / mapScale.value / TILE_SIZE);
     }
   });
 
@@ -392,6 +555,53 @@ export default function RpgScreen() {
     };
   });
 
+  const heldPreviewStyle = useAnimatedStyle(() => {
+    if (!isCarrying.value) {
+      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
+    }
+
+    const widthTiles = dragItemColWidth.value;
+    const heightTiles = dragItemColHeight.value;
+    const col = Math.floor((avatarX.value + AVATAR_SIZE / 2) / TILE_SIZE);
+    const row = Math.floor((avatarY.value + AVATAR_SIZE / 2) / TILE_SIZE);
+    let targetCol = col;
+    let targetRow = row;
+    const dir = avatarDirection.value;
+    if (dir === 0) targetRow += 1;
+    else if (dir === 1) targetCol -= 1;
+    else if (dir === 2) targetCol += 1;
+    else if (dir === 3) targetRow -= 1;
+
+    let isValid = true;
+    for (let dr = 0; dr < heightTiles; dr++) {
+      for (let dc = 0; dc < widthTiles; dc++) {
+        const checkR = targetRow + dr;
+        const checkC = targetCol + dc;
+        if (checkR < 0 || checkR >= mapRows.value || checkC < 0 || checkC >= mapCols.value) {
+          isValid = false;
+          break;
+        }
+        if (collisionMap.value[checkR * mapCols.value + checkC] === 1) {
+          isValid = false;
+          break;
+        }
+      }
+    }
+
+    return {
+      position: 'absolute',
+      left: targetCol * TILE_SIZE,
+      top: targetRow * TILE_SIZE,
+      width: widthTiles * TILE_SIZE,
+      height: heightTiles * TILE_SIZE,
+      backgroundColor: isValid ? 'rgba(46, 204, 113, 0.32)' : 'rgba(231, 76, 60, 0.34)',
+      opacity: 1,
+      borderWidth: 2,
+      borderColor: isValid ? '#2ecc71' : '#e74c3c',
+      zIndex: 1001,
+    };
+  });
+
   const ghostStyle = useAnimatedStyle(() => {
     return {
       position: 'absolute',
@@ -426,36 +636,41 @@ export default function RpgScreen() {
   return (
     <View style={styles.container}>
       {/* The World Container */}
-      <Animated.View style={[styles.world, { width: MAP_WIDTH, height: MAP_HEIGHT }, animatedWorldStyle]}>
-        {mapData.map((row, rIdx) => (
-          <View key={`row-${rIdx}`} style={styles.mapRow}>
-            {row.map((tile, cIdx) => (
-              <View
-                key={`tile-${rIdx}-${cIdx}`}
-                style={[
-                  styles.tile,
-                  { backgroundColor: getTileColor(tile as TileType) }
-                ]}
-              />
-            ))}
-          </View>
-        ))}
+      <GestureDetector gesture={pinchGesture}>
+        <Animated.View style={[styles.world, { width: MAP_WIDTH, height: MAP_HEIGHT }, animatedWorldStyle]}>
+          {mapData.map((row, rIdx) => (
+            <View key={`row-${rIdx}`} style={styles.mapRow}>
+              {row.map((tile, cIdx) => (
+                <View
+                  key={`tile-${rIdx}-${cIdx}`}
+                  style={[
+                    styles.tile,
+                    { backgroundColor: getTileColor(tile as TileType) }
+                  ]}
+                />
+              ))}
+            </View>
+          ))}
 
-        {/* Dynamic Objects */}
-        {activeZone === 'sanctuary' && mapObjects.map(obj => (
-          <SanctuaryObject
-            key={obj.id}
-            type={obj.type}
-            row={obj.row}
-            col={obj.col}
-            avatarY={avatarY}
-            avatarX={avatarX}
-          />
-        ))}
+          {/* Dynamic Objects */}
+          {activeZone === 'sanctuary' && mapObjects.filter(obj => obj.id !== heldItem?.objectId).map(obj => (
+            <SanctuaryObject
+              key={obj.id}
+              id={obj.id}
+              type={obj.type}
+              row={obj.row}
+              col={obj.col}
+              avatarY={avatarY}
+              avatarX={avatarX}
+              onMoveRequest={beginMovingObject}
+            />
+          ))}
 
-        {/* Build Mode Preview Box */}
-        <Animated.View style={previewStyle} />
-      </Animated.View>
+          {/* Build Mode Preview Boxes */}
+          <Animated.View style={previewStyle} />
+          <Animated.View style={heldPreviewStyle} />
+        </Animated.View>
+      </GestureDetector>
 
       {/* The Avatar (Fixed in center of screen) */}
       <Animated.View style={[
@@ -501,6 +716,7 @@ export default function RpgScreen() {
         onDragStart={(id) => {
           setDragImageSource(SHOP_CATALOG[id]?.source);
         }}
+        onSelectInventoryItem={(id) => beginHoldingItem(id, null)}
         onPurchaseRequest={(itemId, price) => {
           try {
             const state = db.getFirstSync<{coins: number}>('SELECT coins FROM rpg_state WHERE id = 1');
@@ -541,19 +757,62 @@ export default function RpgScreen() {
         </View>
       </View>
 
+      {(heldItem || isShopOpen) && (
+        <View style={styles.modePill}>
+          <Feather name={heldItem ? 'move' : 'shopping-bag'} size={15} color="#fff" />
+          <Text style={styles.modeText}>
+            {heldItem ? `Holding ${heldItem.label}` : 'Choose an item, then press Use'}
+          </Text>
+        </View>
+      )}
+
+      {heldItem && (
+        <View style={styles.stashZone}>
+          <Feather name="archive" size={18} color="#fff" />
+          <Text style={styles.stashText}>Stash returns placed items to inventory</Text>
+        </View>
+      )}
+
       {/* Controls */}
       <Joystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
 
       {/* Action Buttons */}
       <View style={styles.actionBtns}>
         <Pressable style={styles.actionBtn} onPress={() => setIsShopOpen(true)}>
-          <Feather name="shopping-bag" size={24} color="#fff" />
+          <Feather name="shopping-bag" size={18} color="#fff" />
+          <Text style={styles.actionText}>Shop</Text>
         </Pressable>
-        <Pressable style={[styles.actionBtn, { marginLeft: 16 }]} onPress={handleInteract}>
-          <Feather name="mouse-pointer" size={24} color="#fff" />
+        <Pressable style={styles.actionBtn} onPress={handleInteract}>
+          <Feather name="mouse-pointer" size={18} color="#fff" />
+          <Text style={styles.actionText}>{heldItem ? 'Place' : 'Interact'}</Text>
         </Pressable>
-        <Pressable style={[styles.actionBtn, { backgroundColor: '#e74c3c', marginLeft: 16 }]} onPress={handleAttack}>
-          <Feather name="crosshair" size={24} color="#fff" />
+        <Pressable style={styles.actionBtn} onPress={handleMoveTargetObject}>
+          <Feather name="move" size={18} color="#fff" />
+          <Text style={styles.actionText}>Move</Text>
+        </Pressable>
+        <Pressable style={styles.actionBtn} onPress={heldItem ? handleStashHeldItem : handleStashTargetObject}>
+          <Feather name="archive" size={18} color="#fff" />
+          <Text style={styles.actionText}>Stash</Text>
+        </Pressable>
+        {heldItem && (
+          <Pressable style={styles.actionBtn} onPress={clearHeldItem}>
+            <Feather name="x" size={18} color="#fff" />
+            <Text style={styles.actionText}>Cancel</Text>
+          </Pressable>
+        )}
+        <Pressable style={[styles.actionBtn, styles.attackBtn]} onPress={handleAttack}>
+          <Feather name="crosshair" size={18} color="#fff" />
+          <Text style={styles.actionText}>Attack</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.zoomBtns}>
+        <Pressable style={styles.zoomBtn} onPress={() => setZoom(mapScale.value - 0.15)}>
+          <Feather name="minus" size={18} color="#fff" />
+        </Pressable>
+        <Text style={styles.zoomText}>{zoomLabel}</Text>
+        <Pressable style={styles.zoomBtn} onPress={() => setZoom(mapScale.value + 0.15)}>
+          <Feather name="plus" size={18} color="#fff" />
         </Pressable>
       </View>
     </View>
@@ -637,21 +896,106 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
   },
+  modePill: {
+    position: 'absolute',
+    top: 102,
+    left: 20,
+    right: 20,
+    minHeight: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    zIndex: 100,
+  },
+  modeText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  stashZone: {
+    position: 'absolute',
+    bottom: 126,
+    left: 164,
+    right: 20,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    zIndex: 100,
+  },
+  stashText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+    marginLeft: 8,
+  },
   actionBtns: {
     position: 'absolute',
     bottom: 40,
-    right: 40,
+    right: 20,
+    width: 276,
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 10,
     zIndex: 100,
   },
   actionBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 82,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  attackBtn: {
+    backgroundColor: '#e74c3c',
+    borderColor: 'rgba(255,255,255,0.75)',
+  },
+  actionText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  zoomBtns: {
+    position: 'absolute',
+    right: 20,
+    top: 150,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 16,
+    padding: 4,
+    zIndex: 100,
+  },
+  zoomBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+    minWidth: 48,
+    textAlign: 'center',
   },
 });

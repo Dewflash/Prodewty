@@ -33,9 +33,10 @@ interface Props {
   dragItemVisHeight: SharedValue<number>;
   onPurchaseRequest: (itemId: string, price: number) => void;
   onDragStart: (itemId: string) => void;
+  onSelectInventoryItem: (itemId: string) => void;
 }
 
-export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragItemId, dragItemColWidth, dragItemColHeight, dragItemVisWidth, dragItemVisHeight, onPurchaseRequest, onDragStart }: Props) {
+export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragItemId, dragItemColWidth, dragItemColHeight, dragItemVisWidth, dragItemVisHeight, onPurchaseRequest, onDragStart, onSelectInventoryItem }: Props) {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<'inventory' | 'shop'>('inventory');
 
@@ -120,6 +121,13 @@ export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragI
                     <Text style={styles.badgeText}>{item.quantity}</Text>
                   </View>
                   <Text style={styles.itemName}>{catalogItem.name}</Text>
+                  <Pressable
+                    style={styles.useBtn}
+                    onPress={() => onSelectInventoryItem(item.item_id)}
+                  >
+                    <Feather name="plus-square" size={14} color="#fff" />
+                    <Text style={styles.useBtnText}>Use</Text>
+                  </Pressable>
                 </Animated.View>
               </GestureDetector>
             );
@@ -198,7 +206,7 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     width: 120,
-    height: 140,
+    height: 164,
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 16,
     marginRight: 16,
@@ -208,8 +216,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   itemImage: {
-    width: 80,
-    height: 80,
+    width: 72,
+    height: 72,
   },
   itemName: {
     color: '#fff',
@@ -217,6 +225,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     textAlign: 'center',
+  },
+  useBtn: {
+    marginTop: 8,
+    minHeight: 26,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  useBtnText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+    marginLeft: 4,
   },
   badge: {
     position: 'absolute',
