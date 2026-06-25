@@ -4,10 +4,11 @@ import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import {
+  getCropForSeed,
   getPlaceableItem,
   getRpgItem,
+  RPG_UI_FRAMES,
   type RpgItemDefinition,
-  type RpgSpriteFrame,
 } from './RpgObjectCatalog';
 import { RpgItemIcon, RpgSpriteFrameView } from './RpgItemIcon';
 
@@ -20,32 +21,29 @@ type InventorySlot = InventoryRow & {
   item: RpgItemDefinition | null;
 };
 
+type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
+
 type Props = {
   isOpen: boolean;
   refreshKey: number;
   canPlace: boolean;
   onClose: () => void;
   onPlaceItem: (itemId: string) => void;
-};
-
-const INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
-
-const PANEL_FRAME: RpgSpriteFrame = {
-  source: INVENTORY_SHEET,
-  x: 232,
-  y: 0,
-  width: 96,
-  height: 128,
-  sheetWidth: 336,
-  sheetHeight: 160,
+  onPlantSeed: (itemId: string) => void;
 };
 
 const SLOT_COUNT = 20;
 const SLOT_COLS = 5;
 const SLOT_SIZE = 14;
 const SLOT_GAP = 2;
-const SLOT_START_X = 8;
+const SLOT_START_X = 16;
 const SLOT_START_Y = 17;
+const FILTERS: { id: BackpackFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'object', label: 'Objects' },
+  { id: 'seed', label: 'Seeds' },
+  { id: 'resource', label: 'Resources' },
+];
 
 function getKindRank(item: RpgItemDefinition | null) {
   if (!item) return 99;
@@ -54,15 +52,16 @@ function getKindRank(item: RpgItemDefinition | null) {
   return 2;
 }
 
-export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem }: Props) {
+export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed }: Props) {
   const { width, height } = useWindowDimensions();
   const [inventory, setInventory] = useState<InventorySlot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState<BackpackFilter>('all');
 
   const scale = Math.max(
     2.1,
-    Math.min(3.25, (width - 28) / PANEL_FRAME.width, (height - 128) / PANEL_FRAME.height),
+    Math.min(3.25, (width - 28) / RPG_UI_FRAMES.inventoryPanel.width, (height - 180) / RPG_UI_FRAMES.inventoryPanel.height),
   );
 
   useEffect(() => {
@@ -90,153 +89,210 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
     }
   }, [isOpen, refreshKey]);
 
+  const filteredInventory = useMemo(
+    () => inventory.filter(slot => filter === 'all' || slot.item?.kind === filter),
+    [filter, inventory],
+  );
+
+  const filterCounts = useMemo(() => ({
+    all: inventory.length,
+    object: inventory.filter(slot => slot.item?.kind === 'object').length,
+    seed: inventory.filter(slot => slot.item?.kind === 'seed').length,
+    resource: inventory.filter(slot => slot.item?.kind === 'resource').length,
+  }), [inventory]);
+
   useEffect(() => {
     if (!isOpen) return;
-    const maxPage = Math.max(0, Math.ceil(inventory.length / SLOT_COUNT) - 1);
+    const maxPage = Math.max(0, Math.ceil(filteredInventory.length / SLOT_COUNT) - 1);
     if (page > maxPage) setPage(maxPage);
-  }, [inventory.length, isOpen, page]);
+  }, [filteredInventory.length, isOpen, page]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPage(0);
+    setSelectedId(current => (
+      current && filteredInventory.some(row => row.item_id === current)
+        ? current
+        : filteredInventory[0]?.item_id ?? null
+    ));
+  }, [filter, filteredInventory, isOpen]);
 
   const pageItems = useMemo(
-    () => inventory.slice(page * SLOT_COUNT, page * SLOT_COUNT + SLOT_COUNT),
-    [inventory, page],
+    () => filteredInventory.slice(page * SLOT_COUNT, page * SLOT_COUNT + SLOT_COUNT),
+    [filteredInventory, page],
   );
 
   if (!isOpen) return null;
 
-  const selected = inventory.find(row => row.item_id === selectedId) ?? null;
+  const selected = filteredInventory.find(row => row.item_id === selectedId) ?? null;
   const selectedItem = selected?.item ?? null;
-  const selectedName = selectedItem?.name ?? selected?.item_id ?? 'Empty';
+  const hasFilteredItems = filteredInventory.length > 0;
+  const selectedName = selectedItem?.name ?? selected?.item_id ?? (hasFilteredItems ? 'Empty' : 'No items');
   const selectedDescription = selectedItem?.description ?? (
-    selected ? 'No description yet.' : 'Collected items appear here.'
+    selected ? 'No description yet.' : (
+      inventory.length > 0 ? 'Nothing in this category yet.' : 'Collected items appear here.'
+    )
   );
   const selectedPlaceable = getPlaceableItem(selected?.item_id ?? null);
-  const maxPage = Math.max(0, Math.ceil(inventory.length / SLOT_COUNT) - 1);
-  const panelWidth = PANEL_FRAME.width * scale;
-  const panelHeight = PANEL_FRAME.height * scale;
+  const selectedSeedCrop = selectedItem?.kind === 'seed' ? getCropForSeed(selected?.item_id ?? null) : null;
+  const maxPage = Math.max(0, Math.ceil(filteredInventory.length / SLOT_COUNT) - 1);
+  const panelWidth = RPG_UI_FRAMES.inventoryPanel.width * scale;
+  const panelHeight = RPG_UI_FRAMES.inventoryPanel.height * scale;
 
   return (
     <View style={styles.overlay}>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={[styles.panel, { width: panelWidth, height: panelHeight }]}>
-        <RpgSpriteFrameView frame={PANEL_FRAME} scale={scale} />
+      <View style={[styles.backpackStack, { width: panelWidth }]}>
+        <View style={styles.filterBar}>
+          {FILTERS.map(item => {
+            const count = filterCounts[item.id];
+            const isActive = filter === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} inventory filter`}
+                onPress={() => setFilter(item.id)}
+                style={[styles.filterButton, isActive && styles.activeFilterButton]}
+              >
+                <Text style={[styles.filterText, isActive && styles.activeFilterText]}>{item.label}</Text>
+                <Text style={[styles.filterCount, isActive && styles.activeFilterText]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={[styles.panel, { width: panelWidth, height: panelHeight }]}>
+          <RpgSpriteFrameView frame={RPG_UI_FRAMES.inventoryPanel} scale={scale} />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close backpack"
-          onPress={onClose}
-          style={[
-            styles.closeHitbox,
-            {
-              left: 87 * scale,
-              top: 1 * scale,
-              width: 8 * scale,
-              height: 8 * scale,
-            },
-          ]}
-        />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close backpack"
+            onPress={onClose}
+            style={[
+              styles.closeHitbox,
+              {
+                left: 95 * scale,
+                top: 1 * scale,
+                width: 8 * scale,
+                height: 8 * scale,
+              },
+            ]}
+          />
 
-        {Array.from({ length: SLOT_COUNT }).map((_, index) => {
-          const col = index % SLOT_COLS;
-          const row = Math.floor(index / SLOT_COLS);
-          const slot = pageItems[index] ?? null;
-          const isSelected = slot?.item_id === selectedId;
-          return (
-            <Pressable
-              key={`${page}-${index}-${slot?.item_id ?? 'empty'}`}
-              accessibilityRole="button"
-              accessibilityLabel={slot ? `${slot.item?.name ?? slot.item_id}, ${slot.quantity}` : 'Empty slot'}
-              disabled={!slot}
-              onPress={() => slot && setSelectedId(slot.item_id)}
-              style={[
-                styles.slot,
-                isSelected && styles.selectedSlot,
-                {
-                  left: (SLOT_START_X + col * (SLOT_SIZE + SLOT_GAP)) * scale,
-                  top: (SLOT_START_Y + row * (SLOT_SIZE + SLOT_GAP)) * scale,
-                  width: SLOT_SIZE * scale,
-                  height: SLOT_SIZE * scale,
-                },
-              ]}
-            >
-              {slot && (
-                <>
-                  <RpgItemIcon item={slot.item} size={11 * scale} fallbackLabel={slot.item_id} />
-                  <View style={styles.quantityPill}>
-                    <Text style={styles.quantityText}>{slot.quantity}</Text>
-                  </View>
-                </>
-              )}
-            </Pressable>
-          );
-        })}
+          {Array.from({ length: SLOT_COUNT }).map((_, index) => {
+            const col = index % SLOT_COLS;
+            const row = Math.floor(index / SLOT_COLS);
+            const slot = pageItems[index] ?? null;
+            const isSelected = slot?.item_id === selectedId;
+            return (
+              <Pressable
+                key={`${filter}-${page}-${index}-${slot?.item_id ?? 'empty'}`}
+                accessibilityRole="button"
+                accessibilityLabel={slot ? `${slot.item?.name ?? slot.item_id}, ${slot.quantity}` : 'Empty slot'}
+                disabled={!slot}
+                onPress={() => slot && setSelectedId(slot.item_id)}
+                style={[
+                  styles.slot,
+                  isSelected && styles.selectedSlot,
+                  {
+                    left: (SLOT_START_X + col * (SLOT_SIZE + SLOT_GAP)) * scale,
+                    top: (SLOT_START_Y + row * (SLOT_SIZE + SLOT_GAP)) * scale,
+                    width: SLOT_SIZE * scale,
+                    height: SLOT_SIZE * scale,
+                  },
+                ]}
+              >
+                {slot && (
+                  <>
+                    <RpgItemIcon item={slot.item} size={11 * scale} fallbackLabel={slot.item_id} />
+                    <View style={styles.quantityPill}>
+                      <Text style={styles.quantityText}>{slot.quantity}</Text>
+                    </View>
+                  </>
+                )}
+              </Pressable>
+            );
+          })}
 
-        {maxPage > 0 && (
-          <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Previous backpack page"
-              disabled={page === 0}
-              onPress={() => setPage(current => Math.max(0, current - 1))}
-              style={[
-                styles.pageButton,
-                styles.pageLeft,
-                page === 0 && styles.pageDisabled,
-                { top: 48 * scale, width: 14 * scale, height: 18 * scale },
-              ]}
-            >
-              <Feather name="chevron-left" size={16} color="#f7e6a5" />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Next backpack page"
-              disabled={page >= maxPage}
-              onPress={() => setPage(current => Math.min(maxPage, current + 1))}
-              style={[
-                styles.pageButton,
-                styles.pageRight,
-                page >= maxPage && styles.pageDisabled,
-                { top: 48 * scale, width: 14 * scale, height: 18 * scale },
-              ]}
-            >
-              <Feather name="chevron-right" size={16} color="#f7e6a5" />
-            </Pressable>
-          </>
-        )}
-
-        <View
-          style={[
-            styles.details,
-            {
-              left: 8 * scale,
-              right: 8 * scale,
-              top: 86 * scale,
-              minHeight: 34 * scale,
-            },
-          ]}
-        >
-          <View style={styles.detailHeader}>
-            <Text numberOfLines={1} style={styles.detailName}>{selectedName}</Text>
-            {selected && <Text style={styles.detailCount}>x{selected.quantity}</Text>}
-          </View>
-          <Text numberOfLines={2} style={styles.detailDescription}>{selectedDescription}</Text>
-          {selectedPlaceable ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Place ${selectedName}`}
-              disabled={!canPlace}
-              onPress={() => selected && onPlaceItem(selected.item_id)}
-              style={[styles.placeButton, !canPlace && styles.disabledButton]}
-            >
-              <Feather name="plus-square" size={13} color="#fff" />
-              <Text style={styles.placeText}>{canPlace ? 'Place' : 'Sanctuary only'}</Text>
-            </Pressable>
-          ) : selectedItem?.kind === 'seed' ? (
-            <Text style={styles.kindText}>Seed for farming</Text>
-          ) : selected ? (
-            <Text style={styles.kindText}>Resource</Text>
-          ) : (
-            <Text style={styles.kindText}>Backpack empty</Text>
+          {maxPage > 0 && (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous backpack page"
+                disabled={page === 0}
+                onPress={() => setPage(current => Math.max(0, current - 1))}
+                style={[
+                  styles.pageButton,
+                  styles.pageLeft,
+                  page === 0 && styles.pageDisabled,
+                  { top: 48 * scale, width: 14 * scale, height: 18 * scale },
+                ]}
+              >
+                <Feather name="chevron-left" size={16} color="#f7e6a5" />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next backpack page"
+                disabled={page >= maxPage}
+                onPress={() => setPage(current => Math.min(maxPage, current + 1))}
+                style={[
+                  styles.pageButton,
+                  styles.pageRight,
+                  page >= maxPage && styles.pageDisabled,
+                  { top: 48 * scale, width: 14 * scale, height: 18 * scale },
+                ]}
+              >
+                <Feather name="chevron-right" size={16} color="#f7e6a5" />
+              </Pressable>
+            </>
           )}
+
+          <View
+            style={[
+              styles.details,
+              {
+                left: 16 * scale,
+                right: 8 * scale,
+                top: 86 * scale,
+                minHeight: 34 * scale,
+              },
+            ]}
+          >
+            <View style={styles.detailHeader}>
+              <Text numberOfLines={1} style={styles.detailName}>{selectedName}</Text>
+              {selected && <Text style={styles.detailCount}>x{selected.quantity}</Text>}
+            </View>
+            <Text numberOfLines={2} style={styles.detailDescription}>{selectedDescription}</Text>
+            {selectedPlaceable ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Place ${selectedName}`}
+                disabled={!canPlace}
+                onPress={() => selected && onPlaceItem(selected.item_id)}
+                style={[styles.placeButton, !canPlace && styles.disabledButton]}
+              >
+                <Feather name="plus-square" size={13} color="#fff" />
+                <Text style={styles.placeText}>{canPlace ? 'Place' : 'Sanctuary only'}</Text>
+              </Pressable>
+            ) : selectedSeedCrop ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Plant ${selectedName}`}
+                disabled={!canPlace}
+                onPress={() => selected && onPlantSeed(selected.item_id)}
+                style={[styles.placeButton, !canPlace && styles.disabledButton]}
+              >
+                <Feather name="map-pin" size={13} color="#fff" />
+                <Text style={styles.placeText}>{canPlace ? 'Plant' : 'Sanctuary only'}</Text>
+              </Pressable>
+            ) : selectedItem?.kind === 'seed' ? (
+              <Text style={styles.kindText}>Seed not plantable yet</Text>
+            ) : selected ? (
+              <Text style={styles.kindText}>Resource</Text>
+            ) : (
+              <Text style={styles.kindText}>{inventory.length > 0 ? 'No matches' : 'Backpack empty'}</Text>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -253,6 +309,46 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+  backpackStack: {
+    alignItems: 'center',
+  },
+  filterBar: {
+    width: '100%',
+    minHeight: 36,
+    marginBottom: 8,
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(32,22,17,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.26)',
+    flexDirection: 'row',
+  },
+  filterButton: {
+    flex: 1,
+    minHeight: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeFilterButton: {
+    backgroundColor: 'rgba(247,230,165,0.17)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.42)',
+  },
+  filterText: {
+    color: 'rgba(247,230,165,0.7)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  activeFilterText: {
+    color: '#fff2bb',
+  },
+  filterCount: {
+    color: 'rgba(247,230,165,0.56)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    marginTop: 1,
   },
   panel: {
     position: 'relative',

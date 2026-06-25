@@ -5,9 +5,18 @@ import { applyXP, getWeeklyBoostMult, activateWeeklyBoost } from './rpg';
 import { applyHealthDecay, applyLoggingHealthBoost, applyMoodHealthEffects, getHealthXPMultiplier } from './health';
 import { grantAttributeStatGain } from './game';
 import { computeEffectiveDate } from './dayBoundary';
+import { addInventoryItem } from './garden';
+import { RPG_WATER_DROPS_ITEM_ID } from '../engine/RpgItemIds';
 
 const MOOD_XP    = 20;
 const JOURNAL_XP = 15;
+
+function waterDropsForActivity(xp: number, habitCount: number, logType: 'daily' | 'weekly') {
+  const xpDrops = Math.floor(xp / 120);
+  const habitDrops = Math.min(3, habitCount);
+  const weeklyBonus = logType === 'weekly' ? 1 : 0;
+  return Math.max(1, Math.min(6, 1 + xpDrops + habitDrops + weeklyBonus));
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -209,6 +218,11 @@ export function createActivityLog(input: ActivityLogInput): CreateLogResult {
   } catch {}
 
   const { levelUp } = applyXP(xp);
+  try {
+    addInventoryItem(RPG_WATER_DROPS_ITEM_ID, waterDropsForActivity(xp, input.completedHabits.length, input.log_type));
+  } catch (e) {
+    console.warn('Failed to grant Water Drops', e);
+  }
   // Weekly log triggers a 7-day 1.05× boost on all subsequent activity logs
   if (input.log_type === 'weekly') activateWeeklyBoost();
   return { xp_awarded: xp, level_up: levelUp };

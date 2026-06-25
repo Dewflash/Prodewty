@@ -18,6 +18,7 @@ import { RpgItemIcon, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
 import { SanctuaryShop } from '../src/engine/SanctuaryShop';
 import {
+  getCropForSeed,
   getPlaceableItem,
   getRpgItem,
   RPG_UI_FRAMES,
@@ -27,6 +28,17 @@ import {
 } from '../src/engine/RpgObjectCatalog';
 import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
 import { db } from '../src/db/schema';
+import {
+  advanceGardenPlotWithInventoryItem,
+  harvestGardenPlot,
+  plantSeed,
+  updatePlantGrowth,
+  type GardenPlot,
+  type HarvestDrop,
+  type GrowthStage,
+} from '../src/db/garden';
+import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
+import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
 
 const AVATAR_SIZE = 64;
 const SPEED = 180;
@@ -43,20 +55,37 @@ const AVATAR_FOOT_BOX = {
 const WALK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_Walk_with_shadow.png');
 const ATTACK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_attack_with_shadow.png');
 
+const RAIN_STREAK_DAYS = 3;
+const RAIN_DROPS = Array.from({ length: 28 }, (_, index) => ({
+  leftRatio: ((index * 37) % 100) / 100,
+  topRatio: ((index * 19) % 100) / 100,
+  height: 16 + (index % 4) * 5,
+  opacity: 0.28 + (index % 5) * 0.08,
+}));
+
 type Zone = 'sanctuary' | 'dungeon';
 type MapObject = { id: number; type: string; row: number; col: number };
 type BuildItem = {
-  mode: 'place' | 'edit';
+  mode: 'place' | 'edit' | 'plant';
   itemId: string;
   label: string;
   objectId: number | null;
 };
-type PlacementCell = { row: number; col: number; valid: boolean };
+type PlacementReason =
+  | 'Ready'
+  | 'Unavailable'
+  | 'Out of bounds'
+  | 'Avatar'
+  | 'Terrain'
+  | 'Occupied'
+  | 'Traps avatar'
+  | 'Blocks portal';
+type PlacementCell = { row: number; col: number; valid: boolean; reason?: PlacementReason };
 type PlacementReport = {
   row: number;
   col: number;
   valid: boolean;
-  reason: string;
+  reason: PlacementReason;
   cells: PlacementCell[];
 };
 type WorldToast = {
@@ -98,16 +127,33 @@ function avatarCells(avatarX: number, avatarY: number) {
   );
 }
 
+const PLACEMENT_REASON_PRIORITY: Record<PlacementReason, number> = {
+  Ready: 0,
+  Unavailable: 10,
+  Terrain: 20,
+  Occupied: 30,
+  Avatar: 40,
+  'Out of bounds': 50,
+  'Traps avatar': 60,
+  'Blocks portal': 70,
+};
+
+function pickPlacementReason(current: PlacementReason, next: PlacementReason) {
+  return PLACEMENT_REASON_PRIORITY[next] > PLACEMENT_REASON_PRIORITY[current] ? next : current;
+}
+
 export default function RpgScreen() {
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [activeZone, setActiveZone] = useState<Zone>('sanctuary');
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
+  const [gardenPlots, setGardenPlots] = useState<GardenPlot[]>([]);
   const [coins, setCoins] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
+  const [isRaining, setIsRaining] = useState(false);
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
@@ -152,14 +198,60 @@ export default function RpgScreen() {
   );
 
   const buildCatalogItem = getItem(buildItem?.itemId ?? null);
+  const buildSeedItem = buildItem?.mode === 'plant' ? getRpgItem(buildItem.itemId) : null;
+
+  const makeMovementCollisionFlat = (objects: MapObject[], zone: Zone = activeZone, data: TileType[][] = mapData) => {
+    const cols = data[0]?.length ?? 0;
+    const flat = data.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
+    if (zone !== 'sanctuary') return flat;
+
+    objects.forEach(obj => {
+      const item = getItem(obj.type);
+      const width = item?.colWidth ?? 1;
+      const height = item?.colHeight ?? 1;
+      for (let dr = 0; dr < height; dr++) {
+        for (let dc = 0; dc < width; dc++) {
+          const row = obj.row + dr;
+          const col = obj.col + dc;
+          if (row < 0 || row >= data.length || col < 0 || col >= cols) continue;
+          flat[row * cols + col] = 1;
+        }
+      }
+    });
+    return flat;
+  };
+
+  const applyMovementCollision = (objects: MapObject[], zone: Zone = activeZone, data: TileType[][] = mapData) => {
+    collisionMap.value = makeMovementCollisionFlat(objects, zone, data);
+    mapCols.value = data[0]?.length ?? 0;
+    mapRows.value = data.length;
+  };
 
   const refreshMapObjects = () => {
-    setMapObjects(db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects'));
+    const objects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+    setMapObjects(objects);
+    applyMovementCollision(objects);
+    return objects;
+  };
+
+  const refreshGardenPlots = () => {
+    const plots = bootstrapSanctuaryGrowth();
+    setGardenPlots(plots);
+    return plots;
   };
 
   const refreshCoins = () => {
     const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
     if (state) setCoins(state.coins);
+  };
+
+  const refreshWeather = () => {
+    try {
+      const state = db.getFirstSync<{ streak_days: number }>('SELECT streak_days FROM rpg_state WHERE id = 1');
+      setIsRaining((state?.streak_days ?? 0) >= RAIN_STREAK_DAYS);
+    } catch {
+      setIsRaining(false);
+    }
   };
 
   const bumpInventoryRevision = () => {
@@ -185,7 +277,7 @@ export default function RpgScreen() {
     avatarY.value = zone === 'sanctuary' ? TILE_SIZE * 2 : TILE_SIZE;
   };
 
-  const setBuildAnchor = (row: number, col: number, item: ShopCatalogItem) => {
+  const setBuildAnchor = (row: number, col: number, item: Pick<ShopCatalogItem, 'colWidth' | 'colHeight'>) => {
     const nextCol = clamp(col, 0, Math.max(0, mapColsCount - item.colWidth));
     const nextRow = clamp(row, 0, Math.max(0, mapRowsCount - item.colHeight));
     buildCol.value = nextCol;
@@ -223,7 +315,35 @@ export default function RpgScreen() {
     joyY.value = 0;
     avatarIsPlaying.value = false;
     setBuildItem({ mode, itemId, label: item.name, objectId });
-    setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId));
+    setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId, mode));
+    setIsShopOpen(false);
+    setIsBackpackOpen(false);
+  };
+
+  const beginPlantMode = (seedItemId: string) => {
+    const seed = getRpgItem(seedItemId);
+    const crop = getCropForSeed(seedItemId);
+    if (!seed || seed.kind !== 'seed' || !crop || activeZone !== 'sanctuary') return;
+
+    buildColWidth.value = 1;
+    buildColHeight.value = 1;
+    buildVisWidth.value = 1;
+    buildVisHeight.value = 1;
+
+    const avatarBaseCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
+    const avatarBaseRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
+    const nearby = findNearbyValidBuildAnchor(seedItemId, avatarBaseRow + 1, avatarBaseCol, 'plant');
+    const anchor = setBuildAnchor(
+      nearby?.row ?? avatarBaseRow + 1,
+      nearby?.col ?? avatarBaseCol,
+      { colWidth: 1, colHeight: 1 },
+    );
+
+    joyX.value = 0;
+    joyY.value = 0;
+    avatarIsPlaying.value = false;
+    setBuildItem({ mode: 'plant', itemId: seedItemId, label: crop.name, objectId: null });
+    setPlacementReport(analyzePlacement(anchor.row, anchor.col, seedItemId, null, 'plant'));
     setIsShopOpen(false);
     setIsBackpackOpen(false);
   };
@@ -260,6 +380,10 @@ export default function RpgScreen() {
       const height = item?.colHeight ?? 1;
       return row >= obj.row && row < obj.row + height && col >= obj.col && col < obj.col + width;
     }) ?? null
+  );
+
+  const getPlotAtTile = (row: number, col: number) => (
+    gardenPlots.find(plot => plot.row === row && plot.col === col) ?? null
   );
 
   const getAvatarFootCell = () => {
@@ -311,7 +435,7 @@ export default function RpgScreen() {
     row: number,
     col: number,
     ignoreObjectId: number | null,
-  ) => {
+  ): { ok: boolean; reason: PlacementReason } => {
     const start = getAvatarFootCell();
     const blocked = buildBlockedCells(itemId, row, col, ignoreObjectId);
     if (blocked.has(`${start.row}:${start.col}`)) {
@@ -354,33 +478,44 @@ export default function RpgScreen() {
     col: number,
     itemId: string,
     ignoreObjectId: number | null = null,
+    mode: BuildItem['mode'] = 'place',
   ): PlacementReport => {
-    const item = getItem(itemId);
-    if (!item || activeZone !== 'sanctuary') {
+    const placeableItem = mode === 'plant' ? null : getItem(itemId);
+    const seedCrop = mode === 'plant' ? getCropForSeed(itemId) : null;
+    const footprint = mode === 'plant'
+      ? { colWidth: 1, colHeight: 1 }
+      : placeableItem;
+
+    if (!footprint || (mode === 'plant' && !seedCrop) || activeZone !== 'sanctuary') {
       return { row, col, valid: false, reason: 'Unavailable', cells: [] };
     }
 
     const occupiedByAvatar = new Set(
       avatarCells(avatarX.value, avatarY.value).map(cell => `${cell.row}:${cell.col}`),
     );
-    let reason = 'Ready';
+    let reason: PlacementReason = 'Ready';
     const cells: PlacementCell[] = [];
 
-    for (let dr = 0; dr < item.colHeight; dr++) {
-      for (let dc = 0; dc < item.colWidth; dc++) {
+    for (let dr = 0; dr < footprint.colHeight; dr++) {
+      for (let dc = 0; dc < footprint.colWidth; dc++) {
         const checkRow = row + dr;
         const checkCol = col + dc;
         let valid = true;
+        let cellReason: PlacementReason | undefined;
 
         if (checkRow < 0 || checkRow >= mapRowsCount || checkCol < 0 || checkCol >= mapColsCount) {
           valid = false;
-          reason = reason === 'Ready' ? 'Out of bounds' : reason;
+          cellReason = 'Out of bounds';
         } else if (occupiedByAvatar.has(`${checkRow}:${checkCol}`)) {
           valid = false;
-          reason = reason === 'Ready' ? 'Avatar' : reason;
-        } else if (TILE_COLLISION[mapData[checkRow][checkCol] as TileType]) {
+          cellReason = 'Avatar';
+        } else if (
+          mode === 'plant'
+            ? mapData[checkRow][checkCol] !== TileType.GRASS
+            : TILE_COLLISION[mapData[checkRow][checkCol] as TileType]
+        ) {
           valid = false;
-          reason = reason === 'Ready' ? 'Blocked' : reason;
+          cellReason = 'Terrain';
         } else {
           const hasObject = mapObjects.some(obj => {
             if (obj.id === ignoreObjectId) return false;
@@ -396,16 +531,23 @@ export default function RpgScreen() {
           });
           if (hasObject) {
             valid = false;
-            reason = reason === 'Ready' ? 'Occupied' : reason;
+            cellReason = 'Occupied';
+          }
+
+          const hasPlot = gardenPlots.some(plot => plot.row === checkRow && plot.col === checkCol);
+          if (hasPlot) {
+            valid = false;
+            cellReason = 'Occupied';
           }
         }
 
-        cells.push({ row: checkRow, col: checkCol, valid });
+        if (cellReason) reason = pickPlacementReason(reason, cellReason);
+        cells.push({ row: checkRow, col: checkCol, valid, reason: cellReason });
       }
     }
 
     const allCellsValid = cells.length > 0 && cells.every(cell => cell.valid);
-    if (allCellsValid) {
+    if (allCellsValid && mode !== 'plant') {
       const path = hasSafePathAfterPlacement(itemId, row, col, ignoreObjectId);
       if (!path.ok) {
         return {
@@ -426,18 +568,24 @@ export default function RpgScreen() {
     col: number,
     itemId: string,
     ignoreObjectId: number | null = null,
+    mode: BuildItem['mode'] = 'place',
   ) => {
-    return analyzePlacement(row, col, itemId, ignoreObjectId).valid;
+    return analyzePlacement(row, col, itemId, ignoreObjectId, mode).valid;
   };
 
-  const findNearbyValidBuildAnchor = (itemId: string, preferredRow: number, preferredCol: number) => {
+  const findNearbyValidBuildAnchor = (
+    itemId: string,
+    preferredRow: number,
+    preferredCol: number,
+    mode: BuildItem['mode'] = 'place',
+  ) => {
     for (let radius = 0; radius <= 6; radius++) {
       for (let row = preferredRow - radius; row <= preferredRow + radius; row++) {
         for (let col = preferredCol - radius; col <= preferredCol + radius; col++) {
           if (Math.abs(row - preferredRow) !== radius && Math.abs(col - preferredCol) !== radius) {
             continue;
           }
-          if (isPlacementValid(row, col, itemId)) return { row, col };
+          if (isPlacementValid(row, col, itemId, null, mode)) return { row, col };
         }
       }
     }
@@ -447,7 +595,7 @@ export default function RpgScreen() {
   const updateBuildReport = (row: number, col: number) => {
     if (!buildItem) return;
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
-    setPlacementReport(analyzePlacement(row, col, buildItem.itemId, ignoreObjectId));
+    setPlacementReport(analyzePlacement(row, col, buildItem.itemId, ignoreObjectId, buildItem.mode));
   };
 
   const confirmBuildPlacement = () => {
@@ -455,12 +603,38 @@ export default function RpgScreen() {
     const row = buildRow.value;
     const col = buildCol.value;
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
-    const report = analyzePlacement(row, col, buildItem.itemId, ignoreObjectId);
+    const report = analyzePlacement(row, col, buildItem.itemId, ignoreObjectId, buildItem.mode);
     setPlacementReport(report);
-    if (!report.valid) return;
+    if (!report.valid) {
+      showWorldToast({ text: `Cannot place: ${report.reason}`, tone: 'warn' });
+      return;
+    }
 
     try {
-      if (buildItem.mode === 'edit' && buildItem.objectId !== null) {
+      if (buildItem.mode === 'plant') {
+        const crop = getCropForSeed(buildItem.itemId);
+        if (!crop) {
+          showWorldToast({ text: 'Cannot plant this seed yet', tone: 'warn' });
+          return;
+        }
+        const result = plantSeed(buildItem.itemId, crop.cropId, row, col);
+        if (!result.ok) {
+          showWorldToast({
+            text: result.reason === 'no_seed'
+              ? 'No seed left'
+              : result.reason === 'occupied'
+                ? 'Plot occupied'
+                : 'Could not plant',
+            tone: 'warn',
+          });
+          return;
+        }
+        bumpInventoryRevision();
+        refreshGardenPlots();
+        clearBuildMode();
+        showWorldToast({ text: `${crop.name} planted`, item: getRpgItem(buildItem.itemId), tone: 'success' });
+        return;
+      } else if (buildItem.mode === 'edit' && buildItem.objectId !== null) {
         db.runSync(
           'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
           row, col, buildItem.objectId,
@@ -521,6 +695,10 @@ export default function RpgScreen() {
     beginBuildMode('place', itemId);
   };
 
+  const handleBackpackPlantSeed = (itemId: string) => {
+    beginPlantMode(itemId);
+  };
+
   useEffect(() => {
     const sub = Dimensions.addEventListener('change', ({ window }) => setDimensions(window));
     return () => sub?.remove();
@@ -534,7 +712,9 @@ export default function RpgScreen() {
   useEffect(() => {
     try {
       refreshMapObjects();
+      refreshGardenPlots();
       refreshCoins();
+      refreshWeather();
     } catch (e) {
       console.warn('Failed to load RPG sandbox state', e);
     }
@@ -542,41 +722,23 @@ export default function RpgScreen() {
 
   useEffect(() => {
     const item = getItem(buildItem?.itemId ?? null);
+    const isPlanting = buildItem?.mode === 'plant';
     buildActive.value = buildItem ? 1 : 0;
-    buildColWidth.value = item?.colWidth ?? 0;
-    buildColHeight.value = item?.colHeight ?? 0;
-    buildVisWidth.value = item?.visWidth ?? 0;
-    buildVisHeight.value = item?.visHeight ?? 0;
+    buildColWidth.value = isPlanting ? 1 : item?.colWidth ?? 0;
+    buildColHeight.value = isPlanting ? 1 : item?.colHeight ?? 0;
+    buildVisWidth.value = isPlanting ? 1 : item?.visWidth ?? 0;
+    buildVisHeight.value = isPlanting ? 1 : item?.visHeight ?? 0;
   }, [buildItem]);
 
   useEffect(() => {
-    const movementFlat = mapData.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
-    if (activeZone === 'sanctuary') {
-      mapObjects.forEach(obj => {
-        const item = getItem(obj.type);
-        const width = item?.colWidth ?? 1;
-        const height = item?.colHeight ?? 1;
-        for (let dr = 0; dr < height; dr++) {
-          for (let dc = 0; dc < width; dc++) {
-            const row = obj.row + dr;
-            const col = obj.col + dc;
-            if (row < 0 || row >= mapRowsCount || col < 0 || col >= mapColsCount) continue;
-            movementFlat[row * mapColsCount + col] = 1;
-          }
-        }
-      });
-    }
-
-    collisionMap.value = movementFlat;
-    mapCols.value = mapColsCount;
-    mapRows.value = mapRowsCount;
+    applyMovementCollision(mapObjects);
   }, [activeZone, mapObjects, mapData, mapColsCount, mapRowsCount, buildItem]);
 
   useEffect(() => {
     if (!buildItem) return;
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
-    setPlacementReport(analyzePlacement(buildRow.value, buildCol.value, buildItem.itemId, ignoreObjectId));
-  }, [buildItem, mapObjects, activeZone]);
+    setPlacementReport(analyzePlacement(buildRow.value, buildCol.value, buildItem.itemId, ignoreObjectId, buildItem.mode));
+  }, [buildItem, mapObjects, gardenPlots, activeZone]);
 
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
@@ -703,23 +865,27 @@ export default function RpgScreen() {
     .enabled(buildItem !== null)
     .minDistance(1)
     .onBegin(event => {
-      const maxCol = Math.max(0, mapCols.value - buildColWidth.value);
-      const maxRow = Math.max(0, mapRows.value - buildColHeight.value);
+      const minCol = -Math.max(1, buildColWidth.value);
+      const minRow = -Math.max(1, buildColHeight.value);
+      const maxCol = mapCols.value;
+      const maxRow = mapRows.value;
       const worldX = (event.absoluteX - cameraX.value) / mapScale.value;
       const worldY = (event.absoluteY - cameraY.value) / mapScale.value;
-      const nextCol = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), 0, maxCol);
-      const nextRow = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), 0, maxRow);
+      const nextCol = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), minCol, maxCol);
+      const nextRow = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), minRow, maxRow);
       buildCol.value = nextCol;
       buildRow.value = nextRow;
       runOnJS(updateBuildReport)(nextRow, nextCol);
     })
     .onUpdate(event => {
-      const maxCol = Math.max(0, mapCols.value - buildColWidth.value);
-      const maxRow = Math.max(0, mapRows.value - buildColHeight.value);
+      const minCol = -Math.max(1, buildColWidth.value);
+      const minRow = -Math.max(1, buildColHeight.value);
+      const maxCol = mapCols.value;
+      const maxRow = mapRows.value;
       const worldX = (event.absoluteX - cameraX.value) / mapScale.value;
       const worldY = (event.absoluteY - cameraY.value) / mapScale.value;
-      const nextCol = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), 0, maxCol);
-      const nextRow = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), 0, maxRow);
+      const nextCol = clamp(Math.floor(worldX / TILE_SIZE) - Math.floor(buildColWidth.value / 2), minCol, maxCol);
+      const nextRow = clamp(Math.floor(worldY / TILE_SIZE) - Math.floor(buildColHeight.value / 2), minRow, maxRow);
       buildCol.value = nextCol;
       buildRow.value = nextRow;
       runOnJS(updateBuildReport)(nextRow, nextCol);
@@ -762,6 +928,16 @@ export default function RpgScreen() {
     return null;
   };
 
+  const rollHarvestDrops = (drops: RpgDrop[]): HarvestDrop[] => {
+    const results: HarvestDrop[] = [];
+    drops.forEach(drop => {
+      if (Math.random() > drop.chance) return;
+      const quantity = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
+      results.push({ itemId: drop.itemId, quantity });
+    });
+    return results;
+  };
+
   const forageObject = (object: MapObject) => {
     const item = getPlaceableItem(object.type);
     if (!item?.forageDrops?.length) {
@@ -788,6 +964,77 @@ export default function RpgScreen() {
     showWorldToast({
       text: `+${drop.quantity} ${dropDef?.name ?? drop.itemId}`,
       item: dropDef,
+      tone: 'success',
+    });
+  };
+
+  const inspectOrHarvestPlot = (plot: GardenPlot) => {
+    const growth = getPlotGrowthInfo(plot);
+    if (!growth.crop) {
+      showWorldToast({ text: 'Crop data missing', tone: 'warn' });
+      return;
+    }
+
+    if (growth.stage < 2) {
+      const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
+      if (isRaining) {
+        updatePlantGrowth(plot.id, nextStage);
+        refreshGardenPlots();
+        showWorldToast({
+          text: nextStage >= 2 ? 'Rain matured crop' : 'Rain watered crop',
+          item: getRpgItem(plot.seed_item_id),
+          tone: 'success',
+        });
+        return;
+      }
+
+      const result = advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage);
+      if (result.ok) {
+        bumpInventoryRevision();
+        refreshGardenPlots();
+        showWorldToast({
+          text: result.stage >= 2 ? 'Watered to mature' : 'Watered crop',
+          item: getRpgItem(RPG_WATER_DROPS_ITEM_ID),
+          tone: 'success',
+        });
+      } else {
+        if (growth.stage !== plot.growth_stage) {
+          refreshGardenPlots();
+        }
+        showWorldToast({
+          text: result.reason === 'no_item'
+            ? `${growth.label}: ${growth.remainingMinutes}m left`
+            : result.reason === 'no_plot'
+              ? 'Plot missing'
+              : 'Could not water',
+          item: getRpgItem(plot.seed_item_id),
+          tone: result.reason === 'no_item' ? 'muted' : 'warn',
+        });
+      }
+      return;
+    }
+
+    const drops = rollHarvestDrops(growth.crop.harvest.drops);
+    const result = harvestGardenPlot(plot.id, growth.crop.harvest.coins, drops);
+    if (!result.ok) {
+      showWorldToast({
+        text: result.reason === 'no_plot' ? 'Already harvested' : 'Harvest failed',
+        tone: 'warn',
+      });
+      refreshGardenPlots();
+      return;
+    }
+
+    refreshCoins();
+    bumpInventoryRevision();
+    refreshGardenPlots();
+
+    const firstDrop = result.drops[0];
+    const firstDropItem = firstDrop ? getRpgItem(firstDrop.itemId) : null;
+    const dropText = firstDrop ? `, +${firstDrop.quantity} ${firstDropItem?.name ?? firstDrop.itemId}` : '';
+    showWorldToast({
+      text: `Harvested +${result.coins} coins${dropText}`,
+      item: firstDropItem ?? getRpgItem(plot.seed_item_id),
       tone: 'success',
     });
   };
@@ -831,6 +1078,12 @@ export default function RpgScreen() {
       const object = getObjectAtTile(target.row, target.col);
       if (object) {
         forageObject(object);
+        return;
+      }
+
+      const plot = getPlotAtTile(target.row, target.col);
+      if (plot) {
+        inspectOrHarvestPlot(plot);
         return;
       }
 
@@ -889,13 +1142,44 @@ export default function RpgScreen() {
             />
           ))}
 
-          {buildCatalogItem && (
+          {activeZone === 'sanctuary' && gardenPlots.map(plot => {
+            const growth = getPlotGrowthInfo(plot);
+            return (
+              <View
+                key={plot.id}
+                pointerEvents="none"
+                style={[
+                  styles.gardenPlot,
+                  growth.stage === 1 && styles.gardenPlotGrowing,
+                  growth.stage >= 2 && styles.gardenPlotMature,
+                  {
+                    left: plot.col * TILE_SIZE,
+                    top: plot.row * TILE_SIZE,
+                    zIndex: plot.row,
+                  },
+                ]}
+              >
+                <RpgItemIcon item={getRpgItem(plot.seed_item_id)} size={growth.stage >= 2 ? 25 : 22} fallbackLabel={plot.seed_item_id} />
+                <Text style={[styles.gardenStageText, growth.stage >= 2 && styles.gardenStageMatureText]}>
+                  {growth.stage >= 2 ? '!' : growth.stage === 1 ? 'II' : 'I'}
+                </Text>
+              </View>
+            );
+          })}
+
+          {(buildCatalogItem || buildSeedItem) && (
             <>
-              <Animated.Image
-                source={buildCatalogItem.source}
-                style={buildGhostStyle}
-                resizeMode="contain"
-              />
+              {buildCatalogItem ? (
+                <Animated.Image
+                  source={buildCatalogItem.source}
+                  style={buildGhostStyle}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Animated.View style={[buildGhostStyle, styles.seedGhost]}>
+                  <RpgItemIcon item={buildSeedItem} size={24} fallbackLabel={buildItem?.itemId ?? 'seed'} />
+                </Animated.View>
+              )}
               {placementReport?.cells.map((cell, index) => (
                 <View
                   key={`${cell.row}:${cell.col}:${index}`}
@@ -906,7 +1190,7 @@ export default function RpgScreen() {
                       left: cell.col * TILE_SIZE,
                       top: cell.row * TILE_SIZE,
                       borderColor: cell.valid ? '#35ff70' : '#ff3b30',
-                      backgroundColor: cell.valid ? 'rgba(53,255,112,0.2)' : 'rgba(255,59,48,0.24)',
+                      backgroundColor: cell.valid ? 'rgba(53,255,112,0.34)' : 'rgba(255,59,48,0.42)',
                     },
                   ]}
                 />
@@ -927,6 +1211,25 @@ export default function RpgScreen() {
           </Animated.View>
         </Animated.View>
       </GestureDetector>
+
+      {activeZone === 'sanctuary' && isRaining && (
+        <View pointerEvents="none" style={styles.rainOverlay}>
+          {RAIN_DROPS.map((drop, index) => (
+            <View
+              key={index}
+              style={[
+                styles.rainDrop,
+                {
+                  left: drop.leftRatio * dimensions.width,
+                  top: drop.topRatio * dimensions.height,
+                  height: drop.height,
+                  opacity: drop.opacity,
+                },
+              ]}
+            />
+          ))}
+        </View>
+      )}
 
       <View style={styles.header}>
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
@@ -983,7 +1286,7 @@ export default function RpgScreen() {
           <Text style={styles.modeText}>
             {placementReport?.valid
               ? `${buildItem.label}: drag ghost, Interact confirms`
-              : `${placementReport?.reason ?? 'Blocked'}: drag to a clear cell`}
+              : `${placementReport?.reason ?? 'Unavailable'}: drag to a clear cell`}
           </Text>
           <Pressable style={styles.modeCloseBtn} onPress={clearBuildMode}>
             <Feather name="x" size={14} color="#fff" />
@@ -1033,6 +1336,8 @@ export default function RpgScreen() {
 
       <SanctuaryShop
         isOpen={isShopOpen}
+        coins={coins}
+        refreshKey={inventoryRevision}
         onClose={() => setIsShopOpen(false)}
         onPurchaseRequest={(itemId, price) => {
           try {
@@ -1060,6 +1365,7 @@ export default function RpgScreen() {
         canPlace={activeZone === 'sanctuary'}
         onClose={() => setIsBackpackOpen(false)}
         onPlaceItem={handleBackpackPlaceItem}
+        onPlantSeed={handleBackpackPlantSeed}
       />
     </View>
   );
@@ -1088,8 +1394,56 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: TILE_SIZE,
     height: TILE_SIZE,
-    borderWidth: 2,
+    borderWidth: 3,
     zIndex: 2000,
+  },
+  gardenPlot: {
+    position: 'absolute',
+    width: TILE_SIZE,
+    height: TILE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(72,48,28,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.42)',
+  },
+  gardenPlotGrowing: {
+    backgroundColor: 'rgba(38,106,46,0.44)',
+    borderColor: 'rgba(151,255,146,0.58)',
+  },
+  gardenPlotMature: {
+    backgroundColor: 'rgba(155,117,22,0.52)',
+    borderColor: 'rgba(255,224,112,0.82)',
+  },
+  gardenStageText: {
+    position: 'absolute',
+    right: 2,
+    bottom: 0,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  gardenStageMatureText: {
+    color: '#fff',
+    fontSize: 11,
+  },
+  seedGhost: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(53,255,112,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.58)',
+  },
+  rainOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 80,
+  },
+  rainDrop: {
+    position: 'absolute',
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: '#bde9ff',
+    transform: [{ rotate: '12deg' }],
   },
   header: {
     position: 'absolute',
