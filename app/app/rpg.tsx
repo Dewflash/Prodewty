@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -13,12 +13,16 @@ import { router } from 'expo-router';
 import { fonts } from '../src/theme/typography';
 import { Joystick } from '../src/engine/Joystick';
 import { SpriteAnimator } from '../src/engine/SpriteAnimator';
+import { RpgBackpack } from '../src/engine/RpgBackpack';
+import { RpgItemIcon, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
 import { SanctuaryShop } from '../src/engine/SanctuaryShop';
 import {
   getPlaceableItem,
   getRpgItem,
+  RPG_UI_FRAMES,
   type RpgDrop,
+  type RpgItemDefinition,
   type ShopCatalogItem,
 } from '../src/engine/RpgObjectCatalog';
 import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
@@ -58,7 +62,7 @@ type PlacementReport = {
 type WorldToast = {
   id: number;
   text: string;
-  source?: any;
+  item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
 
@@ -100,6 +104,8 @@ export default function RpgScreen() {
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [coins, setCoins] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
+  const [isBackpackOpen, setIsBackpackOpen] = useState(false);
+  const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
@@ -156,10 +162,16 @@ export default function RpgScreen() {
     if (state) setCoins(state.coins);
   };
 
+  const bumpInventoryRevision = () => {
+    setInventoryRevision(current => current + 1);
+  };
+
   const enterZone = (zone: Zone) => {
     setActiveZone(zone);
     setBuildItem(null);
     setPlacementReport(null);
+    setIsShopOpen(false);
+    setIsBackpackOpen(false);
     buildActive.value = 0;
     buildColWidth.value = 0;
     buildColHeight.value = 0;
@@ -213,6 +225,7 @@ export default function RpgScreen() {
     setBuildItem({ mode, itemId, label: item.name, objectId });
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId));
     setIsShopOpen(false);
+    setIsBackpackOpen(false);
   };
 
   const clearBuildMode = () => {
@@ -468,6 +481,7 @@ export default function RpgScreen() {
         );
         db.execSync('COMMIT');
       }
+      bumpInventoryRevision();
       clearBuildMode();
       refreshMapObjects();
     } catch (e) {
@@ -488,6 +502,7 @@ export default function RpgScreen() {
         selectedObject.type,
       );
       db.execSync('COMMIT');
+      bumpInventoryRevision();
       clearBuildMode();
       refreshMapObjects();
     } catch (e) {
@@ -502,7 +517,7 @@ export default function RpgScreen() {
     beginBuildMode('edit', object.type, object.id, { row: object.row, col: object.col });
   };
 
-  const handleShopSelectInventoryItem = (itemId: string) => {
+  const handleBackpackPlaceItem = (itemId: string) => {
     beginBuildMode('place', itemId);
   };
 
@@ -731,6 +746,7 @@ export default function RpgScreen() {
       itemId,
       quantity,
     );
+    bumpInventoryRevision();
   };
 
   const rollForageDrop = (drops: RpgDrop[]) => {
@@ -771,7 +787,7 @@ export default function RpgScreen() {
     addSandboxInventoryItem(drop.itemId, drop.quantity);
     showWorldToast({
       text: `+${drop.quantity} ${dropDef?.name ?? drop.itemId}`,
-      source: dropDef?.source,
+      item: dropDef,
       tone: 'success',
     });
   };
@@ -931,10 +947,33 @@ export default function RpgScreen() {
             <Feather name="circle" size={16} color="#f1c40f" />
             <Text style={styles.currencyText}>{coins}</Text>
           </View>
-          <Pressable style={styles.shopBtn} onPress={() => setIsShopOpen(true)}>
-            <Feather name="shopping-bag" size={16} color="#fff" />
-            <Text style={styles.shopText}>Shop</Text>
-          </Pressable>
+          {!buildItem && (
+            <View style={styles.hudActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open backpack"
+                style={styles.iconHudBtn}
+                onPress={() => {
+                  setIsShopOpen(false);
+                  setIsBackpackOpen(true);
+                }}
+              >
+                <RpgSpriteFrameView frame={RPG_UI_FRAMES.backpack} size={24} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open shop"
+                style={styles.shopBtn}
+                onPress={() => {
+                  setIsBackpackOpen(false);
+                  setIsShopOpen(true);
+                }}
+              >
+                <Feather name="shopping-bag" size={16} color="#fff" />
+                <Text style={styles.shopText}>Shop</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
 
@@ -969,8 +1008,8 @@ export default function RpgScreen() {
 
       {worldToast && (
         <View style={[styles.worldToast, worldToast.tone === 'success' && styles.worldToastSuccess]}>
-          {worldToast.source ? (
-            <Image source={worldToast.source} style={styles.worldToastIcon} resizeMode="contain" />
+          {worldToast.item ? (
+            <RpgItemIcon item={worldToast.item} size={22} />
           ) : (
             <Feather name={worldToast.tone === 'warn' ? 'alert-circle' : 'info'} size={16} color="#fff" />
           )}
@@ -995,7 +1034,6 @@ export default function RpgScreen() {
       <SanctuaryShop
         isOpen={isShopOpen}
         onClose={() => setIsShopOpen(false)}
-        onSelectInventoryItem={handleShopSelectInventoryItem}
         onPurchaseRequest={(itemId, price) => {
           try {
             const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
@@ -1009,11 +1047,19 @@ export default function RpgScreen() {
             );
             db.execSync('COMMIT');
             refreshCoins();
+            bumpInventoryRevision();
           } catch (e) {
             try { db.execSync('ROLLBACK'); } catch {}
             console.warn('Failed to purchase item', e);
           }
         }}
+      />
+      <RpgBackpack
+        isOpen={isBackpackOpen}
+        refreshKey={inventoryRevision}
+        canPlace={activeZone === 'sanctuary'}
+        onClose={() => setIsBackpackOpen(false)}
+        onPlaceItem={handleBackpackPlaceItem}
       />
     </View>
   );
@@ -1096,8 +1142,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
   },
-  shopBtn: {
+  hudActions: {
     marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  iconHudBtn: {
+    width: 38,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shopBtn: {
     minWidth: 76,
     height: 36,
     borderRadius: 14,
@@ -1190,10 +1251,6 @@ const styles = StyleSheet.create({
   },
   worldToastSuccess: {
     borderColor: 'rgba(53,255,112,0.5)',
-  },
-  worldToastIcon: {
-    width: 22,
-    height: 22,
   },
   worldToastText: {
     color: '#fff',

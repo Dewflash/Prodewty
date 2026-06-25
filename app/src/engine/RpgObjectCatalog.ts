@@ -5,10 +5,21 @@ export type RpgDrop = {
   max: number;
 };
 
+export type RpgSpriteFrame = {
+  source: any;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sheetWidth: number;
+  sheetHeight: number;
+};
+
 export type RpgInventoryItem = {
   name: string;
   kind: 'object' | 'resource' | 'seed';
   source?: any;
+  icon?: RpgSpriteFrame;
   description?: string;
 };
 
@@ -24,8 +35,25 @@ export type RpgPlaceableItem = RpgInventoryItem & {
 
 export type RpgItemDefinition = RpgInventoryItem | RpgPlaceableItem;
 
-const LEAVES_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon95_1.png');
-const SEED_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon77_1.png');
+const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
+
+function rpgUiIcon(row: number, col: number): RpgSpriteFrame {
+  return {
+    source: RPG_UI_ICONS_SHEET,
+    x: col * 16,
+    y: row * 16,
+    width: 16,
+    height: 16,
+    sheetWidth: 96,
+    sheetHeight: 304,
+  };
+}
+
+export const RPG_UI_FRAMES = {
+  backpack: rpgUiIcon(0, 3),
+  leaves: rpgUiIcon(5, 4),
+  seed: rpgUiIcon(15, 3),
+} satisfies Record<string, RpgSpriteFrame>;
 
 const TREE_FORAGE_DROPS = (seedItemId: string): RpgDrop[] => [
   { itemId: seedItemId, chance: 0.18, min: 1, max: 1 },
@@ -36,37 +64,37 @@ export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
     kind: 'resource',
-    source: LEAVES_ICON,
+    icon: RPG_UI_FRAMES.leaves,
     description: 'Soft crafting leaves gathered from sanctuary trees.',
   },
   White_tree1_seed: {
     name: 'White Tree Seed',
     kind: 'seed',
-    source: SEED_ICON,
+    icon: RPG_UI_FRAMES.seed,
     description: 'A pale seed from a White Tree.',
   },
   Curved_tree1_seed: {
     name: 'Curved Tree Seed',
     kind: 'seed',
-    source: SEED_ICON,
+    icon: RPG_UI_FRAMES.seed,
     description: 'A curled seed from a Curved Tree.',
   },
   Luminous_tree1_seed: {
     name: 'Luminous Tree Seed',
     kind: 'seed',
-    source: SEED_ICON,
+    icon: RPG_UI_FRAMES.seed,
     description: 'A faintly glowing seed from a Luminous Tree.',
   },
   'Blue-green_balls_tree1_seed': {
     name: 'Blue-Green Tree Seed',
     kind: 'seed',
-    source: SEED_ICON,
+    icon: RPG_UI_FRAMES.seed,
     description: 'A bright seed from a Blue-Green Tree.',
   },
   Mega_tree1_seed: {
     name: 'Mega Tree Seed',
     kind: 'seed',
-    source: SEED_ICON,
+    icon: RPG_UI_FRAMES.seed,
     description: 'A heavy seed from a Mega Tree.',
   },
   White_tree1: {
