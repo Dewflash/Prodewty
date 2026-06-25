@@ -3,7 +3,7 @@ import { Image } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TILE_SIZE } from './MapData';
-import { SHOP_CATALOG } from './SanctuaryShop';
+import { getPlaceableItem } from './RpgObjectCatalog';
 
 interface Props {
   id: number;
@@ -12,13 +12,14 @@ interface Props {
   col: number;
   avatarX: SharedValue<number>;
   avatarY: SharedValue<number>;
+  isInteracting?: boolean;
   onMoveRequest?: (id: number) => void;
 }
 
 const AVATAR_SIZE = 64;
 
-export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, onMoveRequest }: Props) {
-  const catalogItem = SHOP_CATALOG[type as keyof typeof SHOP_CATALOG];
+export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isInteracting = false, onMoveRequest }: Props) {
+  const catalogItem = getPlaceableItem(type);
   const source = catalogItem?.source || require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png');
 
   const colWidth = catalogItem?.colWidth || 1;
@@ -50,6 +51,7 @@ export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, onMoveRe
 
     return {
       opacity: withTiming(isBehind ? 0.4 : 1, { duration: 150 }),
+      transform: [{ scale: withTiming(isInteracting ? 1.08 : 1, { duration: 120 }) }],
     };
   });
 

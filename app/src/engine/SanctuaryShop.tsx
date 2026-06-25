@@ -4,30 +4,11 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
+import { getPlaceableItem, getRpgItem, SHOP_CATALOG } from './RpgObjectCatalog';
 
 type InventoryItem = {
   item_id: string;
   quantity: number;
-};
-
-export type ShopCatalogItem = {
-  name: string;
-  price: number;
-  // Base footprint blocks movement and placement; visual footprint can be larger for canopies.
-  colWidth: number;
-  colHeight: number;
-  visWidth: number;
-  visHeight: number;
-  source: any;
-};
-
-export const SHOP_CATALOG: Record<string, ShopCatalogItem> = {
-  'White_tree1': { name: 'White Tree', price: 100, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png') },
-  'Curved_tree1': { name: 'Curved Tree', price: 150, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png') },
-  'Luminous_tree1': { name: 'Luminous Tree', price: 300, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png') },
-  'Living gazebo1': { name: 'Living Gazebo', price: 500, colWidth: 2, colHeight: 2, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png') },
-  'Blue-green_balls_tree1': { name: 'Blue-Green Tree', price: 200, colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png') },
-  'Mega_tree1': { name: 'Mega Tree', price: 1000, colWidth: 2, colHeight: 2, visWidth: 4, visHeight: 4, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png') },
 };
 
 interface Props {
@@ -81,23 +62,32 @@ export function SanctuaryShop({ isOpen, onClose, onPurchaseRequest, onSelectInve
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {activeTab === 'inventory' ? (
           inventory.map((item) => {
-            const catalogItem = SHOP_CATALOG[item.item_id as keyof typeof SHOP_CATALOG];
-            if (!catalogItem) return null;
+            const catalogItem = getRpgItem(item.item_id);
+            const placeableItem = getPlaceableItem(item.item_id);
+            const itemName = catalogItem?.name ?? item.item_id;
 
             return (
               <Animated.View key={item.item_id} style={styles.itemCard}>
-                  <Image source={catalogItem.source} style={styles.itemImage} resizeMode="contain" />
+                  {catalogItem?.source ? (
+                    <Image source={catalogItem.source} style={styles.itemImage} resizeMode="contain" />
+                  ) : (
+                    <View style={styles.itemImageFallback}>
+                      <Feather name="box" size={26} color="#fff" />
+                    </View>
+                  )}
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{item.quantity}</Text>
                   </View>
-                  <Text style={styles.itemName}>{catalogItem.name}</Text>
-                  <Pressable
-                    style={styles.useBtn}
-                    onPress={() => onSelectInventoryItem(item.item_id)}
-                  >
-                    <Feather name="plus-square" size={14} color="#fff" />
-                    <Text style={styles.useBtnText}>Use</Text>
-                  </Pressable>
+                  <Text style={styles.itemName}>{itemName}</Text>
+                  {placeableItem && (
+                    <Pressable
+                      style={styles.useBtn}
+                      onPress={() => onSelectInventoryItem(item.item_id)}
+                    >
+                      <Feather name="plus-square" size={14} color="#fff" />
+                      <Text style={styles.useBtnText}>Use</Text>
+                    </Pressable>
+                  )}
               </Animated.View>
             );
           })
@@ -187,6 +177,14 @@ const styles = StyleSheet.create({
   itemImage: {
     width: 72,
     height: 72,
+  },
+  itemImageFallback: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   itemName: {
     color: '#fff',
