@@ -1,4 +1,4 @@
-export const TILE_SIZE = 64;
+export const TILE_SIZE = 32;
 
 export enum TileType {
   GRASS = 0,
@@ -17,33 +17,51 @@ export const TILE_COLLISION: Record<TileType, boolean> = {
   [TileType.PORTAL_SANCTUARY]: false,
 };
 
-// 10x10 Sanctuary
-export const SanctuaryMap = [
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 3, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-];
+function makeMap(
+  rows: number,
+  cols: number,
+  portal: { row: number; col: number; type: TileType },
+  walls: { row: number; col: number }[] = [],
+): TileType[][] {
+  const map: TileType[][] = Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: cols }, (_, col) => (
+      row === 0 || col === 0 || row === rows - 1 || col === cols - 1
+        ? TileType.WALL
+        : TileType.GRASS
+    )),
+  );
 
-// 10x10 Dungeon
-export const DungeonMap = [
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 4, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 1, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 1, 1, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 1, 1, 0, 1],
-  [1, 0, 0, 0, 0, 0, 1, 1, 0, 1],
-  [1, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-  [1, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-];
+  walls.forEach(({ row, col }) => {
+    if (map[row]?.[col] !== undefined) map[row][col] = TileType.WALL;
+  });
+  map[portal.row][portal.col] = portal.type;
+  return map;
+}
+
+export const SanctuaryMap = makeMap(20, 20, {
+  row: 18,
+  col: 10,
+  type: TileType.PORTAL_DUNGEON,
+});
+
+export const DungeonMap = makeMap(20, 20, {
+  row: 1,
+  col: 1,
+  type: TileType.PORTAL_SANCTUARY,
+}, [
+  { row: 5, col: 5 },
+  { row: 5, col: 6 },
+  { row: 5, col: 7 },
+  { row: 6, col: 5 },
+  { row: 7, col: 5 },
+  { row: 10, col: 12 },
+  { row: 10, col: 13 },
+  { row: 11, col: 12 },
+  { row: 11, col: 13 },
+  { row: 14, col: 8 },
+  { row: 15, col: 8 },
+  { row: 16, col: 8 },
+]);
 
 export function isBlocked(map: number[][], x: number, y: number): boolean {
   const col = Math.floor(x / TILE_SIZE);

@@ -1,109 +1,184 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Dimensions, Pressable, Text } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useDerivedValue,
+  runOnJS,
   useAnimatedStyle,
+  useDerivedValue,
   useFrameCallback,
-  useAnimatedReaction,
-  runOnJS
+  useSharedValue,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { fonts } from '../src/theme/typography';
 import { Joystick } from '../src/engine/Joystick';
 import { SpriteAnimator } from '../src/engine/SpriteAnimator';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
-import { SanctuaryShop, SHOP_CATALOG } from '../src/engine/SanctuaryShop';
-import { SanctuaryMap, DungeonMap, TILE_SIZE, TileType, TILE_COLLISION } from '../src/engine/MapData';
+import { SanctuaryShop, SHOP_CATALOG, type ShopCatalogItem } from '../src/engine/SanctuaryShop';
+import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
 import { db } from '../src/db/schema';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 const AVATAR_SIZE = 64;
-const SPEED = 200; // pixels per second
-const MIN_ZOOM = 0.75;
-const MAX_ZOOM = 1.75;
+const SPEED = 180;
+const MIN_ZOOM = 0.9;
+const MAX_ZOOM = 1.8;
+
+const AVATAR_FOOT_BOX = {
+  offsetX: 20,
+  offsetY: 48,
+  width: 24,
+  height: 14,
+};
 
 const WALK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_Walk_with_shadow.png');
 const ATTACK_SPRITE = require('../assets/craftpix-net-180537-free-swordsman-1-3-level-pixel-top-down-sprite-character/PNG/Swordsman_lvl1/With_shadow/Swordsman_lvl1_attack_with_shadow.png');
 
-type MapObject = { id: number, type: string, row: number, col: number };
-type HeldItem = { itemId: string; objectId: number | null; label: string };
+type Zone = 'sanctuary' | 'dungeon';
+type MapObject = { id: number; type: string; row: number; col: number };
+type PlacementItem = { itemId: string; label: string };
+
+function clamp(value: number, min: number, max: number) {
+  'worklet';
+  return Math.max(min, Math.min(max, value));
+}
+
+function getItem(type: string | null): ShopCatalogItem | null {
+  if (!type) return null;
+  return SHOP_CATALOG[type as keyof typeof SHOP_CATALOG] ?? null;
+}
+
+function cellsForRect(x: number, y: number, width: number, height: number) {
+  const startCol = Math.floor(x / TILE_SIZE);
+  const endCol = Math.floor((x + width - 1) / TILE_SIZE);
+  const startRow = Math.floor(y / TILE_SIZE);
+  const endRow = Math.floor((y + height - 1) / TILE_SIZE);
+  const cells: { row: number; col: number }[] = [];
+  for (let row = startRow; row <= endRow; row++) {
+    for (let col = startCol; col <= endCol; col++) {
+      cells.push({ row, col });
+    }
+  }
+  return cells;
+}
+
+function avatarCells(avatarX: number, avatarY: number) {
+  return cellsForRect(
+    avatarX + AVATAR_FOOT_BOX.offsetX,
+    avatarY + AVATAR_FOOT_BOX.offsetY,
+    AVATAR_FOOT_BOX.width,
+    AVATAR_FOOT_BOX.height,
+  );
+}
 
 export default function RpgScreen() {
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  const [activeZone, setActiveZone] = useState<'sanctuary' | 'dungeon'>('sanctuary');
+  const [activeZone, setActiveZone] = useState<Zone>('sanctuary');
+  const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
+  const [coins, setCoins] = useState(0);
+  const [isShopOpen, setIsShopOpen] = useState(false);
+  const [placingItem, setPlacingItem] = useState<PlacementItem | null>(null);
+  const [editingObjectId, setEditingObjectId] = useState<number | null>(null);
+  const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
+  const [spriteFrameCount, setSpriteFrameCount] = useState(6);
 
   const mapData = activeZone === 'sanctuary' ? SanctuaryMap : DungeonMap;
-  const MAP_WIDTH = mapData[0].length * TILE_SIZE;
-  const MAP_HEIGHT = mapData.length * TILE_SIZE;
-
-  // We convert the collision map to a flat 1D array for the UI thread worklet
-  // 1 = blocked, 0 = walkable
-  const collisionFlat = mapData.flat().map(t => TILE_COLLISION[t as TileType] ? 1 : 0);
-  const collisionMap = useSharedValue(collisionFlat);
-  const mapCols = useSharedValue(mapData[0].length);
-  const mapRows = useSharedValue(mapData.length);
+  const mapColsCount = mapData[0].length;
+  const mapRowsCount = mapData.length;
+  const mapWidth = mapColsCount * TILE_SIZE;
+  const mapHeight = mapRowsCount * TILE_SIZE;
 
   const joyX = useSharedValue(0);
   const joyY = useSharedValue(0);
-
-  // Avatar world coordinates
   const avatarX = useSharedValue(TILE_SIZE * 2);
   const avatarY = useSharedValue(TILE_SIZE * 2);
   const avatarDirection = useSharedValue(0);
   const avatarIsPlaying = useSharedValue(false);
   const isAttacking = useSharedValue(false);
-  const isCarrying = useSharedValue(false);
   const mapScale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
-  const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
-  const [spriteFrameCount, setSpriteFrameCount] = useState(6);
-  const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
-  const [coins, setCoins] = useState(0);
-  const [isShopOpen, setIsShopOpen] = useState(false);
-  const [dragImageSource, setDragImageSource] = useState<any>(null);
-  const [heldItem, setHeldItem] = useState<HeldItem | null>(null);
-  const [zoomLabel, setZoomLabel] = useState('100%');
+  const collisionMap = useSharedValue<number[]>([]);
+  const mapCols = useSharedValue(mapColsCount);
+  const mapRows = useSharedValue(mapRowsCount);
+  const placingColWidth = useSharedValue(0);
+  const placingColHeight = useSharedValue(0);
 
-  // Drag & Drop Physics State
-  const dragX = useSharedValue(0);
-  const dragY = useSharedValue(0);
-  const isDragging = useSharedValue(false);
-  const dragItemId = useSharedValue<string | null>(null);
-  const dragItemColWidth = useSharedValue(1);
-  const dragItemColHeight = useSharedValue(1);
-  const dragItemVisWidth = useSharedValue(2);
-  const dragItemVisHeight = useSharedValue(2);
-  const hoverCol = useSharedValue(0);
-  const hoverRow = useSharedValue(0);
+  const selectedObject = useMemo(
+    () => mapObjects.find(obj => obj.id === editingObjectId) ?? null,
+    [editingObjectId, mapObjects],
+  );
 
-  const isPlacementValid = (r: number, c: number, itemId: string | null, ignoreObjectId: number | null = null) => {
-    if (activeZone !== 'sanctuary' || !itemId) return false;
-    const catalogItem = SHOP_CATALOG[itemId as keyof typeof SHOP_CATALOG];
-    const widthTiles = catalogItem?.colWidth || 1;
-    const heightTiles = catalogItem?.colHeight || 1;
+  const refreshMapObjects = () => {
+    setMapObjects(db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects'));
+  };
 
-    for (let dr = 0; dr < heightTiles; dr++) {
-      for (let dc = 0; dc < widthTiles; dc++) {
-        const checkR = r + dr;
-        const checkC = c + dc;
-        if (checkR < 0 || checkR >= mapData.length || checkC < 0 || checkC >= mapData[0].length) {
+  const refreshCoins = () => {
+    const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
+    if (state) setCoins(state.coins);
+  };
+
+  const enterZone = (zone: Zone) => {
+    setActiveZone(zone);
+    setPlacingItem(null);
+    setEditingObjectId(null);
+    joyX.value = 0;
+    joyY.value = 0;
+    avatarIsPlaying.value = false;
+    avatarDirection.value = 0;
+    avatarX.value = TILE_SIZE * 2;
+    avatarY.value = zone === 'sanctuary' ? TILE_SIZE * 2 : TILE_SIZE;
+  };
+
+  const getTargetedTile = () => {
+    const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
+    const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
+    let col = Math.floor(footX / TILE_SIZE);
+    let row = Math.floor(footY / TILE_SIZE);
+
+    const dir = avatarDirection.value;
+    if (dir === 0) row += 1;
+    else if (dir === 1) col -= 1;
+    else if (dir === 2) col += 1;
+    else if (dir === 3) row -= 1;
+
+    return { row, col };
+  };
+
+  const isPlacementValid = (
+    row: number,
+    col: number,
+    itemId: string,
+    ignoreObjectId: number | null = null,
+  ) => {
+    if (activeZone !== 'sanctuary') return false;
+    const item = getItem(itemId);
+    if (!item) return false;
+
+    const occupiedByAvatar = new Set(
+      avatarCells(avatarX.value, avatarY.value).map(cell => `${cell.row}:${cell.col}`),
+    );
+
+    for (let dr = 0; dr < item.colHeight; dr++) {
+      for (let dc = 0; dc < item.colWidth; dc++) {
+        const checkRow = row + dr;
+        const checkCol = col + dc;
+        if (checkRow < 0 || checkRow >= mapRowsCount || checkCol < 0 || checkCol >= mapColsCount) {
           return false;
         }
-        const tileType = mapData[checkR][checkC] as TileType;
+        if (occupiedByAvatar.has(`${checkRow}:${checkCol}`)) return false;
+
+        const tileType = mapData[checkRow][checkCol] as TileType;
         if (TILE_COLLISION[tileType]) return false;
 
         const hasObject = mapObjects.some(obj => {
           if (obj.id === ignoreObjectId) return false;
-          const existingItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
-          const existingW = existingItem?.colWidth || 1;
-          const existingH = existingItem?.colHeight || 1;
+          const existing = getItem(obj.type);
+          const width = existing?.colWidth ?? 1;
+          const height = existing?.colHeight ?? 1;
           return (
-            checkR >= obj.row &&
-            checkR < obj.row + existingH &&
-            checkC >= obj.col &&
-            checkC < obj.col + existingW
+            checkRow >= obj.row &&
+            checkRow < obj.row + height &&
+            checkCol >= obj.col &&
+            checkCol < obj.col + width
           );
         });
         if (hasObject) return false;
@@ -113,198 +188,141 @@ export default function RpgScreen() {
     return true;
   };
 
-  const refreshMapObjects = () => {
-    const data = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
-    setMapObjects(data);
+  const placeInventoryItemAtTarget = () => {
+    if (!placingItem) return;
+    const target = getTargetedTile();
+    if (!isPlacementValid(target.row, target.col, placingItem.itemId)) return;
+
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      const result = db.runSync(
+        'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
+        placingItem.itemId,
+      );
+      if (result.changes <= 0) {
+        db.execSync('ROLLBACK');
+        return;
+      }
+      db.runSync(
+        'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+        placingItem.itemId, target.row, target.col,
+      );
+      db.execSync('COMMIT');
+      setPlacingItem(null);
+      refreshMapObjects();
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to place inventory item', e);
+    }
   };
 
-  const getObjectAtTile = (r: number, c: number) => {
-    return mapObjects.find(obj => {
-      const catalogItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
-      const w = catalogItem?.colWidth || 1;
-      const h = catalogItem?.colHeight || 1;
-      return r >= obj.row && r < obj.row + h && c >= obj.col && c < obj.col + w;
-    }) ?? null;
+  const moveEditingObjectTo = (row: number, col: number) => {
+    if (!selectedObject) return;
+    if (!isPlacementValid(row, col, selectedObject.type, selectedObject.id)) return;
+
+    try {
+      db.runSync(
+        'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
+        row, col, selectedObject.id,
+      );
+      setEditingObjectId(null);
+      refreshMapObjects();
+    } catch (e) {
+      console.warn('Failed to move object', e);
+    }
   };
 
-  const clearHeldItem = () => {
-    setHeldItem(null);
-    setDragImageSource(null);
-    isCarrying.value = false;
+  const stashEditingObject = () => {
+    if (!selectedObject) return;
+
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', selectedObject.id);
+      db.runSync(
+        `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
+         ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
+        selectedObject.type,
+      );
+      db.execSync('COMMIT');
+      setEditingObjectId(null);
+      refreshMapObjects();
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to stash object', e);
+    }
   };
 
-  const beginHoldingItem = (itemId: string, objectId: number | null = null) => {
-    const catalogItem = SHOP_CATALOG[itemId as keyof typeof SHOP_CATALOG];
-    if (!catalogItem) return;
-    setHeldItem({ itemId, objectId, label: catalogItem.name });
-    setDragImageSource(catalogItem.source);
-    dragItemId.value = itemId;
-    dragItemColWidth.value = catalogItem.colWidth;
-    dragItemColHeight.value = catalogItem.colHeight;
-    dragItemVisWidth.value = catalogItem.visWidth;
-    dragItemVisHeight.value = catalogItem.visHeight;
-    isCarrying.value = true;
+  const screenToWorld = (screenX: number, screenY: number) => {
+    const worldX = (screenX - cameraX.value) / mapScale.value;
+    const worldY = (screenY - cameraY.value) / mapScale.value;
+    return {
+      col: Math.floor(worldX / TILE_SIZE),
+      row: Math.floor(worldY / TILE_SIZE),
+    };
+  };
+
+  const handleWorldTap = (screenX: number, screenY: number) => {
+    if (!selectedObject) return;
+    const target = screenToWorld(screenX, screenY);
+    moveEditingObjectTo(target.row, target.col);
+  };
+
+  const handleObjectLongPress = (objectId: number) => {
+    setPlacingItem(null);
+    setEditingObjectId(objectId);
+  };
+
+  const handleShopSelectInventoryItem = (itemId: string) => {
+    const item = getItem(itemId);
+    if (!item) return;
+    setEditingObjectId(null);
+    setPlacingItem({ itemId, label: item.name });
     setIsShopOpen(false);
   };
 
-  const beginMovingObject = (objectId: number) => {
-    const object = mapObjects.find(obj => obj.id === objectId);
-    if (!object) return;
-    beginHoldingItem(object.type, object.id);
-  };
-
-  const handlePlaceHeldItem = () => {
-    if (!heldItem) return;
-    const target = getTargetedTile();
-    if (!isPlacementValid(target.row, target.col, heldItem.itemId, heldItem.objectId)) {
-      console.warn("Cannot place item on blocked tile");
-      return;
-    }
-
-    try {
-      if (heldItem.objectId !== null) {
-        db.runSync(
-          'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
-          target.row, target.col, heldItem.objectId,
-        );
-      } else {
-        const result = db.runSync(
-          'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
-          heldItem.itemId,
-        );
-        if (result.changes <= 0) {
-          console.warn("Item not in inventory or quantity 0");
-          return;
-        }
-        db.runSync(
-          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
-          heldItem.itemId, target.row, target.col,
-        );
-      }
-      refreshMapObjects();
-      clearHeldItem();
-    } catch (e) {
-      console.warn("Failed to place held item", e);
-    }
-  };
-
-  const stashObject = (object: MapObject) => {
-    try {
-      db.execSync('BEGIN TRANSACTION');
-      db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', object.id);
-      db.runSync(`
-        INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
-        ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1
-      `, object.type);
-      db.execSync('COMMIT');
-      refreshMapObjects();
-      if (heldItem?.objectId === object.id) clearHeldItem();
-    } catch (e) {
-      try { db.execSync('ROLLBACK'); } catch {}
-      console.warn("Failed to stash object", e);
-    }
-  };
-
-  const handleStashHeldItem = () => {
-    if (!heldItem) return;
-    if (heldItem.objectId === null) {
-      clearHeldItem();
-      return;
-    }
-    const object = mapObjects.find(obj => obj.id === heldItem.objectId);
-    if (object) stashObject(object);
-  };
-
-  const handleMoveTargetObject = () => {
-    const target = getTargetedTile();
-    const object = getObjectAtTile(target.row, target.col);
-    if (object) beginMovingObject(object.id);
-  };
-
-  const handleStashTargetObject = () => {
-    const target = getTargetedTile();
-    const object = getObjectAtTile(target.row, target.col);
-    if (object) stashObject(object);
-  };
-
-  const handleDrop = (r: number, c: number, itemId: string | null) => {
-    if (!isPlacementValid(r, c, itemId)) return;
-
-    try {
-      // Secure transaction: Only place if inventory actually decremented.
-      const result = db.runSync(
-        'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
-        itemId,
-      );
-
-      if (result.changes > 0) {
-        db.runSync(
-          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
-          itemId, r, c,
-        );
-
-        // Refresh objects
-        const data = db.getAllSync<{id: number, type: string, row: number, col: number}>('SELECT * FROM sanctuary_objects');
-        setMapObjects(data);
-      } else {
-        console.warn("Item not in inventory or quantity 0");
-      }
-    } catch (e) {
-      console.warn("Failed to drop object", e);
-    }
-  };
-
-  // Update dimensions on rotate
   useEffect(() => {
-    const sub = Dimensions.addEventListener('change', ({ window }) => {
-      setDimensions(window);
-    });
+    const sub = Dimensions.addEventListener('change', ({ window }) => setDimensions(window));
     return () => sub?.remove();
   }, []);
 
-  // Fetch sanctuary objects and currency on mount
   useEffect(() => {
     try {
       refreshMapObjects();
-
-      const state = db.getFirstSync<{coins: number}>('SELECT coins FROM rpg_state WHERE id = 1');
-      if (state) setCoins(state.coins);
+      refreshCoins();
     } catch (e) {
-      console.warn("Failed to load map data:", e);
+      console.warn('Failed to load RPG sandbox state', e);
     }
   }, []);
 
-  // Update collision map when zone or objects change
   useEffect(() => {
-    const currentMap = activeZone === 'sanctuary' ? SanctuaryMap : DungeonMap;
-    const mapWidth = currentMap[0].length;
+    const item = getItem(placingItem?.itemId ?? null);
+    placingColWidth.value = item?.colWidth ?? 0;
+    placingColHeight.value = item?.colHeight ?? 0;
+  }, [placingItem]);
 
-    const flat = currentMap.flat().map(t => TILE_COLLISION[t as TileType] ? 1 : 0);
-    const heldObjectId = heldItem?.objectId ?? null;
+  useEffect(() => {
+    const flat = mapData.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
 
-    // Inject dynamic objects into the collision map
     if (activeZone === 'sanctuary') {
       mapObjects.forEach(obj => {
-        if (obj.id === heldObjectId) return;
-        const catalogItem = SHOP_CATALOG[obj.type as keyof typeof SHOP_CATALOG];
-        const w = catalogItem?.colWidth || 1;
-        const h = catalogItem?.colHeight || 1;
-
-        for (let dr = 0; dr < h; dr++) {
-          for (let dc = 0; dc < w; dc++) {
-            const index = (obj.row + dr) * mapWidth + (obj.col + dc);
-            if (index >= 0 && index < flat.length) {
-              flat[index] = 1; // Mark as solid wall
-            }
+        const item = getItem(obj.type);
+        const width = item?.colWidth ?? 1;
+        const height = item?.colHeight ?? 1;
+        for (let dr = 0; dr < height; dr++) {
+          for (let dc = 0; dc < width; dc++) {
+            const row = obj.row + dr;
+            const col = obj.col + dc;
+            if (row < 0 || row >= mapRowsCount || col < 0 || col >= mapColsCount) continue;
+            flat[row * mapColsCount + col] = 1;
           }
         }
       });
     }
 
     collisionMap.value = flat;
-    mapCols.value = currentMap[0].length;
-    mapRows.value = currentMap.length;
-  }, [activeZone, mapObjects, heldItem]);
+    mapCols.value = mapColsCount;
+    mapRows.value = mapRowsCount;
+  }, [activeZone, mapObjects, mapData, mapColsCount, mapRowsCount]);
 
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
@@ -316,41 +334,10 @@ export default function RpgScreen() {
     joyY.value = 0;
   };
 
-  useAnimatedReaction(
-    () => isDragging.value,
-    (isDraggingNow, wasDragging) => {
-      if (wasDragging && !isDraggingNow) {
-        runOnJS(handleDrop)(hoverRow.value, hoverCol.value, dragItemId.value);
-      }
-    }
-  );
-
   useFrameCallback((frameInfo) => {
     if (!frameInfo.timeSincePreviousFrame) return;
-
-    // delta time in seconds
     const dt = frameInfo.timeSincePreviousFrame / 1000;
 
-    // Edge panning during drag/build mode. This runs before movement idles out,
-    // so the camera still pans while the user holds an object at the edge.
-    if (isDragging.value && dt) {
-      const PAN_SPEED = 420 / mapScale.value;
-      const margin = 50;
-      let dx = 0;
-      let dy = 0;
-
-      if (dragX.value < margin) dx = PAN_SPEED * dt;
-      if (dragX.value > dimensions.width - margin) dx = -PAN_SPEED * dt;
-      if (dragY.value < margin) dy = PAN_SPEED * dt;
-      if (dragY.value > dimensions.height - margin) dy = -PAN_SPEED * dt;
-
-      if (dx !== 0 || dy !== 0) {
-        avatarX.value = Math.max(0, Math.min(MAP_WIDTH, avatarX.value - dx));
-        avatarY.value = Math.max(0, Math.min(MAP_HEIGHT, avatarY.value - dy));
-      }
-    }
-
-    // Lock movement if attacking
     if (isAttacking.value) return;
 
     if (joyX.value === 0 && joyY.value === 0) {
@@ -359,60 +346,145 @@ export default function RpgScreen() {
     }
 
     avatarIsPlaying.value = true;
-    // Determine direction (0: Down, 1: Left, 2: Right, 3: Up)
     if (Math.abs(joyX.value) > Math.abs(joyY.value)) {
       avatarDirection.value = joyX.value > 0 ? 2 : 1;
     } else {
       avatarDirection.value = joyY.value > 0 ? 0 : 3;
     }
 
-    // Proposed new positions
-    // In 2.5D top-down games, the physical collision box is at the character's feet!
-    const feetYOffset = AVATAR_SIZE - 8; // Slightly above the absolute bottom pixel for a natural overlap
-    const cx = avatarX.value + (AVATAR_SIZE / 2); // Center X is fine
-    const cy = avatarY.value + feetYOffset;
-
-    let nextX = avatarX.value + (joyX.value * SPEED * dt);
-    let nextY = avatarY.value + (joyY.value * SPEED * dt);
-
-    const nextCX = nextX + (AVATAR_SIZE / 2);
-    const nextCY = nextY + feetYOffset;
-
-    // Collision check helper
-    const isBlocked = (checkX: number, checkY: number) => {
+    const isFootBoxBlocked = (x: number, y: number) => {
       'worklet';
-      const col = Math.floor(checkX / TILE_SIZE);
-      const row = Math.floor(checkY / TILE_SIZE);
-      if (col < 0 || col >= mapCols.value || row < 0 || row >= mapRows.value) return true;
-      return collisionMap.value[row * mapCols.value + col] === 1;
+      const left = x + AVATAR_FOOT_BOX.offsetX;
+      const top = y + AVATAR_FOOT_BOX.offsetY;
+      const right = left + AVATAR_FOOT_BOX.width - 1;
+      const bottom = top + AVATAR_FOOT_BOX.height - 1;
+      const startCol = Math.floor(left / TILE_SIZE);
+      const endCol = Math.floor(right / TILE_SIZE);
+      const startRow = Math.floor(top / TILE_SIZE);
+      const endRow = Math.floor(bottom / TILE_SIZE);
+
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          if (col < 0 || col >= mapCols.value || row < 0 || row >= mapRows.value) return true;
+          if (collisionMap.value[row * mapCols.value + col] === 1) return true;
+        }
+      }
+      return false;
     };
 
-    // Check X axis
-    if (!isBlocked(nextCX, cy)) {
-      avatarX.value = nextX;
-    }
-    // Check Y axis
-    if (!isBlocked(avatarX.value + (AVATAR_SIZE / 2), nextCY)) {
-      avatarY.value = nextY;
-    }
+    const nextX = avatarX.value + joyX.value * SPEED * dt;
+    const nextY = avatarY.value + joyY.value * SPEED * dt;
 
+    if (!isFootBoxBlocked(nextX, avatarY.value)) avatarX.value = nextX;
+    if (!isFootBoxBlocked(avatarX.value, nextY)) avatarY.value = nextY;
   });
 
-  function getTargetedTile() {
-    // 0: Down, 1: Left, 2: Right, 3: Up
-    const cx = avatarX.value + (AVATAR_SIZE / 2);
-    const cy = avatarY.value + (AVATAR_SIZE / 2);
-    let col = Math.floor(cx / TILE_SIZE);
-    let row = Math.floor(cy / TILE_SIZE);
+  const cameraX = useDerivedValue(() => {
+    const scaledWidth = mapWidth * mapScale.value;
+    const ideal = dimensions.width / 2 - (avatarX.value + AVATAR_SIZE / 2) * mapScale.value;
+    if (scaledWidth <= dimensions.width) return (dimensions.width - scaledWidth) / 2;
+    return clamp(ideal, dimensions.width - scaledWidth, 0);
+  });
 
+  const cameraY = useDerivedValue(() => {
+    const scaledHeight = mapHeight * mapScale.value;
+    const ideal = dimensions.height / 2 - (avatarY.value + AVATAR_SIZE / 2) * mapScale.value;
+    if (scaledHeight <= dimensions.height) return (dimensions.height - scaledHeight) / 2;
+    return clamp(ideal, dimensions.height - scaledHeight, 0);
+  });
+
+  const worldStyle = useAnimatedStyle(() => ({
+    transformOrigin: 'top left',
+    transform: [
+      { translateX: cameraX.value },
+      { translateY: cameraY.value },
+      { scale: mapScale.value },
+    ],
+  }));
+
+  const avatarStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: avatarX.value,
+    top: avatarY.value,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    zIndex: Math.floor((avatarY.value + AVATAR_SIZE) / TILE_SIZE),
+  }));
+
+  const placementPreviewStyle = useAnimatedStyle(() => {
+    if (placingColWidth.value <= 0 || placingColHeight.value <= 0) {
+      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
+    }
+
+    const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
+    const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
+    let col = Math.floor(footX / TILE_SIZE);
+    let row = Math.floor(footY / TILE_SIZE);
     const dir = avatarDirection.value;
     if (dir === 0) row += 1;
     else if (dir === 1) col -= 1;
     else if (dir === 2) col += 1;
     else if (dir === 3) row -= 1;
 
-    return { row, col };
-  }
+    let valid = true;
+    const avatarStartCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
+    const avatarEndCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width - 1) / TILE_SIZE);
+    const avatarStartRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
+    const avatarEndRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height - 1) / TILE_SIZE);
+
+    for (let dr = 0; dr < placingColHeight.value; dr++) {
+      for (let dc = 0; dc < placingColWidth.value; dc++) {
+        const checkRow = row + dr;
+        const checkCol = col + dc;
+        if (checkRow < 0 || checkRow >= mapRows.value || checkCol < 0 || checkCol >= mapCols.value) {
+          valid = false;
+          break;
+        }
+        if (collisionMap.value[checkRow * mapCols.value + checkCol] === 1) {
+          valid = false;
+          break;
+        }
+        if (
+          checkRow >= avatarStartRow &&
+          checkRow <= avatarEndRow &&
+          checkCol >= avatarStartCol &&
+          checkCol <= avatarEndCol
+        ) {
+          valid = false;
+          break;
+        }
+      }
+    }
+
+    return {
+      position: 'absolute',
+      left: col * TILE_SIZE,
+      top: row * TILE_SIZE,
+      width: placingColWidth.value * TILE_SIZE,
+      height: placingColHeight.value * TILE_SIZE,
+      borderWidth: 2,
+      borderColor: valid ? '#2ecc71' : '#e74c3c',
+      backgroundColor: valid ? 'rgba(46, 204, 113, 0.28)' : 'rgba(231, 76, 60, 0.3)',
+      opacity: 1,
+      zIndex: 1000,
+    };
+  });
+
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      pinchStartScale.value = mapScale.value;
+    })
+    .onUpdate(event => {
+      mapScale.value = clamp(pinchStartScale.value * event.scale, MIN_ZOOM, MAX_ZOOM);
+    });
+
+  const tapGesture = Gesture.Tap()
+    .enabled(editingObjectId !== null)
+    .onEnd(event => {
+      runOnJS(handleWorldTap)(event.absoluteX, event.absoluteY);
+    });
+
+  const worldGesture = Gesture.Simultaneous(pinchGesture, tapGesture);
 
   function handleAttack() {
     if (isAttacking.value) return;
@@ -422,19 +494,16 @@ export default function RpgScreen() {
     setSpriteFrameCount(8);
 
     const target = getTargetedTile();
-
-    // ATK Math calculation
     try {
-      const stats = db.getFirstSync<{ str: number, foc: number, agi: number, wis: number, res: number }>(`
-        SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1
-      `);
+      const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
+        'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
+      );
       if (stats) {
         const atk = Math.floor((stats.str + stats.foc + stats.agi + stats.wis + stats.res) / 5);
         console.log(`[Combat] Hit tile [${target.row}, ${target.col}] with ATK: ${atk}`);
       }
     } catch {}
 
-    // Unlock movement after animation completes (8 frames at 10fps = 800ms)
     setTimeout(() => {
       isAttacking.value = false;
       setSpriteSource(WALK_SPRITE);
@@ -444,186 +513,30 @@ export default function RpgScreen() {
 
   function handleInteract() {
     if (isAttacking.value) return;
-    if (heldItem) {
-      handlePlaceHeldItem();
+
+    if (placingItem) {
+      placeInventoryItemAtTarget();
       return;
     }
 
     const target = getTargetedTile();
-
     if (activeZone === 'sanctuary') {
-      const object = getObjectAtTile(target.row, target.col);
-      if (object) {
-        beginMovingObject(object.id);
-        return;
-      }
-
       const tileType = SanctuaryMap[target.row]?.[target.col];
       if (tileType === TileType.PORTAL_DUNGEON) {
-        setActiveZone('dungeon');
+        enterZone('dungeon');
         return;
       }
-      console.log(`[Interact] Inspecting sanctuary tile [${target.row}, ${target.col}]`);
+      console.log(`[Interact] Sanctuary tile [${target.row}, ${target.col}]`);
       return;
     }
 
     const tileType = DungeonMap[target.row]?.[target.col];
-    if (tileType === TileType.PORTAL_SANCTUARY) {
-      setActiveZone('sanctuary');
-      return;
-    }
-    console.log(`[Interact] Inspecting dungeon tile [${target.row}, ${target.col}]`);
+    if (tileType === TileType.PORTAL_SANCTUARY) enterZone('sanctuary');
+    else console.log(`[Interact] Dungeon tile [${target.row}, ${target.col}]`);
   }
 
-  const mapTranslateX = useDerivedValue(() => dimensions.width / 2 - (avatarX.value + AVATAR_SIZE / 2) * mapScale.value);
-  const mapTranslateY = useDerivedValue(() => dimensions.height / 2 - (avatarY.value + AVATAR_SIZE / 2) * mapScale.value);
-
-  const animatedWorldStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: mapTranslateX.value },
-        { translateY: mapTranslateY.value },
-        { scale: mapScale.value },
-      ],
-    };
-  });
-
-  const pinchGesture = Gesture.Pinch()
-    .onBegin(() => {
-      pinchStartScale.value = mapScale.value;
-    })
-    .onUpdate((event) => {
-      mapScale.value = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartScale.value * event.scale));
-    })
-    .onEnd(() => {
-      runOnJS(setZoomLabel)(`${Math.round(mapScale.value * 100)}%`);
-    });
-
-  const setZoom = (nextScale: number) => {
-    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextScale));
-    mapScale.value = clamped;
-    setZoomLabel(`${Math.round(clamped * 100)}%`);
-  };
-
-  // Build Mode: Hover Preview Box Math
-  useFrameCallback(() => {
-    if (isDragging.value) {
-      hoverCol.value = Math.floor((dragX.value - mapTranslateX.value) / mapScale.value / TILE_SIZE);
-      hoverRow.value = Math.floor((dragY.value - mapTranslateY.value) / mapScale.value / TILE_SIZE);
-    }
-  });
-
-  const previewStyle = useAnimatedStyle(() => {
-    if (!isDragging.value) {
-      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
-    }
-    const r = hoverRow.value;
-    const c = hoverCol.value;
-
-    if (isNaN(r) || isNaN(c)) return { opacity: 0 };
-
-    const widthTiles = dragItemColWidth.value;
-    const heightTiles = dragItemColHeight.value;
-
-    let isValid = true;
-    for (let dr = 0; dr < heightTiles; dr++) {
-      for (let dc = 0; dc < widthTiles; dc++) {
-        const checkR = r + dr;
-        const checkC = c + dc;
-        if (checkR < 0 || checkR >= mapRows.value || checkC < 0 || checkC >= mapCols.value) {
-          isValid = false;
-          break;
-        }
-        if (collisionMap.value[checkR * mapCols.value + checkC] === 1) {
-          isValid = false;
-          break;
-        }
-      }
-    }
-
-    return {
-      position: 'absolute',
-      left: c * TILE_SIZE,
-      top: r * TILE_SIZE,
-      width: widthTiles * TILE_SIZE,
-      height: heightTiles * TILE_SIZE,
-      backgroundColor: isValid ? 'rgba(46, 204, 113, 0.4)' : 'rgba(231, 76, 60, 0.4)',
-      opacity: 1,
-      borderWidth: 2,
-      borderColor: isValid ? '#2ecc71' : '#e74c3c',
-      zIndex: 1000,
-    };
-  });
-
-  const heldPreviewStyle = useAnimatedStyle(() => {
-    if (!isCarrying.value) {
-      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
-    }
-
-    const widthTiles = dragItemColWidth.value;
-    const heightTiles = dragItemColHeight.value;
-    const col = Math.floor((avatarX.value + AVATAR_SIZE / 2) / TILE_SIZE);
-    const row = Math.floor((avatarY.value + AVATAR_SIZE / 2) / TILE_SIZE);
-    let targetCol = col;
-    let targetRow = row;
-    const dir = avatarDirection.value;
-    if (dir === 0) targetRow += 1;
-    else if (dir === 1) targetCol -= 1;
-    else if (dir === 2) targetCol += 1;
-    else if (dir === 3) targetRow -= 1;
-
-    let isValid = true;
-    for (let dr = 0; dr < heightTiles; dr++) {
-      for (let dc = 0; dc < widthTiles; dc++) {
-        const checkR = targetRow + dr;
-        const checkC = targetCol + dc;
-        if (checkR < 0 || checkR >= mapRows.value || checkC < 0 || checkC >= mapCols.value) {
-          isValid = false;
-          break;
-        }
-        if (collisionMap.value[checkR * mapCols.value + checkC] === 1) {
-          isValid = false;
-          break;
-        }
-      }
-    }
-
-    return {
-      position: 'absolute',
-      left: targetCol * TILE_SIZE,
-      top: targetRow * TILE_SIZE,
-      width: widthTiles * TILE_SIZE,
-      height: heightTiles * TILE_SIZE,
-      backgroundColor: isValid ? 'rgba(46, 204, 113, 0.32)' : 'rgba(231, 76, 60, 0.34)',
-      opacity: 1,
-      borderWidth: 2,
-      borderColor: isValid ? '#2ecc71' : '#e74c3c',
-      zIndex: 1001,
-    };
-  });
-
-  const ghostStyle = useAnimatedStyle(() => {
-    return {
-      position: 'absolute',
-      left: dragX.value - (dragItemVisWidth.value * TILE_SIZE) / 2, // Center visually
-      top: dragY.value - (dragItemVisHeight.value * TILE_SIZE) / 2,
-      width: dragItemVisWidth.value * TILE_SIZE,
-      height: dragItemVisHeight.value * TILE_SIZE,
-      opacity: isDragging.value ? 0.7 : 0,
-      zIndex: 9999,
-      pointerEvents: 'none',
-    };
-  });
-
-  const avatarZIndexStyle = useAnimatedStyle(() => {
-    return {
-      // Z-Index must precisely match the collision feet point!
-      zIndex: Math.floor((avatarY.value + AVATAR_SIZE - 8) / TILE_SIZE),
-    };
-  });
-
   function getTileColor(type: TileType) {
-    switch(type) {
+    switch (type) {
       case TileType.GRASS: return '#2ecc71';
       case TileType.WALL: return '#7f8c8d';
       case TileType.WATER: return '#3498db';
@@ -635,186 +548,138 @@ export default function RpgScreen() {
 
   return (
     <View style={styles.container}>
-      {/* The World Container */}
-      <GestureDetector gesture={pinchGesture}>
-        <Animated.View style={[styles.world, { width: MAP_WIDTH, height: MAP_HEIGHT }, animatedWorldStyle]}>
-          {mapData.map((row, rIdx) => (
-            <View key={`row-${rIdx}`} style={styles.mapRow}>
-              {row.map((tile, cIdx) => (
+      <GestureDetector gesture={worldGesture}>
+        <Animated.View style={[styles.world, { width: mapWidth, height: mapHeight }, worldStyle]}>
+          {mapData.map((row, rowIndex) => (
+            <View key={`row-${rowIndex}`} style={styles.mapRow}>
+              {row.map((tile, colIndex) => (
                 <View
-                  key={`tile-${rIdx}-${cIdx}`}
-                  style={[
-                    styles.tile,
-                    { backgroundColor: getTileColor(tile as TileType) }
-                  ]}
+                  key={`tile-${rowIndex}-${colIndex}`}
+                  style={[styles.tile, { backgroundColor: getTileColor(tile as TileType) }]}
                 />
               ))}
             </View>
           ))}
 
-          {/* Dynamic Objects */}
-          {activeZone === 'sanctuary' && mapObjects.filter(obj => obj.id !== heldItem?.objectId).map(obj => (
+          {activeZone === 'sanctuary' && mapObjects.map(obj => (
             <SanctuaryObject
               key={obj.id}
               id={obj.id}
               type={obj.type}
               row={obj.row}
               col={obj.col}
-              avatarY={avatarY}
               avatarX={avatarX}
-              onMoveRequest={beginMovingObject}
+              avatarY={avatarY}
+              isEditing={obj.id === editingObjectId}
+              onMoveRequest={handleObjectLongPress}
             />
           ))}
 
-          {/* Build Mode Preview Boxes */}
-          <Animated.View style={previewStyle} />
-          <Animated.View style={heldPreviewStyle} />
+          <Animated.View style={placementPreviewStyle} />
+
+          <Animated.View style={avatarStyle}>
+            <SpriteAnimator
+              source={spriteSource}
+              frameWidth={64}
+              frameHeight={64}
+              frameCount={spriteFrameCount}
+              fps={10}
+              directionRow={avatarDirection}
+              isPlaying={avatarIsPlaying}
+            />
+          </Animated.View>
         </Animated.View>
       </GestureDetector>
 
-      {/* The Avatar (Fixed in center of screen) */}
-      <Animated.View style={[
-        styles.avatarContainer,
-        avatarZIndexStyle,
-        {
-          left: dimensions.width / 2 - AVATAR_SIZE / 2,
-          top: dimensions.height / 2 - AVATAR_SIZE / 2
-        }
-      ]}>
-        <SpriteAnimator
-          source={spriteSource}
-          frameWidth={64}
-          frameHeight={64}
-          frameCount={spriteFrameCount}
-          fps={10}
-          directionRow={avatarDirection}
-          isPlaying={avatarIsPlaying}
-        />
-      </Animated.View>
-
-      {/* Ghost Object for Dragging */}
-      {dragImageSource && (
-        <Animated.Image
-          source={dragImageSource}
-          style={[styles.ghostImage, ghostStyle]}
-          resizeMode="contain"
-        />
-      )}
-
-      {/* Build Mode Shop Drawer */}
-      <SanctuaryShop
-        isOpen={isShopOpen}
-        onClose={() => setIsShopOpen(false)}
-        dragX={dragX}
-        dragY={dragY}
-        isDragging={isDragging}
-        dragItemId={dragItemId}
-        dragItemColWidth={dragItemColWidth}
-        dragItemColHeight={dragItemColHeight}
-        dragItemVisWidth={dragItemVisWidth}
-        dragItemVisHeight={dragItemVisHeight}
-        onDragStart={(id) => {
-          setDragImageSource(SHOP_CATALOG[id]?.source);
-        }}
-        onSelectInventoryItem={(id) => beginHoldingItem(id, null)}
-        onPurchaseRequest={(itemId, price) => {
-          try {
-            const state = db.getFirstSync<{coins: number}>('SELECT coins FROM rpg_state WHERE id = 1');
-            if (state && state.coins >= price) {
-              db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
-              db.runSync(`
-                INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
-                ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1
-              `, itemId);
-              setCoins(state.coins - price);
-              // We could trigger a shop inventory refresh here, but it's okay, closing and reopening works.
-            } else {
-              console.warn("Not enough coins");
-            }
-          } catch (e) {
-            console.warn("Failed to purchase item", e);
-          }
-        }}
-      />
-
-      {/* UI Overlay */}
       <View style={styles.header}>
         <Pressable style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="arrow-left" size={24} color="#fff" />
         </Pressable>
+
         <View style={styles.tabs}>
-          <Pressable onPress={() => setActiveZone('sanctuary')}>
+          <Pressable onPress={() => enterZone('sanctuary')}>
             <Text style={[styles.tabText, activeZone === 'sanctuary' && styles.tabTextActive]}>Sanctuary</Text>
           </Pressable>
-          <Pressable onPress={() => setActiveZone('dungeon')}>
+          <Pressable onPress={() => enterZone('dungeon')}>
             <Text style={[styles.tabText, activeZone === 'dungeon' && styles.tabTextActive]}>Dungeon</Text>
           </Pressable>
         </View>
 
-        <View style={styles.currencyPill}>
-          <Feather name="circle" size={16} color="#f1c40f" />
-          <Text style={styles.currencyText}>{coins}</Text>
+        <View style={styles.currencyStack}>
+          <View style={styles.currencyPill}>
+            <Feather name="circle" size={16} color="#f1c40f" />
+            <Text style={styles.currencyText}>{coins}</Text>
+          </View>
+          <Pressable style={styles.shopBtn} onPress={() => setIsShopOpen(true)}>
+            <Feather name="shopping-bag" size={16} color="#fff" />
+            <Text style={styles.shopText}>Shop</Text>
+          </Pressable>
         </View>
       </View>
 
-      {(heldItem || isShopOpen) && (
+      {placingItem && (
         <View style={styles.modePill}>
-          <Feather name={heldItem ? 'move' : 'shopping-bag'} size={15} color="#fff" />
-          <Text style={styles.modeText}>
-            {heldItem ? `Holding ${heldItem.label}` : 'Choose an item, then press Use'}
-          </Text>
+          <Feather name="plus-square" size={15} color="#fff" />
+          <Text style={styles.modeText}>{placingItem.label}: face a free tile, then Interact</Text>
         </View>
       )}
 
-      {heldItem && (
-        <View style={styles.stashZone}>
-          <Feather name="archive" size={18} color="#fff" />
-          <Text style={styles.stashText}>Stash returns placed items to inventory</Text>
+      {selectedObject && (
+        <View style={styles.editBar}>
+          <Pressable style={styles.editBtn} onPress={() => {
+            const target = getTargetedTile();
+            moveEditingObjectTo(target.row, target.col);
+          }}>
+            <Feather name="move" size={17} color="#fff" />
+            <Text style={styles.editText}>Move</Text>
+          </Pressable>
+          <Pressable style={styles.editBtn} onPress={stashEditingObject}>
+            <Feather name="archive" size={17} color="#fff" />
+            <Text style={styles.editText}>Stash</Text>
+          </Pressable>
+          <Pressable style={styles.editBtn} onPress={() => setEditingObjectId(null)}>
+            <Feather name="x" size={17} color="#fff" />
+            <Text style={styles.editText}>Cancel</Text>
+          </Pressable>
         </View>
       )}
 
-      {/* Controls */}
       <Joystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
 
-      {/* Action Buttons */}
       <View style={styles.actionBtns}>
-        <Pressable style={styles.actionBtn} onPress={() => setIsShopOpen(true)}>
-          <Feather name="shopping-bag" size={18} color="#fff" />
-          <Text style={styles.actionText}>Shop</Text>
-        </Pressable>
         <Pressable style={styles.actionBtn} onPress={handleInteract}>
-          <Feather name="mouse-pointer" size={18} color="#fff" />
-          <Text style={styles.actionText}>{heldItem ? 'Place' : 'Interact'}</Text>
+          <Feather name="mouse-pointer" size={20} color="#fff" />
+          <Text style={styles.actionText}>Interact</Text>
         </Pressable>
-        <Pressable style={styles.actionBtn} onPress={handleMoveTargetObject}>
-          <Feather name="move" size={18} color="#fff" />
-          <Text style={styles.actionText}>Move</Text>
-        </Pressable>
-        <Pressable style={styles.actionBtn} onPress={heldItem ? handleStashHeldItem : handleStashTargetObject}>
-          <Feather name="archive" size={18} color="#fff" />
-          <Text style={styles.actionText}>Stash</Text>
-        </Pressable>
-        {heldItem && (
-          <Pressable style={styles.actionBtn} onPress={clearHeldItem}>
-            <Feather name="x" size={18} color="#fff" />
-            <Text style={styles.actionText}>Cancel</Text>
-          </Pressable>
-        )}
         <Pressable style={[styles.actionBtn, styles.attackBtn]} onPress={handleAttack}>
-          <Feather name="crosshair" size={18} color="#fff" />
+          <Feather name="crosshair" size={20} color="#fff" />
           <Text style={styles.actionText}>Attack</Text>
         </Pressable>
       </View>
 
-      <View style={styles.zoomBtns}>
-        <Pressable style={styles.zoomBtn} onPress={() => setZoom(mapScale.value - 0.15)}>
-          <Feather name="minus" size={18} color="#fff" />
-        </Pressable>
-        <Text style={styles.zoomText}>{zoomLabel}</Text>
-        <Pressable style={styles.zoomBtn} onPress={() => setZoom(mapScale.value + 0.15)}>
-          <Feather name="plus" size={18} color="#fff" />
-        </Pressable>
-      </View>
+      <SanctuaryShop
+        isOpen={isShopOpen}
+        onClose={() => setIsShopOpen(false)}
+        onSelectInventoryItem={handleShopSelectInventoryItem}
+        onPurchaseRequest={(itemId, price) => {
+          try {
+            const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
+            if (!state || state.coins < price) return;
+            db.execSync('BEGIN TRANSACTION');
+            db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
+            db.runSync(
+              `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
+               ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
+              itemId,
+            );
+            db.execSync('COMMIT');
+            refreshCoins();
+          } catch (e) {
+            try { db.execSync('ROLLBACK'); } catch {}
+            console.warn('Failed to purchase item', e);
+          }
+        }}
+      />
     </View>
   );
 }
@@ -838,16 +703,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
   },
-  avatarContainer: {
-    position: 'absolute',
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    // zIndex dynamically controlled via avatarZIndexStyle
-  },
-  ghostImage: {
-    width: 128,
-    height: 128,
-  },
   header: {
     position: 'absolute',
     top: 50,
@@ -855,7 +710,7 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 100,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   backBtn: {
@@ -882,6 +737,9 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: '#fff',
   },
+  currencyStack: {
+    alignItems: 'flex-end',
+  },
   currencyPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -896,9 +754,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
   },
+  shopBtn: {
+    marginTop: 8,
+    minWidth: 76,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  shopText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+    marginLeft: 5,
+  },
   modePill: {
     position: 'absolute',
-    top: 102,
+    top: 112,
     left: 20,
     right: 20,
     minHeight: 36,
@@ -918,44 +795,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 8,
   },
-  stashZone: {
+  editBar: {
     position: 'absolute',
-    bottom: 126,
-    left: 164,
+    bottom: 104,
     right: 20,
-    minHeight: 42,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(255,255,255,0.5)',
-    backgroundColor: 'rgba(0,0,0,0.42)',
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
+    gap: 10,
     zIndex: 100,
   },
-  stashText: {
+  editBtn: {
+    width: 78,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editText: {
     color: '#fff',
     fontFamily: fonts.ui.bold,
-    fontSize: 12,
-    marginLeft: 8,
+    fontSize: 10,
+    marginTop: 2,
   },
   actionBtns: {
     position: 'absolute',
     bottom: 40,
     right: 20,
-    width: 276,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 10,
+    gap: 12,
     zIndex: 100,
   },
   actionBtn: {
-    width: 82,
-    height: 48,
-    borderRadius: 14,
+    width: 86,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.5)',
@@ -971,31 +846,5 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 11,
     marginTop: 3,
-  },
-  zoomBtns: {
-    position: 'absolute',
-    right: 20,
-    top: 150,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 16,
-    padding: 4,
-    zIndex: 100,
-  },
-  zoomBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zoomText: {
-    color: '#fff',
-    fontFamily: fonts.ui.bold,
-    fontSize: 12,
-    minWidth: 48,
-    textAlign: 'center',
   },
 });

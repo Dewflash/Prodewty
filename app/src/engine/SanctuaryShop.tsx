@@ -1,48 +1,47 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Image } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, type SharedValue } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 type InventoryItem = {
   item_id: string;
   quantity: number;
 };
 
-export const SHOP_CATALOG: Record<string, { name: string, price: number, colWidth: number, colHeight: number, visWidth: number, visHeight: number, source: any }> = {
-  'White_tree1': { name: 'White Tree', price: 100, colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png') },
-  'Curved_tree1': { name: 'Curved Tree', price: 150, colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png') },
-  'Luminous_tree1': { name: 'Luminous Tree', price: 300, colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png') },
-  'Living gazebo1': { name: 'Living Gazebo', price: 500, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png') },
-  'Blue-green_balls_tree1': { name: 'Blue-Green Tree', price: 200, colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png') },
-  'Mega_tree1': { name: 'Mega Tree', price: 1000, colWidth: 2, colHeight: 2, visWidth: 4, visHeight: 4, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png') },
+export type ShopCatalogItem = {
+  name: string;
+  price: number;
+  colWidth: number;
+  colHeight: number;
+  visWidth: number;
+  visHeight: number;
+  source: any;
+};
+
+export const SHOP_CATALOG: Record<string, ShopCatalogItem> = {
+  'White_tree1': { name: 'White Tree', price: 100, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png') },
+  'Curved_tree1': { name: 'Curved Tree', price: 150, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png') },
+  'Luminous_tree1': { name: 'Luminous Tree', price: 300, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png') },
+  'Living gazebo1': { name: 'Living Gazebo', price: 500, colWidth: 3, colHeight: 3, visWidth: 3, visHeight: 3, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png') },
+  'Blue-green_balls_tree1': { name: 'Blue-Green Tree', price: 200, colWidth: 2, colHeight: 2, visWidth: 2, visHeight: 2, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png') },
+  'Mega_tree1': { name: 'Mega Tree', price: 1000, colWidth: 4, colHeight: 4, visWidth: 4, visHeight: 4, source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png') },
 };
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  dragX: SharedValue<number>;
-  dragY: SharedValue<number>;
-  isDragging: SharedValue<boolean>;
-  dragItemId: SharedValue<string | null>;
-  dragItemColWidth: SharedValue<number>;
-  dragItemColHeight: SharedValue<number>;
-  dragItemVisWidth: SharedValue<number>;
-  dragItemVisHeight: SharedValue<number>;
   onPurchaseRequest: (itemId: string, price: number) => void;
-  onDragStart: (itemId: string) => void;
   onSelectInventoryItem: (itemId: string) => void;
 }
 
-export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragItemId, dragItemColWidth, dragItemColHeight, dragItemVisWidth, dragItemVisHeight, onPurchaseRequest, onDragStart, onSelectInventoryItem }: Props) {
+export function SanctuaryShop({ isOpen, onClose, onPurchaseRequest, onSelectInventoryItem }: Props) {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<'inventory' | 'shop'>('inventory');
 
   const translateY = useSharedValue(400);
 
-  // We expose a refetch function so the parent can trigger it after a purchase/placement
   useEffect(() => {
     translateY.value = withSpring(isOpen ? 0 : 400, { damping: 20, stiffness: 200 });
 
@@ -61,35 +60,6 @@ export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragI
       transform: [{ translateY: translateY.value }],
     };
   });
-
-  const createDragGesture = (itemId: string, colW: number, colH: number, visW: number, visH: number) => {
-    return Gesture.Pan()
-      .activeOffsetY([-10, 10]) // Activate on vertical pull to escape ScrollView
-      .failOffsetX([-10, 10])   // Let ScrollView handle horizontal swipes
-      .onStart((e) => {
-        isDragging.value = true;
-        dragItemId.value = itemId;
-        dragItemColWidth.value = colW;
-        dragItemColHeight.value = colH;
-        dragItemVisWidth.value = visW;
-        dragItemVisHeight.value = visH;
-        dragX.value = e.absoluteX;
-        dragY.value = e.absoluteY;
-        if (onDragStart) runOnJS(onDragStart)(itemId);
-      })
-      .onUpdate((e) => {
-        dragX.value = e.absoluteX;
-        dragY.value = e.absoluteY;
-      })
-      .onEnd(() => {
-        // The release logic is handled globally in rpg.tsx since it needs access to the collision map
-        // We just signal the drag ended.
-        isDragging.value = false;
-      })
-      .onFinalize(() => {
-        isDragging.value = false;
-      });
-  };
 
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
@@ -114,8 +84,7 @@ export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragI
             if (!catalogItem) return null;
 
             return (
-              <GestureDetector key={item.item_id} gesture={createDragGesture(item.item_id, catalogItem.colWidth, catalogItem.colHeight, catalogItem.visWidth, catalogItem.visHeight)}>
-                <Animated.View style={styles.itemCard}>
+              <Animated.View key={item.item_id} style={styles.itemCard}>
                   <Image source={catalogItem.source} style={styles.itemImage} resizeMode="contain" />
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{item.quantity}</Text>
@@ -128,8 +97,7 @@ export function SanctuaryShop({ isOpen, onClose, dragX, dragY, isDragging, dragI
                     <Feather name="plus-square" size={14} color="#fff" />
                     <Text style={styles.useBtnText}>Use</Text>
                   </Pressable>
-                </Animated.View>
-              </GestureDetector>
+              </Animated.View>
             );
           })
         ) : (
