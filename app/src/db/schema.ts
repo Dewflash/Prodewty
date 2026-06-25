@@ -1339,6 +1339,35 @@ function runMigrations() {
     // user sets a non-midnight day_start_hour in Settings).
     try { db.execSync(`ALTER TABLE activity_logs ADD COLUMN effective_date TEXT`); } catch {}
     db.runSync(`UPDATE activity_logs SET effective_date = log_date WHERE effective_date IS NULL`);
+
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS user_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        acquired_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS sanctuary_objects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        row INTEGER NOT NULL,
+        col INTEGER NOT NULL
+      );
+    `);
+
+    const sanctuaryCount = db.getFirstSync<{count: number}>('SELECT COUNT(*) as count FROM sanctuary_objects');
+    if (sanctuaryCount && sanctuaryCount.count === 0) {
+      db.execSync(`
+        INSERT INTO sanctuary_objects (type, row, col) VALUES
+        ('White_tree1', 4, 4),
+        ('Curved_tree1', 7, 2),
+        ('Luminous_tree1', 2, 8),
+        ('Living gazebo1', 5, 8),
+        ('Blue-green_balls_tree1', 8, 7)
+      `);
+    }
+
     db.execSync('PRAGMA user_version = 51');
   }
 
@@ -1374,6 +1403,95 @@ function runMigrations() {
     `);
     db.execSync('PRAGMA user_version = 53');
   }
+
+  if (version < 54) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sanctuary_objects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        row INTEGER NOT NULL,
+        col INTEGER NOT NULL
+      );
+    `);
+
+    const sanctuaryCount = db.getFirstSync<{count: number}>('SELECT COUNT(*) as count FROM sanctuary_objects');
+    if (sanctuaryCount && sanctuaryCount.count === 0) {
+      db.execSync(`
+        INSERT INTO sanctuary_objects (type, row, col) VALUES
+        ('White_tree1', 4, 4),
+        ('Curved_tree1', 7, 2),
+        ('Luminous_tree1', 2, 8),
+        ('Living gazebo1', 5, 8),
+        ('Blue-green_balls_tree1', 8, 7)
+      `);
+    }
+    db.execSync('PRAGMA user_version = 54');
+  }
+
+  if (version < 55) {
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN coins INTEGER NOT NULL DEFAULT 1000`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN gems INTEGER NOT NULL DEFAULT 0`); } catch {}
+    normalizeUserInventoryTable();
+
+    db.execSync(`
+      INSERT OR IGNORE INTO user_inventory (item_id, quantity) VALUES
+      ('White_tree1', 5),
+      ('Mega_tree1', 2),
+      ('Living gazebo1', 1)
+    `);
+
+    db.execSync('PRAGMA user_version = 55');
+  }
+
+  if (version < 56) {
+    normalizeUserInventoryTable();
+    db.execSync('PRAGMA user_version = 56');
+  }
+}
+
+function normalizeUserInventoryTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS user_inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL UNIQUE,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      acquired_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+
+  const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(user_inventory)');
+  const hasAcquiredAt = columns.some(col => col.name === 'acquired_at');
+
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS user_inventory_normalized (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL UNIQUE,
+      quantity INTEGER NOT NULL DEFAULT 0,
+      acquired_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  db.execSync('DELETE FROM user_inventory_normalized');
+
+  if (hasAcquiredAt) {
+    db.execSync(`
+      INSERT INTO user_inventory_normalized (item_id, quantity, acquired_at)
+      SELECT item_id, SUM(COALESCE(quantity, 0)), COALESCE(MIN(acquired_at), datetime('now', 'localtime'))
+      FROM user_inventory
+      WHERE item_id IS NOT NULL
+      GROUP BY item_id
+    `);
+  } else {
+    db.execSync(`
+      INSERT INTO user_inventory_normalized (item_id, quantity)
+      SELECT item_id, SUM(COALESCE(quantity, 0))
+      FROM user_inventory
+      WHERE item_id IS NOT NULL
+      GROUP BY item_id
+    `);
+  }
+
+  db.execSync('DROP TABLE user_inventory');
+  db.execSync('ALTER TABLE user_inventory_normalized RENAME TO user_inventory');
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
@@ -1422,7 +1540,7 @@ const DEFAULT_DUNGEON_TEMPLATES: { kind: string; name: string; flavor: string; o
 // Either way, a true blank slate follows: rpg_state/health_state/categories/moods/
 // restoratives are wiped, and onboarding_answers.completed_at is cleared (raw answers
 // are KEPT so the onboarding re-run can offer "retain your previous answers").
-export function performFullReset(archiveHistory: boolean = false, retainCustomizations: boolean = false): void {
+export function performFullReset(archiveHistory: boolean = false, retainCustomizations: boolean = false, retainOnboarding: boolean = false): void {
   if (archiveHistory) {
     try { db.execSync(`UPDATE activity_logs SET archived_at = datetime('now') WHERE archived_at IS NULL`); } catch {}
   } else {
@@ -1471,7 +1589,9 @@ export function performFullReset(archiveHistory: boolean = false, retainCustomiz
 
   // Clear completion (not the raw answers) — this is what re-arms the onboarding
   // trigger while preserving "retain your previous answers" for the re-run (§9).
-  try { db.runSync(`UPDATE onboarding_answers SET completed_at = NULL WHERE id = 1`); } catch {}
+  if (!retainOnboarding) {
+    try { db.runSync(`UPDATE onboarding_answers SET completed_at = NULL WHERE id = 1`); } catch {}
+  }
 
   // The cached Player Snapshot (quest_engine_state) is keyed off activity_logs
   // count, not account identity — if it happens to match the post-reset log
