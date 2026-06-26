@@ -9,11 +9,13 @@ const assetRegistryPath = path.join(engineDir, 'RpgAssetRegistry.ts');
 const catalogPath = path.join(engineDir, 'RpgObjectCatalog.ts');
 const itemIdsPath = path.join(engineDir, 'RpgItemIds.ts');
 const archivePath = path.join(engineDir, 'RpgArchive.tsx');
+const backpackPath = path.join(engineDir, 'RpgBackpack.tsx');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
 const itemIds = fs.readFileSync(itemIdsPath, 'utf8');
 const archive = fs.readFileSync(archivePath, 'utf8');
+const backpack = fs.readFileSync(backpackPath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -223,6 +225,13 @@ function validateArchiveScalabilityControls() {
   if (!archive.includes('Showing {filteredEntries.length}')) fail('Archive summary must expose filtered result count');
 }
 
+function validateBackpackScalabilityControls() {
+  if (!backpack.includes("type BackpackSort = 'kind' | 'name' | 'quantity';")) fail('Backpack must expose stable sort modes');
+  if (!backpack.includes('TextInput')) fail('Backpack must include search input for large inventories');
+  if (!backpack.includes('backpackSlotMatchesQuery')) fail('Backpack search must use catalog-derived item data');
+  if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const objectAssets = [...forestAssets, ...crystalAssets];
@@ -238,6 +247,7 @@ validatePlaceableMetadata(forestAssets);
 validateCrystalMetadata(crystalAssets, catalogItemIds);
 validateContentMetadata();
 validateArchiveScalabilityControls();
+validateBackpackScalabilityControls();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

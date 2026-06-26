@@ -78,6 +78,7 @@ These rules must remain true after every phase.
 | 21 | Archive search and sorting | Verified | Search across catalog metadata plus sort by name, rarity, and discovery status |
 | 22 | Crystal content pack V1 | Verified | 40 tracked crystal objects, crystal shop filter, Crystal Shards resource, crystal forage drops |
 | 23 | Forage feedback polish | Verified | Object cooldown copy is tag-aware for trees, crystals, and future forage objects |
+| 24 | Backpack search and sorting | Verified | Search across inventory metadata plus sort by kind, name, and quantity |
 
 ## Required Audit Loop For Every Phase
 
@@ -855,6 +856,38 @@ Manual test checklist:
 - Interact with a tree twice quickly and confirm the tree cooldown text.
 - Interact with a crystal twice quickly and confirm the crystal cooldown text.
 - Confirm normal mode still only exposes `Interact` and `Attack`.
+
+## Phase 24: Backpack Search And Sorting
+
+Goal: keep backpack navigation usable as mapped item packs expand.
+
+Deliverables:
+
+- Add backpack search across item id, name, kind, source label, description, rarity, and tags.
+- Add stable sort modes for kind, name, and quantity.
+- Show filtered result counts in the backpack header.
+- Extend `validate:rpg` so backpack search/sort controls become a required scalability gate.
+
+Acceptance gates:
+
+- Searching `crystal`, `seed`, `leaf`, or a specific object name filters the backpack without mutating inventory.
+- Sorting by kind keeps placeables, seeds, and resources grouped; sorting by quantity surfaces stacked resources first.
+- Empty search/category states keep the selected item and action area safe.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgBackpack.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-backpack-search-export`
+
+Manual test checklist:
+
+- Open backpack with mixed objects, seeds, and resources.
+- Search `crystal` and confirm only crystal-related inventory remains.
+- Sort by quantity and confirm larger stacks move first.
+- Clear search and confirm placement/planting buttons still work from selected inventory items.
 
 ## Manual Regression Script
 
