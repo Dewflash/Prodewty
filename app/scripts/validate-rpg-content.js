@@ -136,6 +136,35 @@ function parseCaveAssets() {
   return assets;
 }
 
+function parseTempleAssets() {
+  const block = extractBlock(assetRegistry, 'export const RPG_TEMPLE_OBJECT_ASSETS = [', '] satisfies readonly RpgTempleObjectAsset[];');
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*frame:\s*rpgSpriteFrame\((RPG_TEMPLE_[A-Z_]+_SHEET),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const assets = [];
+  let match;
+  while ((match = regex.exec(block))) {
+    const tags = [...match[13].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    assets.push({
+      itemId: match[1],
+      assetId: match[2],
+      name: match[3],
+      sheet: match[4],
+      frame: {
+        x: Number(match[5]),
+        y: Number(match[6]),
+        width: Number(match[7]),
+        height: Number(match[8]),
+        sheetWidth: Number(match[9]),
+        sheetHeight: Number(match[10]),
+      },
+      pixelWidth: Number(match[11]),
+      pixelHeight: Number(match[12]),
+      tags,
+    });
+  }
+  if (assets.length !== 18) fail(`Expected 18 temple assets, found ${assets.length}`);
+  return assets;
+}
+
 function parseRegistryIds(objectAssets) {
   const explicitIds = [...assetRegistry.matchAll(/\n\s+'([^']+)':\s*\{/g)].map(match => match[1]);
   return new Set([...explicitIds, ...objectAssets.map(asset => asset.assetId)]);
@@ -232,6 +261,36 @@ function validateCaveAssets(caveAssets) {
   });
 }
 
+function validateTempleAssets(templeAssets) {
+  unique(templeAssets.map(asset => asset.itemId), 'temple itemId');
+  unique(templeAssets.map(asset => asset.assetId), 'temple assetId');
+
+  const sheetDimensions = {
+    RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET: { width: 352, height: 656 },
+    RPG_TEMPLE_INTERIOR_OBJECTS_SHEET: { width: 384, height: 256 },
+  };
+
+  templeAssets.forEach(asset => {
+    const dimensions = sheetDimensions[asset.sheet];
+    if (!dimensions) fail(`Unexpected temple sheet for ${asset.itemId}: ${asset.sheet}`);
+    if (!assetRegistry.includes(`const ${asset.sheet} = require(`)) fail(`Missing temple sheet source constant: ${asset.sheet}`);
+    if (!asset.assetId.startsWith('object.temple.')) fail(`Temple assetId must start with object.temple.: ${asset.assetId}`);
+    if (!asset.tags.includes('temple')) fail(`Temple asset missing temple tag: ${asset.itemId}`);
+    if (asset.pixelWidth !== asset.frame.width || asset.pixelHeight !== asset.frame.height) {
+      fail(`Temple pixel dimensions must match frame dimensions for ${asset.itemId}`);
+    }
+    if (asset.frame.sheetWidth !== dimensions.width || asset.frame.sheetHeight !== dimensions.height) {
+      fail(`Temple sheet dimensions mismatch for ${asset.itemId}`);
+    }
+    if (asset.frame.x < 0 || asset.frame.y < 0 || asset.frame.width <= 0 || asset.frame.height <= 0) {
+      fail(`Invalid temple frame bounds for ${asset.itemId}`);
+    }
+    if (asset.frame.x + asset.frame.width > dimensions.width || asset.frame.y + asset.frame.height > dimensions.height) {
+      fail(`Temple frame exceeds sheet bounds for ${asset.itemId}`);
+    }
+  });
+}
+
 function validateAssetReferences(registryIds) {
   const refs = [...catalog.matchAll(/(?:assetId|iconAssetId):\s*'([^']+)'/g)].map(match => match[1]);
   refs.forEach(ref => {
@@ -304,11 +363,27 @@ function validateCaveMetadata(caveAssets) {
   if (!shop.includes("{ id: 'cave', label: 'Cave' }")) fail('Shop must expose a cave filter');
 }
 
+function validateTempleMetadata(templeAssets) {
+  const structures = templeAssets.filter(asset => asset.tags.includes('structure'));
+  const relics = templeAssets.filter(asset => asset.tags.includes('relic') || asset.tags.includes('statue'));
+  const decor = templeAssets.filter(asset => asset.tags.includes('decor') || asset.tags.includes('banner'));
+  if (structures.length === 0) fail('Expected structure-tagged temple assets');
+  if (relics.length === 0) fail('Expected relic/statue-tagged temple assets');
+  if (decor.length === 0) fail('Expected decor/banner-tagged temple assets');
+  if (!catalog.includes("sourceLabel: 'Temple Archive'")) fail('Temple objects must expose source label metadata');
+  if (!catalog.includes('RPG_TEMPLE_OBJECT_CATALOG')) fail('Catalog must expose temple object catalog');
+  if (!catalog.includes("icon: asset.frame")) fail('Temple catalog must use verified sprite frames as icons');
+  if (!catalog.includes("{ id: 'temple', label: 'Temple', sourceLabel: 'Temple Archive' }")) fail('Shared source filters must expose a temple pack');
+  if (!assetRegistry.includes('...RPG_TEMPLE_OBJECT_ASSETS')) fail('Runtime asset registry must include temple object assets');
+  if (!assetRegistry.includes('asset.source !== undefined')) fail('Object source map must filter frame-only assets by explicit undefined checks');
+  if (!assetRegistry.includes('Partial<Record<string, any>>')) fail('Object source map must be typed as partial for frame-only assets');
+}
+
 function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
   }
-  if (!catalog.includes("export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) {
+  if (!catalog.includes("export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple';")) {
     fail('Catalog must expose shared source pack ids');
   }
   if (!catalog.includes('export const RPG_SOURCE_PACK_FILTERS')) fail('Catalog must expose shared source pack filters');
@@ -374,7 +449,8 @@ const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
 const caveAssets = parseCaveAssets();
-const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets];
+const templeAssets = parseTempleAssets();
+const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets, ...templeAssets];
 const registryIds = parseRegistryIds(objectAssets);
 const catalogItemIds = parseCatalogItemIds(objectAssets);
 
@@ -382,6 +458,9 @@ validateForestAssets(forestAssets);
 validateCrystalAssets(crystalAssets);
 validateBushAssets(bushAssets);
 validateCaveAssets(caveAssets);
+validateTempleAssets(templeAssets);
+unique(objectAssets.map(asset => asset.itemId), 'object itemId');
+unique(objectAssets.map(asset => asset.assetId), 'object assetId');
 validateAssetReferences(registryIds);
 validateDropReferences(catalogItemIds);
 validateSeedReferences(forestAssets, catalogItemIds);
@@ -389,6 +468,7 @@ validatePlaceableMetadata(forestAssets);
 validateCrystalMetadata(crystalAssets, catalogItemIds);
 validateBushMetadata(bushAssets);
 validateCaveMetadata(caveAssets);
+validateTempleMetadata(templeAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
@@ -401,4 +481,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${caveAssets.length} cave assets, ${catalogItemIds.size} catalog items).`);
+console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${caveAssets.length} cave assets, ${templeAssets.length} temple assets, ${catalogItemIds.size} catalog items).`);

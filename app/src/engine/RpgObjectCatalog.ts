@@ -6,6 +6,7 @@ import {
   RPG_CROP_STAGE_FRAMES,
   RPG_FOREST_OBJECT_ASSETS,
   RPG_OBJECT_SOURCES,
+  RPG_TEMPLE_OBJECT_ASSETS,
   RPG_UI_FRAMES,
   type RpgObjectAsset,
   type RpgSpriteFrame,
@@ -22,7 +23,7 @@ export type RpgDrop = {
 };
 
 export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';
-export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
+export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple';
 
 export type RpgSourcePackFilter = {
   id: RpgSourcePackId;
@@ -37,6 +38,7 @@ export const RPG_SOURCE_PACK_FILTERS = [
   { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
   { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
   { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
+  { id: 'temple', label: 'Temple', sourceLabel: 'Temple Archive' },
 ] satisfies readonly RpgSourcePackFilter[];
 
 export function getRpgSourcePackIdForLabel(sourceLabel: string | null | undefined): RpgSourcePackId | null {
@@ -379,6 +381,65 @@ const RPG_CAVE_OBJECT_CATALOG = Object.fromEntries(
   RPG_CAVE_OBJECT_ASSETS.map(asset => [asset.itemId, makeCaveObjectItem(asset)]),
 ) as Record<string, RpgPlaceableItem>;
 
+function templeObjectDescription(asset: RpgObjectAsset) {
+  if (asset.tags.includes('structure')) return `${asset.name} from the temple archive. A ruin landmark for sanctuary layouts and future dungeon progression.`;
+  if (asset.tags.includes('statue') || asset.tags.includes('relic')) return `${asset.name} from the temple archive. A relic object for future shrine and lore hooks.`;
+  if (asset.tags.includes('banner')) return `${asset.name} from the temple archive. A narrow wall decor object for themed rooms.`;
+  if (asset.tags.includes('chest')) return `${asset.name} from the temple archive. A treasure object reserved for future reward systems.`;
+  if (asset.tags.includes('rubble')) return `${asset.name} from the temple archive. Ground scenery for broken paths and ruins.`;
+  return `${asset.name} from the temple archive.`;
+}
+
+function templeObjectPrice(asset: RpgObjectAsset) {
+  if (asset.tags.includes('large')) return 640;
+  if (asset.tags.includes('structure')) return 420;
+  if (asset.tags.includes('relic')) return 340;
+  if (asset.tags.includes('banner') || asset.tags.includes('decor') || asset.tags.includes('small')) return 70;
+  return 140;
+}
+
+function templeObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
+  if (asset.tags.includes('large')) return 'epic';
+  if (asset.tags.includes('relic') || asset.tags.includes('structure')) return 'rare';
+  if (asset.tags.includes('overgrown') || asset.tags.includes('statue')) return 'uncommon';
+  return 'common';
+}
+
+function templeObjectFootprint(asset: RpgObjectAsset) {
+  if (asset.pixelWidth >= 160 || asset.tags.includes('large')) {
+    return { colWidth: 3, colHeight: 2, visWidth: 5, visHeight: 5 };
+  }
+  if (asset.tags.includes('sarcophagus') || asset.tags.includes('wall')) {
+    return { colWidth: 2, colHeight: 1, visWidth: 3, visHeight: 2 };
+  }
+  if (asset.tags.includes('statue') || asset.tags.includes('relic')) {
+    return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 3 };
+  }
+  if (asset.tags.includes('banner') || asset.pixelHeight >= 48) {
+    return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 2 };
+  }
+  return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+}
+
+function makeTempleObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
+  return {
+    name: asset.name,
+    kind: 'object',
+    assetId: asset.assetId,
+    price: templeObjectPrice(asset),
+    ...templeObjectFootprint(asset),
+    icon: asset.frame,
+    tags: asset.tags,
+    rarity: templeObjectRarity(asset),
+    sourceLabel: 'Temple Archive',
+    description: templeObjectDescription(asset),
+  };
+}
+
+const RPG_TEMPLE_OBJECT_CATALOG = Object.fromEntries(
+  RPG_TEMPLE_OBJECT_ASSETS.map(asset => [asset.itemId, makeTempleObjectItem(asset)]),
+) as Record<string, RpgPlaceableItem>;
+
 export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
@@ -470,6 +531,7 @@ export const RPG_ITEM_CATALOG = {
   ...RPG_CRYSTAL_OBJECT_CATALOG,
   ...RPG_BUSH_OBJECT_CATALOG,
   ...RPG_CAVE_OBJECT_CATALOG,
+  ...RPG_TEMPLE_OBJECT_CATALOG,
 } satisfies Record<string, RpgItemDefinition>;
 
 export const SHOP_CATALOG = {
@@ -477,6 +539,7 @@ export const SHOP_CATALOG = {
   ...RPG_CRYSTAL_OBJECT_CATALOG,
   ...RPG_BUSH_OBJECT_CATALOG,
   ...RPG_CAVE_OBJECT_CATALOG,
+  ...RPG_TEMPLE_OBJECT_CATALOG,
 } satisfies Record<string, RpgPlaceableItem>;
 
 export type ShopCatalogItem = RpgPlaceableItem;

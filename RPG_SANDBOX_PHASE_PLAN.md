@@ -88,6 +88,7 @@ These rules must remain true after every phase.
 | 31 | Shared source-pack metadata | Verified | Source-pack filter definitions are centralized in the gameplay catalog |
 | 32 | Source-pack filter counts | Verified | Archive, shop, and backpack source filters show catalog/inventory counts |
 | 33 | Framed world art priority | Verified | World art renderer prefers curated sprite frames before whole-image sources |
+| 34 | Temple content pack V1 | Verified | 18 curated temple frame objects mapped into registry/catalog/archive/shop |
 
 ## Required Audit Loop For Every Phase
 
@@ -1743,5 +1744,57 @@ Expansion notes saved:
 - Add animated rain motion and intensity scaling after performance profiling.
 
 Phase 10 status:
+
+- Verified.
+
+### Phase 34 Audit
+
+Intended behavior:
+
+- Temple Archive exists as a shared source-pack filter for archive, shop, and backpack views.
+- Eighteen curated ruined-temple objects are mapped from verified sprite-sheet frames, not whole sheets.
+- Temple entries use catalog metadata for names, descriptions, rarity, prices, placement footprints, and archive facts.
+- Temple objects render through `icon` sprite frames in shop, backpack, build ghost, archive, and placed-world art.
+- Runtime registry exposes temple asset IDs with frame metadata so archive references resolve.
+
+Negative guarantees:
+
+- Temple sheet assets must not render as full tilesheets in the world.
+- Frame-only temple objects must not add undefined entries to `RPG_OBJECT_SOURCES`.
+- Temple source-pack filtering must not fork into separate archive/shop/backpack filter lists.
+- Temple objects must not bypass catalog footprints or placement collision metadata.
+- Phase 34 must not claim animated temple props, dungeon encounters, loot tables, or procedural ruins are complete.
+
+Files changed:
+
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-temple-pack-export`
+- Passed: source inspection confirmed temple objects use `icon: asset.frame` and frame assets are excluded from `RPG_OBJECT_SOURCES`.
+
+Manual test checklist:
+
+- Open shop, select the Temple source pack, and confirm temple objects show visible framed item art.
+- Buy a temple object and confirm it appears in backpack under the Temple source pack.
+- Place a temple object and confirm the build ghost and placed object show the cropped sprite, not the full sheet.
+- Confirm red/green placement cells match the catalog footprint.
+- Open archive, filter to Temple, and confirm temple entries show details and source metadata.
+
+Expansion notes saved:
+
+- Add fire/chest animations after sprite timing is verified.
+- Add temple interaction rewards only after resource tables are designed.
+- Add room/wall-specific placement rules after biome or dungeon layout exists.
+- Add atlas/contact-sheet tooling for the remaining temple sheets.
+
+Phase 34 status:
 
 - Verified.
