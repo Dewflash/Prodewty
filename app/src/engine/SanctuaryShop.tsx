@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
-import { SHOP_CATALOG, type RpgItemRarity } from './RpgObjectCatalog';
+import { SHOP_CATALOG, type RpgItemRarity, type ShopCatalogItem } from './RpgObjectCatalog';
 import { RpgItemIcon } from './RpgItemIcon';
 
 type OwnedRow = {
@@ -50,6 +50,20 @@ function matchesShopFilter(tags: string[] | undefined, filter: ShopFilter) {
   return !!tags?.includes(filter);
 }
 
+function shopEntryMatchesQuery(id: string, item: ShopCatalogItem, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+
+  return [
+    id,
+    item.name,
+    item.description,
+    item.rarity,
+    item.sourceLabel,
+    ...(item.tags ?? []),
+  ].some(value => value?.toLowerCase().includes(normalized));
+}
+
 function rarityColor(rarity: RpgItemRarity | undefined) {
   if (rarity === 'epic') return '#d7b3ff';
   if (rarity === 'rare') return '#8fd7ff';
@@ -71,12 +85,13 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<ShopFilter>('all');
   const [sort, setSort] = useState<ShopSort>('name');
+  const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<ShopPurchaseResult | null>(null);
 
   const shopEntries = useMemo(() => Object.entries(SHOP_CATALOG), []);
   const filteredShopEntries = useMemo(
     () => shopEntries
-      .filter(([, item]) => matchesShopFilter(item.tags, filter))
+      .filter(([id, item]) => matchesShopFilter(item.tags, filter) && shopEntryMatchesQuery(id, item, query))
       .sort(([, a], [, b]) => {
         if (sort === 'rarity') {
           return rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name);
@@ -86,20 +101,20 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         }
         return a.name.localeCompare(b.name);
       }),
-    [filter, shopEntries, sort],
+    [filter, query, shopEntries, sort],
   );
   const maxPage = Math.max(0, Math.ceil(filteredShopEntries.length / SHOP_PANEL_CAPACITY) - 1);
   const visibleShopEntries = useMemo(
     () => filteredShopEntries.slice(page * SHOP_PANEL_CAPACITY, page * SHOP_PANEL_CAPACITY + SHOP_PANEL_CAPACITY),
     [filteredShopEntries, page],
   );
-  const selectedEntry = filteredShopEntries.find(([id]) => id === selectedId) ?? visibleShopEntries[0] ?? null;
+  const selectedEntry = visibleShopEntries.find(([id]) => id === selectedId) ?? visibleShopEntries[0] ?? null;
   const selectedName = selectedEntry?.[1].name ?? 'Shop';
   const selectedPrice = selectedEntry?.[1].price ?? 0;
   const selectedOwned = selectedEntry ? ownedCounts[selectedEntry[0]] ?? 0 : 0;
   const selectedShortfall = Math.max(0, selectedPrice - coins);
   const panelWidth = Math.min(width - 24, 430);
-  const panelMaxHeight = Math.min(height - 80, 650);
+  const panelMaxHeight = Math.min(height - 60, 710);
   const selectedCanBuy = !!selectedEntry && selectedShortfall === 0;
 
   const loadOwnedCounts = useCallback(() => {
@@ -126,11 +141,20 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
     if (!isOpen) return;
     setPage(0);
     setNotice(null);
-  }, [filter, isOpen, sort]);
+  }, [filter, isOpen, query, sort]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);
   }, [maxPage, page]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedId(current => (
+      visibleShopEntries.some(([id]) => id === current)
+        ? current
+        : visibleShopEntries[0]?.[0] ?? null
+    ));
+  }, [isOpen, visibleShopEntries]);
 
   if (!isOpen) return null;
 
@@ -154,7 +178,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Shop</Text>
-            <Text style={styles.subtitle}>{filteredShopEntries.length} items</Text>
+            <Text style={styles.subtitle}>Showing {filteredShopEntries.length} of {shopEntries.length} items</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close shop" onPress={onClose} style={styles.closeButton}>
             <Feather name="x" size={18} color="#fff2bb" />
@@ -178,6 +202,25 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
           })}
         </View>
 
+        <View style={styles.searchRow}>
+          <Feather name="search" size={13} color="rgba(255,242,187,0.72)" />
+          <TextInput
+            accessibilityLabel="Search shop"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search shop"
+            placeholderTextColor="rgba(255,242,187,0.44)"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.searchInput}
+          />
+          {query.length > 0 && (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear shop search" onPress={() => setQuery('')} style={styles.clearSearchButton}>
+              <Feather name="x" size={13} color="#fff2bb" />
+            </Pressable>
+          )}
+        </View>
+
         <View style={styles.sortBar}>
           {SHOP_SORTS.map(item => {
             const active = sort === item.id;
@@ -196,7 +239,12 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         </View>
 
         <View style={styles.grid}>
-          {visibleShopEntries.map(([id, item]) => {
+          {visibleShopEntries.length === 0 ? (
+            <View style={styles.emptyShop}>
+              <Feather name="search" size={18} color="rgba(255,242,187,0.7)" />
+              <Text style={styles.emptyShopText}>No matches</Text>
+            </View>
+          ) : visibleShopEntries.map(([id, item]) => {
             const owned = ownedCounts[id] ?? 0;
             const isSelected = id === selectedId;
             return (
@@ -357,7 +405,7 @@ const styles = StyleSheet.create({
   filterBar: {
     width: '100%',
     minHeight: 34,
-    marginBottom: 10,
+    marginBottom: 8,
     padding: 4,
     borderRadius: 8,
     backgroundColor: 'rgba(32,22,17,0.86)',
@@ -388,10 +436,37 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: '#fff2bb',
   },
+  searchRow: {
+    minHeight: 34,
+    marginBottom: 8,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.24)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+  },
+  clearSearchButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sortBar: {
     width: '100%',
     minHeight: 30,
-    marginBottom: 10,
+    marginBottom: 8,
     padding: 3,
     borderRadius: 8,
     backgroundColor: 'rgba(247,230,165,0.12)',
@@ -421,6 +496,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  emptyShop: {
+    width: '100%',
+    minHeight: 152,
+    borderRadius: 8,
+    backgroundColor: 'rgba(247,230,165,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyShopText: {
+    marginTop: 6,
+    color: 'rgba(255,242,187,0.76)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
   },
   itemCard: {
     width: '48.7%',

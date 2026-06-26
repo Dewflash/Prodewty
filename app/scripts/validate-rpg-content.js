@@ -286,6 +286,13 @@ function validateBackpackScalabilityControls() {
   if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
 }
 
+function validateShopScalabilityControls() {
+  if (!shop.includes('TextInput')) fail('Shop must include search input for large catalogs');
+  if (!shop.includes('shopEntryMatchesQuery')) fail('Shop search must use catalog-derived item data');
+  if (!shop.includes('Showing {filteredShopEntries.length}')) fail('Shop summary must expose filtered result count');
+  if (!shop.includes('No matches')) fail('Shop must expose a safe empty search state');
+}
+
 function validateWorldArtRenderer() {
   if (!itemIcon.includes('export function RpgItemWorldArt')) fail('Shared item art renderer must expose RpgItemWorldArt');
   if (!itemIcon.includes('item?.icon')) fail('Shared item art renderer must support sprite-frame icons');
@@ -312,6 +319,7 @@ validateBushMetadata(bushAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
+validateShopScalabilityControls();
 validateWorldArtRenderer();
 
 if (failures.length > 0) {

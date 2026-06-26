@@ -81,6 +81,7 @@ These rules must remain true after every phase.
 | 24 | Backpack search and sorting | Verified | Search across inventory metadata plus sort by kind, name, and quantity |
 | 25 | Bush content pack V1 | Verified | 40 tracked bush/cactus/fern/stump objects mapped into registry/catalog/archive/shop |
 | 26 | Frame-capable world art renderer | Verified | Placed objects and build ghosts can render catalog sprite frames or standalone PNGs |
+| 27 | Shop search and empty states | Verified | Search across catalog metadata, result counts, and safe empty shop states |
 
 ## Required Audit Loop For Every Phase
 
@@ -958,6 +959,39 @@ Manual test checklist:
 - Place or move a tree/crystal/bush and confirm the build ghost still matches the placed object.
 - Confirm long-press move still fades/hides the static object while editing.
 - Confirm normal world mode still only exposes `Interact` and `Attack`.
+
+## Phase 27: Shop Search And Empty States
+
+Goal: keep the shop usable as the object catalog grows past quick filter browsing.
+
+Deliverables:
+
+- Add shop search across item id, name, description, rarity, source label, and tags.
+- Show filtered result count against total shop item count.
+- Add a clear search control and safe no-match empty state.
+- Tighten shop spacing enough to fit search above the current six-card page layout.
+- Extend `validate:rpg` so shop scalability controls are required.
+
+Acceptance gates:
+
+- Searching `crystal`, `bush`, `cactus`, `rare`, or an exact item id filters shop entries without mutating inventory or coins.
+- Clearing search restores the current category/sort view.
+- Empty search results do not expose an invalid buy action.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-shop-search-export`
+
+Manual test checklist:
+
+- Open shop, search `crystal`, and confirm only crystal-related items remain.
+- Search a nonsense query and confirm the no-match state appears and buy is disabled.
+- Clear search and confirm the selected shop page recovers.
+- Buy an item after filtering and confirm owned count/coins still update.
 
 ## Manual Regression Script
 
