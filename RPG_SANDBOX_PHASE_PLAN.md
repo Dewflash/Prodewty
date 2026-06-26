@@ -124,6 +124,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 52 | Resource node feedback V2 | Verified | Leaves use verified art and tree/bush/crystal forage feedback is source-aware |
 | 53 | Lever mechanism V1 | Verified | Levers auto-link nearby gates/traps and toggle passability plus visual inactive state |
 | 54 | Disable normal target debug visuals | Verified | Normal gameplay hides object outlines and target grid boxes while preserving debug reticle code |
+| 55 | Mechanism shop surfacing | Verified | Shop exposes a direct Mechanisms filter, mechanism hints, and stable curated item icons |
 
 ## Required Audit Loop For Every Phase
 
@@ -2821,5 +2822,53 @@ Expansion notes saved:
 - If player feedback feels too hidden later, prefer a softer prompt treatment over world-space grid overlays.
 
 Phase 54 status:
+
+- Verified.
+
+### Phase 55 Audit
+
+Intended behavior:
+
+- Shop exposes a direct `Mechanisms` category so levers, gates, traps, hazards, and mechanism props are findable without paging through the full catalog.
+- Mechanism filter sorts levers first, gates second, traps third, then generic mechanisms.
+- Selected mechanism items show a one-line behavior hint in the shop detail panel.
+- Archive/backpack item facts explain lever, gate, and trap mechanics.
+- Inventory/shop item icons prefer explicit curated `icon` frames before animation playback, reducing weird first-frame icons.
+- World art can still animate through `RpgItemWorldArt`; only compact icons are stabilized.
+
+Negative guarantees:
+
+- This phase must not change mechanism persistence, lever linking, collision, placement, shop purchasing logic, prices, inventory arithmetic, source filters, or catalog item IDs.
+- This phase must not remove Temple source filtering; it adds a category filter on top of existing source filters.
+- This phase must not make animated world props static.
+
+Files changed:
+
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/src/engine/SanctuaryShop.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgItemIcon.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Shop and tap `Mechanisms`; confirm lever, gate, and trap items are visible immediately.
+- Confirm the lever appears before gate/trap items in the mechanism filter.
+- Select the lever/gate/trap and confirm the detail panel explains its behavior.
+- Confirm Temple source filter still works.
+- Confirm animated placed props still animate in the world.
+
+Expansion notes saved:
+
+- Later add a small “Starter mechanism set” purchase if buying lever/gate/trap individually still feels awkward.
+- Later add visual labels for tiny flat assets like floor levers inside shop cards if the icon remains too subtle on-device.
+
+Phase 55 status:
 
 - Verified.

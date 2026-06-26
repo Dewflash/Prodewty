@@ -18,7 +18,7 @@ type OwnedRow = {
   quantity: number;
 };
 
-type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave';
+type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave' | 'mechanism';
 type ShopSort = 'name' | 'rarity' | 'price';
 
 interface Props {
@@ -43,6 +43,7 @@ const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'bush', label: 'Bushes' },
   { id: 'cactus', label: 'Cacti' },
   { id: 'cave', label: 'Cave' },
+  { id: 'mechanism', label: 'Mechanisms' },
 ];
 const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'name', label: 'Name' },
@@ -54,7 +55,27 @@ function matchesShopFilter(tags: string[] | undefined, filter: ShopFilter) {
   if (filter === 'structure') {
     return !!tags?.some(tag => tag === 'structure' || tag === 'idol' || tag === 'ent');
   }
+  if (filter === 'mechanism') {
+    return !!tags?.some(tag => ['mechanism', 'lever', 'gate', 'trap', 'hazard'].includes(tag));
+  }
   return !!tags?.includes(filter);
+}
+
+function mechanismRank(tags: string[] | undefined) {
+  if (tags?.includes('lever')) return 0;
+  if (tags?.includes('gate')) return 1;
+  if (tags?.some(tag => tag === 'trap' || tag === 'hazard')) return 2;
+  if (tags?.includes('mechanism')) return 3;
+  return 9;
+}
+
+function mechanismHint(item: ShopCatalogItem | undefined) {
+  const tags = item?.tags ?? [];
+  if (tags.includes('lever')) return 'Mechanism: toggles nearest gate/trap';
+  if (tags.includes('gate')) return 'Mechanism: blocks movement until opened';
+  if (tags.some(tag => tag === 'trap' || tag === 'hazard')) return 'Mechanism: can be disarmed';
+  if (tags.includes('mechanism')) return 'Mechanism: links with nearby objects';
+  return null;
 }
 
 function matchesShopSource(item: ShopCatalogItem, source: RpgSourcePackId) {
@@ -115,6 +136,9 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         shopEntryMatchesQuery(id, item, query)
       ))
       .sort(([, a], [, b]) => {
+        if (filter === 'mechanism') {
+          return mechanismRank(a.tags) - mechanismRank(b.tags) || a.name.localeCompare(b.name);
+        }
         if (sort === 'rarity') {
           return rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name);
         }
@@ -138,6 +162,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const panelWidth = Math.min(width - 24, 430);
   const panelMaxHeight = Math.min(height - 60, 710);
   const selectedCanBuy = !!selectedEntry && selectedShortfall === 0;
+  const selectedMechanismHint = mechanismHint(selectedEntry?.[1]);
 
   const loadOwnedCounts = useCallback(() => {
     try {
@@ -355,6 +380,9 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
               <Text numberOfLines={1} style={styles.itemMeta}>
                 Owned {selectedOwned}  Price {selectedPrice}  {selectedEntry?.[1].sourceLabel ?? 'Sanctuary'}
               </Text>
+              {selectedMechanismHint && (
+                <Text numberOfLines={1} style={styles.mechanismHint}>{selectedMechanismHint}</Text>
+              )}
             </View>
             {selectedEntry && (
               <View style={[styles.rarityBadge, { borderColor: rarityColor(selectedEntry[1].rarity) }]}>
@@ -767,6 +795,12 @@ const styles = StyleSheet.create({
     color: 'rgba(247,230,165,0.72)',
     fontFamily: fonts.ui.regular,
     fontSize: 10,
+    marginTop: 2,
+  },
+  mechanismHint: {
+    color: '#9ee6a8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
     marginTop: 2,
   },
   coinState: {

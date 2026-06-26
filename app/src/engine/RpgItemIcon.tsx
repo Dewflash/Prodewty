@@ -69,12 +69,12 @@ type ItemIconProps = {
 };
 
 export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
-  if (item?.animation) {
-    return <RpgSpriteAnimationView animation={item.animation} size={size} />;
-  }
-
   if (item?.icon) {
     return <RpgSpriteFrameView frame={item.icon} size={size} />;
+  }
+
+  if (item?.animation) {
+    return <RpgSpriteAnimationView animation={item.animation} size={size} />;
   }
 
   if (item?.source) {

@@ -643,6 +643,13 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
   if (isPlaceableItemDefinition(item)) {
     facts.push(`Price: ${item.price}`);
     facts.push(`Footprint: ${item.colWidth}x${item.colHeight}`);
+    if (item.tags?.includes('lever')) {
+      facts.push('Mechanic: toggles nearby linked gates and traps');
+    } else if (item.tags?.includes('gate')) {
+      facts.push('Mechanic: blocks movement until opened by a lever');
+    } else if (item.tags?.some(tag => tag === 'trap' || tag === 'hazard')) {
+      facts.push('Mechanic: can be disarmed directly or by a lever');
+    }
     if (item.forageDrops?.length) {
       facts.push(`Forage: ${item.forageDrops.map(drop => formatDrop(drop, catalog)).join(', ')}`);
     } else {

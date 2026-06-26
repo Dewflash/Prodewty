@@ -482,6 +482,9 @@ function validateContentMetadata() {
   if (!catalog.includes("sourceLabel: item.sourceLabel ?? 'Sanctuary'")) fail('Archive entries must preserve item source label');
   if (!catalog.includes('facts: getRpgItemFacts(item, catalog)')) fail('Archive entries must derive detail facts from catalog metadata');
   if (!catalog.includes('Footprint:')) fail('Object facts must expose placement footprint metadata');
+  if (!catalog.includes('Mechanic: toggles nearby linked gates and traps')) fail('Catalog facts must expose lever mechanics');
+  if (!catalog.includes('Mechanic: blocks movement until opened by a lever')) fail('Catalog facts must expose gate mechanics');
+  if (!catalog.includes('Mechanic: can be disarmed directly or by a lever')) fail('Catalog facts must expose trap mechanics');
   if (!catalog.includes('Harvest:')) fail('Seed facts must expose harvest metadata');
 }
 
@@ -516,6 +519,15 @@ function validateShopScalabilityControls() {
   if (!shop.includes('shopEntryMatchesQuery')) fail('Shop search must use catalog-derived item data');
   if (!shop.includes('Showing {filteredShopEntries.length}')) fail('Shop summary must expose filtered result count');
   if (!shop.includes('No matches')) fail('Shop must expose a safe empty search state');
+  if (!shop.includes("'mechanism'")) fail('Shop must expose a direct mechanism filter for levers, gates, and traps');
+  if (!shop.includes("['mechanism', 'lever', 'gate', 'trap', 'hazard'].includes(tag)")) {
+    fail('Shop mechanism filter must match mechanism, lever, gate, trap, and hazard tags');
+  }
+  if (!shop.includes('function mechanismHint(item: ShopCatalogItem | undefined)')) {
+    fail('Shop must explain selected mechanism behavior in the detail panel');
+  }
+  if (!shop.includes('Mechanism: toggles nearest gate/trap')) fail('Shop must tell players what levers do');
+  if (!shop.includes('mechanismRank(a.tags)')) fail('Shop mechanism filter must prioritize lever/gate/trap entries');
 }
 
 function validateWorldArtRenderer() {
@@ -523,6 +535,12 @@ function validateWorldArtRenderer() {
   if (!itemIcon.includes('item?.animation')) fail('Shared item renderer must support catalog animation metadata');
   if (!itemIcon.includes('export function RpgItemWorldArt')) fail('Shared item art renderer must expose RpgItemWorldArt');
   if (!itemIcon.includes('item?.icon')) fail('Shared item art renderer must support sprite-frame icons');
+  const iconStart = itemIcon.indexOf('export function RpgItemIcon');
+  const itemIconIconBranch = itemIcon.indexOf('if (item?.icon)', iconStart);
+  const itemIconAnimationBranch = itemIcon.indexOf('if (item?.animation)', iconStart);
+  if (itemIconIconBranch === -1 || itemIconAnimationBranch === -1 || itemIconIconBranch > itemIconAnimationBranch) {
+    fail('Item icons must prefer curated icon frames before animation playback');
+  }
   const worldArtStart = itemIcon.indexOf('export function RpgItemWorldArt');
   const iconBranch = itemIcon.indexOf('if (item?.icon)', worldArtStart);
   const sourceBranch = itemIcon.indexOf('if (item?.source)', worldArtStart);
