@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   runOnJS,
@@ -103,6 +103,17 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
+type InteractionTargetKind = 'object' | 'plot' | 'portal';
+type InteractionTarget = {
+  kind: InteractionTargetKind;
+  row: number;
+  col: number;
+  label: string;
+  detail: string;
+  item?: RpgItemDefinition | null;
+  object?: MapObject;
+  plot?: GardenPlot;
+};
 
 function clamp(value: number, min: number, max: number) {
   'worklet';
@@ -165,6 +176,7 @@ export default function RpgScreen() {
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
   const [isRaining, setIsRaining] = useState(false);
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
+  const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
@@ -197,6 +209,8 @@ export default function RpgScreen() {
   const buildColHeight = useSharedValue(0);
   const buildVisWidth = useSharedValue(0);
   const buildVisHeight = useSharedValue(0);
+  const targetRow = useSharedValue(-999);
+  const targetCol = useSharedValue(-999);
 
   const selectedObject = useMemo(
     () => (
@@ -277,6 +291,7 @@ export default function RpgScreen() {
     setIsShopOpen(false);
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
+    setInteractionPrompt(null);
     buildActive.value = 0;
     buildColWidth.value = 0;
     buildColHeight.value = 0;
@@ -288,6 +303,8 @@ export default function RpgScreen() {
     avatarDirection.value = 0;
     avatarX.value = TILE_SIZE * 2;
     avatarY.value = zone === 'sanctuary' ? TILE_SIZE * 2 : TILE_SIZE;
+    targetRow.value = -999;
+    targetCol.value = -999;
   };
 
   const setBuildAnchor = (row: number, col: number, item: Pick<ShopCatalogItem, 'colWidth' | 'colHeight'>) => {
@@ -327,6 +344,7 @@ export default function RpgScreen() {
     joyX.value = 0;
     joyY.value = 0;
     avatarIsPlaying.value = false;
+    setInteractionPrompt(null);
     setBuildItem({ mode, itemId, label: item.name, objectId });
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId, mode));
     setIsShopOpen(false);
@@ -356,6 +374,7 @@ export default function RpgScreen() {
     joyX.value = 0;
     joyY.value = 0;
     avatarIsPlaying.value = false;
+    setInteractionPrompt(null);
     setBuildItem({ mode: 'plant', itemId: seedItemId, label: crop.name, objectId: null });
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, seedItemId, null, 'plant'));
     setIsShopOpen(false);
@@ -371,6 +390,8 @@ export default function RpgScreen() {
     buildColHeight.value = 0;
     buildVisWidth.value = 0;
     buildVisHeight.value = 0;
+    targetRow.value = -999;
+    targetCol.value = -999;
   };
 
   const getTargetedTile = () => {
@@ -400,6 +421,65 @@ export default function RpgScreen() {
   const getPlotAtTile = (row: number, col: number) => (
     gardenPlots.find(plot => plot.row === row && plot.col === col) ?? null
   );
+
+  const resolveInteractionTargetAt = useCallback((row: number, col: number): InteractionTarget | null => {
+    if (buildItem) return null;
+
+    if (activeZone === 'sanctuary') {
+      const object = getObjectAtTile(row, col);
+      if (object) {
+        const item = getPlaceableItem(object.type);
+        const tags = item?.tags ?? [];
+        const detail = (() => {
+          if (tags.includes('gate')) return 'Locked gate';
+          if (tags.includes('lever')) return 'Lever';
+          if (tags.includes('trap') || tags.includes('hazard')) return 'Trap';
+          if (tags.includes('chest')) return 'Chest';
+          if (item?.forageDrops?.length) return 'Forage';
+          if (tags.includes('crystal')) return 'Crystal';
+          if (tags.some(tag => ['relic', 'statue', 'idol'].includes(tag))) return 'Relic';
+          return 'Object';
+        })();
+        return {
+          kind: 'object',
+          row,
+          col,
+          label: item?.name ?? object.type,
+          detail,
+          item,
+          object,
+        };
+      }
+
+      const plot = getPlotAtTile(row, col);
+      if (plot) {
+        const growth = getPlotGrowthInfo(plot);
+        return {
+          kind: 'plot',
+          row,
+          col,
+          label: growth.crop?.name ?? 'Garden plot',
+          detail: growth.stage >= 2 ? 'Ready' : growth.stage === 1 ? 'Growing' : 'Seeded',
+          item: getRpgItem(plot.seed_item_id),
+          plot,
+        };
+      }
+
+      if (SanctuaryMap[row]?.[col] === TileType.PORTAL_DUNGEON) {
+        return { kind: 'portal', row, col, label: 'Dungeon portal', detail: 'Portal' };
+      }
+      return null;
+    }
+
+    if (DungeonMap[row]?.[col] === TileType.PORTAL_SANCTUARY) {
+      return { kind: 'portal', row, col, label: 'Sanctuary portal', detail: 'Portal' };
+    }
+    return null;
+  }, [activeZone, buildItem, gardenPlots, mapObjects]);
+
+  const updateInteractionPromptFromTile = useCallback((row: number, col: number) => {
+    setInteractionPrompt(resolveInteractionTargetAt(row, col));
+  }, [resolveInteractionTargetAt]);
 
   const getAvatarFootCell = () => {
     const cells = avatarCells(avatarX.value, avatarY.value);
@@ -763,6 +843,15 @@ export default function RpgScreen() {
     setPlacementReport(analyzePlacement(buildRow.value, buildCol.value, buildItem.itemId, ignoreObjectId, buildItem.mode));
   }, [buildItem, mapObjects, gardenPlots, activeZone]);
 
+  useEffect(() => {
+    if (buildItem) {
+      setInteractionPrompt(null);
+      return;
+    }
+    const target = getTargetedTile();
+    setInteractionPrompt(resolveInteractionTargetAt(target.row, target.col));
+  }, [activeZone, buildItem, mapObjects, gardenPlots, resolveInteractionTargetAt]);
+
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
     joyY.value = dy;
@@ -821,6 +910,21 @@ export default function RpgScreen() {
 
     if (!isFootBoxBlocked(nextX, avatarY.value)) avatarX.value = nextX;
     if (!isFootBoxBlocked(avatarX.value, nextY)) avatarY.value = nextY;
+
+    const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
+    const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
+    let col = Math.floor(footX / TILE_SIZE);
+    let row = Math.floor(footY / TILE_SIZE);
+    if (avatarDirection.value === 0) row += 1;
+    else if (avatarDirection.value === 1) col -= 1;
+    else if (avatarDirection.value === 2) col += 1;
+    else if (avatarDirection.value === 3) row -= 1;
+
+    if (row !== targetRow.value || col !== targetCol.value) {
+      targetRow.value = row;
+      targetCol.value = col;
+      runOnJS(updateInteractionPromptFromTile)(row, col);
+    }
   });
 
   const cameraX = useDerivedValue(() => {
@@ -1231,21 +1335,19 @@ export default function RpgScreen() {
     }
 
     const target = getTargetedTile();
+    const resolvedTarget = resolveInteractionTargetAt(target.row, target.col);
     if (activeZone === 'sanctuary') {
-      const object = getObjectAtTile(target.row, target.col);
-      if (object) {
-        interactWithObject(object);
+      if (resolvedTarget?.kind === 'object' && resolvedTarget.object) {
+        interactWithObject(resolvedTarget.object);
         return;
       }
 
-      const plot = getPlotAtTile(target.row, target.col);
-      if (plot) {
-        inspectOrHarvestPlot(plot);
+      if (resolvedTarget?.kind === 'plot' && resolvedTarget.plot) {
+        inspectOrHarvestPlot(resolvedTarget.plot);
         return;
       }
 
-      const tileType = SanctuaryMap[target.row]?.[target.col];
-      if (tileType === TileType.PORTAL_DUNGEON) {
+      if (resolvedTarget?.kind === 'portal') {
         enterZone('dungeon');
         return;
       }
@@ -1253,8 +1355,7 @@ export default function RpgScreen() {
       return;
     }
 
-    const tileType = DungeonMap[target.row]?.[target.col];
-    if (tileType === TileType.PORTAL_SANCTUARY) enterZone('sanctuary');
+    if (resolvedTarget?.kind === 'portal') enterZone('sanctuary');
     else console.log(`[Interact] Dungeon tile [${target.row}, ${target.col}]`);
   }
 
@@ -1295,6 +1396,7 @@ export default function RpgScreen() {
               avatarX={avatarX}
               avatarY={avatarY}
               isInteracting={interactingObjectId === obj.id}
+              isTargeted={interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
               onMoveRequest={handleObjectLongPress}
             />
           ))}
@@ -1310,6 +1412,7 @@ export default function RpgScreen() {
                   styles.gardenPlot,
                   growth.stage === 1 && styles.gardenPlotGrowing,
                   growth.stage >= 2 && styles.gardenPlotMature,
+                  interactionPrompt?.kind === 'plot' && interactionPrompt.plot?.id === plot.id && styles.gardenPlotTargeted,
                   {
                     left: plot.col * TILE_SIZE,
                     top: plot.row * TILE_SIZE,
@@ -1499,6 +1602,20 @@ export default function RpgScreen() {
         </View>
       )}
 
+      {!buildItem && interactionPrompt && (
+        <View style={styles.interactionPrompt}>
+          {interactionPrompt.item ? (
+            <RpgItemIcon item={interactionPrompt.item} size={22} />
+          ) : (
+            <Feather name="corner-up-right" size={16} color="#fff" />
+          )}
+          <View style={styles.interactionPromptTextStack}>
+            <Text style={styles.interactionPromptLabel} numberOfLines={1}>{interactionPrompt.label}</Text>
+            <Text style={styles.interactionPromptDetail} numberOfLines={1}>{interactionPrompt.detail}</Text>
+          </View>
+        </View>
+      )}
+
       <View style={styles.actionBtns}>
         <Pressable style={styles.actionBtn} onPress={handleInteract}>
           <Feather name="mouse-pointer" size={20} color="#fff" />
@@ -1616,6 +1733,10 @@ const styles = StyleSheet.create({
   gardenPlotMature: {
     backgroundColor: 'rgba(155,117,22,0.52)',
     borderColor: 'rgba(255,224,112,0.82)',
+  },
+  gardenPlotTargeted: {
+    borderWidth: 3,
+    borderColor: '#fff2bb',
   },
   gardenStageText: {
     position: 'absolute',
@@ -1813,6 +1934,39 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 12,
     marginLeft: 8,
+  },
+  interactionPrompt: {
+    position: 'absolute',
+    right: 24,
+    bottom: 150,
+    zIndex: 105,
+    minWidth: 150,
+    maxWidth: 230,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.62)',
+    backgroundColor: 'rgba(10,13,12,0.84)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  interactionPromptTextStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  interactionPromptLabel: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+  },
+  interactionPromptDetail: {
+    marginTop: 1,
+    color: '#d4e4d1',
+    fontFamily: fonts.ui.regular,
+    fontSize: 10,
   },
   actionBtns: {
     position: 'absolute',

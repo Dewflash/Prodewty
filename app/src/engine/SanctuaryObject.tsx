@@ -13,12 +13,23 @@ interface Props {
   avatarX: SharedValue<number>;
   avatarY: SharedValue<number>;
   isInteracting?: boolean;
+  isTargeted?: boolean;
   onMoveRequest?: (id: number) => void;
 }
 
 const AVATAR_SIZE = 64;
 
-export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isInteracting = false, onMoveRequest }: Props) {
+export function SanctuaryObject({
+  id,
+  type,
+  row,
+  col,
+  avatarX,
+  avatarY,
+  isInteracting = false,
+  isTargeted = false,
+  onMoveRequest,
+}: Props) {
   const catalogItem = getPlaceableItem(type);
 
   const colWidth = catalogItem?.colWidth || 1;
@@ -50,7 +61,7 @@ export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isIntera
 
     return {
       opacity: withTiming(isBehind ? 0.4 : 1, { duration: 150 }),
-      transform: [{ scale: withTiming(isInteracting ? 1.08 : 1, { duration: 120 }) }],
+      transform: [{ scale: withTiming(isInteracting ? 1.08 : isTargeted ? 1.03 : 1, { duration: 120 }) }],
     };
   });
 
@@ -72,6 +83,9 @@ export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isIntera
             width,
             height,
             zIndex: row + colHeight,
+            borderWidth: isTargeted ? 2 : 0,
+            borderColor: isTargeted ? 'rgba(255,242,187,0.82)' : 'transparent',
+            borderRadius: isTargeted ? 6 : 0,
           }
         ]}
       >

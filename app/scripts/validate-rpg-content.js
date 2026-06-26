@@ -651,6 +651,39 @@ function validateGateRattleFeedback() {
   }
 }
 
+function validateInteractionTargetPrompt() {
+  if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'portal';")) {
+    fail('RPG screen must type interaction target prompt kinds');
+  }
+  if (!rpgScreen.includes('const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);')) {
+    fail('RPG screen must keep a current interaction prompt state');
+  }
+  if (!rpgScreen.includes('const resolveInteractionTargetAt = useCallback')) {
+    fail('RPG screen must centralize interaction target resolution');
+  }
+  if (!rpgScreen.includes('runOnJS(updateInteractionPromptFromTile)(row, col)')) {
+    fail('Interaction prompt must update from tile changes without DB work in the frame loop');
+  }
+  if (!rpgScreen.includes("resolvedTarget?.kind === 'object'") || !rpgScreen.includes("resolvedTarget?.kind === 'plot'")) {
+    fail('Interact button must consume the same resolved target model as the prompt');
+  }
+  if (!rpgScreen.includes('styles.interactionPrompt')) {
+    fail('RPG screen must render a visible interaction prompt');
+  }
+  if (!rpgScreen.includes("isTargeted={interactionPrompt?.kind === 'object'")) {
+    fail('Targeted placed object must receive highlight state');
+  }
+  if (!sanctuaryObject.includes('isTargeted?: boolean')) {
+    fail('SanctuaryObject must accept targeted highlight state');
+  }
+  const frameStart = rpgScreen.indexOf('useFrameCallback((frameInfo)');
+  const frameEnd = rpgScreen.indexOf('const cameraX = useDerivedValue', frameStart);
+  const frameBlock = frameStart >= 0 && frameEnd > frameStart ? rpgScreen.slice(frameStart, frameEnd) : '';
+  if (frameBlock.includes('db.')) {
+    fail('Interaction target frame loop must not perform SQLite work');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -720,6 +753,7 @@ validateSanctuaryRewardClaims();
 validateLeverToggleFeedback();
 validateTrapDisableFeedback();
 validateGateRattleFeedback();
+validateInteractionTargetPrompt();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {

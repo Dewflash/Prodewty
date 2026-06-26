@@ -113,6 +113,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 41 | Trap disable feedback V1 | Verified | Temple traps persist disarm/re-arm feedback without damage or collision side effects |
 | 42 | Object relation foundation V1 | Verified | Persist source-target object links for future lever, gate, and trap mechanics |
 | 43 | Gate rattle feedback V1 | Verified | Gate interactions persist locked feedback without opening or collision side effects |
+| 44 | Interaction target prompt V1 | Verified | Show the current Interact target and highlight target objects without adding controls |
 
 ## Required Audit Loop For Every Phase
 
@@ -2285,5 +2286,55 @@ Expansion notes saved:
 - Relation-driven lever gates should use placed object ids, not item ids, to avoid accidental global gate toggles.
 
 Phase 43 status:
+
+- Verified.
+
+### Phase 44 Audit
+
+Intended behavior:
+
+- Normal mode shows a compact prompt for the current object, crop, or portal targeted by the avatar's facing direction.
+- The `Interact` button consumes the same target resolution model as the prompt.
+- Targeted placed objects receive a subtle visual highlight.
+- Targeted crop plots receive a subtle border highlight.
+- Prompt updates on tile changes through a tile-change bridge and does not write to SQLite from the frame loop.
+
+Negative guarantees:
+
+- The prompt must not add a third normal-mode action button.
+- The prompt must not change movement, collision, placement, zoom, object persistence, crop persistence, rewards, inventory, or relation rows.
+- The frame loop must not perform SQLite work, catalog discovery, asset loading, or React state updates when the target tile has not changed.
+- Build mode must hide the prompt and keep existing placement controls.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/SanctuaryObject.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-interaction-target-export`
+- Passed: source inspection confirmed the frame loop only computes facing tile changes and does not perform SQLite work or update React state unless the target tile changes.
+
+Manual test checklist:
+
+- Face a tree, gate, trap, lever, chest, crop, and portal; confirm the prompt label changes to that target.
+- Move between empty tiles; confirm the prompt disappears.
+- Long-press an object to enter edit mode; confirm the prompt hides and stash/cancel are the only contextual edit controls.
+- Confirm Interact still performs the targeted object/crop/portal action.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Add a world-space target reticle later if mobile visual density still needs stronger feedback.
+- Move target resolution into a reusable engine module once NPCs, pets, or tools also need it.
+- Keep all targetable gameplay tied to tile/footprint metadata rather than sprite bounds.
+
+Phase 44 status:
 
 - Verified.
