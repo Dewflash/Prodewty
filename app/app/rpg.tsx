@@ -185,6 +185,7 @@ export default function RpgScreen() {
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forageCooldowns = useRef<Record<number, number>>({});
+  const emptyInteractCooldownUntil = useRef(0);
 
   const mapData = activeZone === 'sanctuary' ? SanctuaryMap : DungeonMap;
   const mapColsCount = mapData[0].length;
@@ -1035,6 +1036,16 @@ export default function RpgScreen() {
     worldToastTimer.current = setTimeout(() => setWorldToast(null), 1600);
   };
 
+  const showEmptyInteractionFeedback = (zone: Zone) => {
+    const now = Date.now();
+    if (emptyInteractCooldownUntil.current > now) return;
+    emptyInteractCooldownUntil.current = now + 650;
+    showWorldToast({
+      text: zone === 'sanctuary' ? 'Nothing here' : 'Nothing nearby',
+      tone: 'muted',
+    });
+  };
+
   const pulseObject = (objectId: number) => {
     if (interactionTimer.current) clearTimeout(interactionTimer.current);
     setInteractingObjectId(objectId);
@@ -1360,12 +1371,12 @@ export default function RpgScreen() {
         enterZone('dungeon');
         return;
       }
-      console.log(`[Interact] Sanctuary tile [${target.row}, ${target.col}]`);
+      showEmptyInteractionFeedback('sanctuary');
       return;
     }
 
     if (resolvedTarget?.kind === 'portal') enterZone('sanctuary');
-    else console.log(`[Interact] Dungeon tile [${target.row}, ${target.col}]`);
+    else showEmptyInteractionFeedback('dungeon');
   }
 
   function getTileColor(type: TileType) {

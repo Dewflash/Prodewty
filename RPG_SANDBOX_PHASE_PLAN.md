@@ -116,6 +116,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 44 | Interaction target prompt V1 | Verified | Show the current Interact target and highlight target objects without adding controls |
 | 45 | Interaction target reticle V1 | Verified | Show the exact world-space target footprint for the current Interact target |
 | 46 | Stable action button labels | Verified | Keep bottom action controls labeled Interact and Attack across normal and build modes |
+| 47 | Empty Interact feedback | Verified | Empty Interact presses show throttled visible feedback instead of console-only logs |
 
 ## Required Audit Loop For Every Phase
 
@@ -2433,5 +2434,52 @@ Expansion notes saved:
 - If controller support is added, map confirm/cancel/tool inputs onto the same action protocol.
 
 Phase 46 status:
+
+- Verified.
+
+### Phase 47 Audit
+
+Intended behavior:
+
+- Pressing `Interact` on an empty sanctuary target shows a muted `Nothing here` toast.
+- Pressing `Interact` on an empty dungeon target shows a muted `Nothing nearby` toast.
+- Empty interaction feedback is throttled so repeated taps do not continuously reset feedback.
+- Object, crop, portal, build placement, and chest/forage interactions continue to use their existing specific feedback paths.
+- The RPG validator enforces visible empty interaction feedback and rejects console-only empty interaction paths.
+
+Negative guarantees:
+
+- Empty interaction feedback must not add buttons, mutate movement, mutate collision, change target prompts, change reticles, change inventory, change coins, write SQLite, or affect build mode.
+- Empty interaction feedback must not fire when a real object, crop, portal, placement, reward, or forage action handles the Interact press.
+- Empty interaction feedback must not spam every frame; it only runs on Interact button presses.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-empty-interact-export`
+- Passed: source inspection confirmed empty Interact paths now route through a throttled visible toast and do not write SQLite or change gameplay state.
+
+Manual test checklist:
+
+- Face an empty sanctuary tile and tap Interact; confirm `Nothing here`.
+- Face an empty dungeon tile and tap Interact; confirm `Nothing nearby`.
+- Tap Interact repeatedly on empty space; confirm feedback does not feel spammy.
+- Face an object/crop/portal and tap Interact; confirm the specific action still wins over empty feedback.
+- Enter build mode and confirm Interact still confirms placement rather than showing empty feedback.
+
+Expansion notes saved:
+
+- Add a tiny haptic later if mobile testing shows empty Interact needs tactile feedback.
+- Keep empty feedback muted; it is a comfort cue, not an error.
+
+Phase 47 status:
 
 - Verified.

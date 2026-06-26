@@ -714,6 +714,27 @@ function validateActionButtonProtocol() {
   }
 }
 
+function validateEmptyInteractionFeedback() {
+  if (!rpgScreen.includes('const emptyInteractCooldownUntil = useRef(0);')) {
+    fail('RPG screen must throttle empty Interact feedback');
+  }
+  if (!rpgScreen.includes('const showEmptyInteractionFeedback = (zone: Zone)')) {
+    fail('RPG screen must centralize empty Interact feedback');
+  }
+  if (!rpgScreen.includes("text: zone === 'sanctuary' ? 'Nothing here' : 'Nothing nearby'")) {
+    fail('Empty Interact feedback must be visible and zone-aware');
+  }
+  if (!rpgScreen.includes("showEmptyInteractionFeedback('sanctuary')")) {
+    fail('Empty sanctuary Interact must show visible feedback');
+  }
+  if (!rpgScreen.includes("showEmptyInteractionFeedback('dungeon')")) {
+    fail('Empty dungeon Interact must show visible feedback');
+  }
+  if (rpgScreen.includes('console.log(`[Interact] Sanctuary tile') || rpgScreen.includes('console.log(`[Interact] Dungeon tile')) {
+    fail('Empty Interact paths must not be console-only');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -785,6 +806,7 @@ validateTrapDisableFeedback();
 validateGateRattleFeedback();
 validateInteractionTargetPrompt();
 validateActionButtonProtocol();
+validateEmptyInteractionFeedback();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {
