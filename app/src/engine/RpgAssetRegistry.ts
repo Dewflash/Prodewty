@@ -518,9 +518,9 @@ export const RPG_ASSET_REGISTRY = {
     name: 'Wood',
     category: 'resource',
     verified: false,
-    source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_stump1.png'),
+    source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Broken_tree1.png'),
     tags: ['drop', 'tree', 'crafting', 'placeholder'],
-    note: 'Placeholder wood icon using a verified forest stump object until a dedicated wood/log resource icon is curated.',
+    note: 'Placeholder wood icon using a verified tiny stump object until a dedicated wood/log resource icon is curated.',
   },
   'seed.treeGeneric': {
     id: 'seed.treeGeneric',

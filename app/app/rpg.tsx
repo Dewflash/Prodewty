@@ -58,7 +58,7 @@ import {
 } from '../src/db/sanctuaryObjectRelations';
 import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
-import { RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
+import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
 
 const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
@@ -132,6 +132,17 @@ const TOOL_ENERGY_COST: Record<ToolId, number> = {
   plow: 3,
   watering: 4,
 };
+const CLUTTER_ENERGY_COST = 3;
+const CLUTTER_ITEM_IDS = ['rpg_clutter_weeds', 'rpg_clutter_twig', 'rpg_clutter_rock'];
+const STARTER_CLUTTER_SPAWNS = [
+  { type: 'rpg_clutter_weeds', row: 4, col: 5 },
+  { type: 'rpg_clutter_weeds', row: 6, col: 8 },
+  { type: 'rpg_clutter_weeds', row: 12, col: 6 },
+  { type: 'rpg_clutter_twig', row: 5, col: 12 },
+  { type: 'rpg_clutter_twig', row: 13, col: 13 },
+  { type: 'rpg_clutter_rock', row: 8, col: 14 },
+  { type: 'rpg_clutter_rock', row: 15, col: 8 },
+];
 
 type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
@@ -351,6 +362,50 @@ export default function RpgScreen() {
     if (state) setPlayerHp(state);
   };
 
+  const ensureStarterClutter = () => {
+    const seeded = db.getFirstSync<{ item_id: string }>(
+      "SELECT item_id FROM rpg_discoveries WHERE item_id = 'system.sanctuary_clutter_v1' LIMIT 1",
+    );
+    if (seeded) return false;
+
+    const objects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+    const plots = db.getAllSync<{ row: number; col: number }>('SELECT row, col FROM garden_plots');
+    const occupied = new Set<string>();
+    objects.forEach(obj => {
+      const item = getItem(obj.type);
+      const width = item?.colWidth ?? 1;
+      const height = item?.colHeight ?? 1;
+      for (let dr = 0; dr < height; dr++) {
+        for (let dc = 0; dc < width; dc++) {
+          occupied.add(`${obj.row + dr}:${obj.col + dc}`);
+        }
+      }
+    });
+    plots.forEach(plot => occupied.add(`${plot.row}:${plot.col}`));
+
+    let inserted = 0;
+    db.execSync('BEGIN TRANSACTION');
+    try {
+      STARTER_CLUTTER_SPAWNS.forEach(spawn => {
+        const key = `${spawn.row}:${spawn.col}`;
+        if (occupied.has(key)) return;
+        if (SanctuaryMap[spawn.row]?.[spawn.col] !== TileType.GRASS) return;
+        db.runSync('INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)', spawn.type, spawn.row, spawn.col);
+        occupied.add(key);
+        inserted += 1;
+      });
+      db.runSync(
+        "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES ('system.sanctuary_clutter_v1', 'system', datetime('now', 'localtime'))",
+      );
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to seed sanctuary clutter', e);
+      return false;
+    }
+    return inserted > 0;
+  };
+
   const refreshWeather = () => {
     try {
       const state = db.getFirstSync<{ streak_days: number }>('SELECT streak_days FROM rpg_state WHERE id = 1');
@@ -364,8 +419,7 @@ export default function RpgScreen() {
     setInventoryRevision(current => current + 1);
   };
 
-  const spendToolEnergy = (toolId: ToolId) => {
-    const cost = TOOL_ENERGY_COST[toolId];
+  const spendEnergy = (cost: number) => {
     if (cost <= 0) return true;
     const state = db.getFirstSync<{ mp: number }>('SELECT mp FROM rpg_state WHERE id = 1');
     const currentMp = state?.mp ?? 0;
@@ -377,6 +431,8 @@ export default function RpgScreen() {
     refreshPlayerHp();
     return true;
   };
+
+  const spendToolEnergy = (toolId: ToolId) => spendEnergy(TOOL_ENERGY_COST[toolId]);
 
   const enterZone = (zone: Zone) => {
     setActiveZone(zone);
@@ -992,6 +1048,10 @@ export default function RpgScreen() {
         setTerrainOverrides(overrides);
       }
 
+      if (ensureStarterClutter()) {
+        refreshMapObjects();
+      }
+
       STARTER_TOOL_ITEM_IDS.forEach(itemId => {
         db.runSync(
           'INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1) ON CONFLICT(item_id) DO NOTHING',
@@ -1475,6 +1535,7 @@ export default function RpgScreen() {
   const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
     const detail = (() => {
+      if (tags.includes('clutter')) return 'Clearable land clutter';
       if (tags.includes('trap') || tags.includes('hazard')) return 'Trap can be disarmed';
       if (tags.includes('lever')) return 'Lever links to nearby mechanisms';
       if (tags.includes('gate')) return 'Gate can be linked to a lever';
@@ -1489,6 +1550,68 @@ export default function RpgScreen() {
     return isFirstInspect ? `Examined: ${detail}` : detail;
   };
 
+  const isClearableClutter = (item: ShopCatalogItem) => item.tags?.includes('clutter') && item.tags?.includes('clearable');
+
+  const getClutterDrops = (item: ShopCatalogItem): HarvestDrop[] => {
+    if (item.tags?.includes('weed')) {
+      return rollHarvestDrops([{ itemId: 'rpg_leaves', chance: 1, min: 1, max: 2 }]);
+    }
+    if (item.tags?.includes('twig')) {
+      return rollHarvestDrops([{ itemId: RPG_WOOD_ITEM_ID, chance: 1, min: 1, max: 2 }]);
+    }
+    if (item.tags?.includes('rock')) {
+      return rollHarvestDrops([{ itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, chance: 0.65, min: 1, max: 1 }]);
+    }
+    return [];
+  };
+
+  const clearClutterObject = (object: MapObject, item: ShopCatalogItem) => {
+    if (!spendEnergy(CLUTTER_ENERGY_COST)) return;
+    const drops = getClutterDrops(item);
+
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      if (!deleteSanctuaryObjectInteractions(object.id)) {
+        throw new Error('Failed to clean clutter interactions');
+      }
+      if (!deleteSanctuaryObjectRelationsForObject(object.id)) {
+        throw new Error('Failed to clean clutter relations');
+      }
+      db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', object.id);
+      drops.forEach(drop => {
+        if (drop.quantity <= 0) return;
+        db.runSync(
+          `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
+           ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
+          drop.itemId,
+          drop.quantity,
+        );
+        recordRpgDiscovery(drop.itemId, 'forage');
+      });
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to clear sanctuary clutter', e);
+      showWorldToast({ text: 'Could not clear clutter', item, tone: 'warn' });
+      return;
+    }
+
+    bumpInventoryRevision();
+    const nextObjects = refreshMapObjects();
+    applyMovementCollision(nextObjects);
+    const rewardText = drops.length
+      ? drops.map(drop => {
+          const dropItem = getRpgItem(drop.itemId);
+          return `+${drop.quantity} ${dropItem?.name ?? drop.itemId}`;
+        }).join(', ')
+      : 'ground cleared';
+    showWorldToast({
+      text: `Cleared ${item.name}: ${rewardText}`,
+      item: drops[0] ? getRpgItem(drops[0].itemId) : item,
+      tone: 'success',
+    });
+  };
+
   const interactWithObject = (object: MapObject) => {
     const item = getPlaceableItem(object.type);
     if (!item) {
@@ -1500,6 +1623,11 @@ export default function RpgScreen() {
     const interactionResult = markSanctuaryObjectInteraction(object.id, object.type, 'inspect');
     if (interactionResult.ok && interactionResult.isFirst) {
       recordRpgDiscovery(object.type, 'inspect');
+    }
+
+    if (isClearableClutter(item)) {
+      clearClutterObject(object, item);
+      return;
     }
 
     if (isLeverObject(item)) {

@@ -139,6 +139,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 64 | Economy balance and crafting foundations | Not started | Price resources, rewards, chests, processors, and future crafting loops coherently |
 | 65 | Performance and save-state hardening | Not started | Profile runtime hotspots, persistence transactions, migrations, and recovery paths |
 | 66 | Tool energy, watering, and character panel | Verified | Watering Can action, MP energy costs, character/equipment panel, textured tile placeholders |
+| 67 | Clearable sanctuary clutter V1 | Verified | One-time weeds/twigs/rocks spawn, energy-gated clearing, resource rewards, collision cleanup |
 
 ## Future Development Roadmap
 
@@ -3004,5 +3005,55 @@ Expansion notes saved:
 - A future phase should move tools out of the Backpack entirely if the desired final structure is a character/equipment inventory separate from seeds/resources.
 
 Phase 66 status:
+
+- Verified.
+
+### Phase 67 Audit
+
+Intended behavior:
+
+- Seed a small set of sanctuary weeds, fallen twigs, and loose rocks exactly once for existing or new saves.
+- Treat clutter as real `sanctuary_objects` so movement collision, z-order, interaction targeting, cleanup, and persistence use the same world model as other objects.
+- Interacting with clearable clutter spends a fixed 3 MP energy, removes the clutter object, cleans interaction/relation memory, refreshes movement collision, and grants resource rewards.
+- Weeds grant Leaves, twigs grant Wood, and rocks have a chance to grant Crystal Shards.
+- Clearing all clutter must be permanent; starter clutter must not respawn every launch.
+- The RPG validator enforces the clutter catalog, seed marker, energy cost, delete path, cleanup path, and feedback contract.
+
+Negative guarantees:
+
+- This phase must not add new normal-world buttons; clutter is cleared through the existing `Interact` flow.
+- This phase must not add a schema migration or separate clutter table.
+- Starter clutter must not spawn on portals, non-grass tiles, existing object cells, or existing garden plot cells.
+- Clearing clutter must not delete unrelated player-placed objects, crops, terrain overrides, coins, or tools.
+- Clutter sprites are reused verified/candidate world assets, not claimed as final dedicated weed/twig/rock art.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/engine/RpgObjectCatalog.ts app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Launch the sanctuary and confirm weeds/twigs/rocks appear once.
+- Walk into clutter and confirm it blocks movement like a small world object.
+- Face each clutter type and press Interact; confirm energy decreases, the clutter disappears, and a reward toast appears.
+- Relaunch after clearing all starter clutter and confirm it does not respawn.
+- Confirm existing object placement, crop planting, terrain tools, Watering Can, Backpack, Archive, Shop, Interact, and Attack still work.
+
+Expansion notes saved:
+
+- Later add dedicated weed/twig/rock sprites if an asset pass finds better art.
+- Later add tool-specific clearing rules such as scythe for weeds, axe for twigs, and pickaxe for rocks.
+- Later add regrowth/new debris events tied to storms or seasons, but only after the one-time cleanup loop is proven.
+
+Phase 67 status:
 
 - Verified.

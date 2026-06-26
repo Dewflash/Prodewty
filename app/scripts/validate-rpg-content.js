@@ -1013,6 +1013,51 @@ function validateRpgTileArtPlaceholders() {
   if (!rpgScreen.includes('TilledTile')) fail('RPG screen must render tilled soil with TileArt instead of flat color');
 }
 
+function validateSanctuaryClutterV1() {
+  ['rpg_clutter_weeds', 'rpg_clutter_twig', 'rpg_clutter_rock'].forEach(itemId => {
+    if (!catalog.includes(itemId)) fail(`Catalog must expose clearable clutter item: ${itemId}`);
+  });
+  if (!catalog.includes("tags: ['clutter', 'weed', 'plant', 'clearable']")) {
+    fail('Weed clutter must be tagged as clearable clutter');
+  }
+  if (!catalog.includes("tags: ['clutter', 'twig', 'wood', 'clearable']")) {
+    fail('Twig clutter must be tagged as clearable clutter');
+  }
+  if (!catalog.includes("tags: ['clutter', 'rock', 'stone', 'clearable']")) {
+    fail('Rock clutter must be tagged as clearable clutter');
+  }
+  if (!rpgScreen.includes('const STARTER_CLUTTER_SPAWNS = [')) {
+    fail('RPG screen must define starter sanctuary clutter spawns');
+  }
+  if (!rpgScreen.includes("system.sanctuary_clutter_v1")) {
+    fail('Starter clutter must use a persistent one-time seed marker');
+  }
+  if (!rpgScreen.includes('const ensureStarterClutter = () =>')) {
+    fail('RPG screen must seed starter clutter on load');
+  }
+  if (!rpgScreen.includes('const CLUTTER_ENERGY_COST = 3;')) {
+    fail('Clearing clutter must have an explicit energy cost');
+  }
+  if (!rpgScreen.includes('const isClearableClutter = (item: ShopCatalogItem)')) {
+    fail('RPG screen must centralize clearable clutter detection');
+  }
+  if (!rpgScreen.includes('const clearClutterObject = (object: MapObject, item: ShopCatalogItem)')) {
+    fail('RPG screen must expose a clear clutter interaction');
+  }
+  if (!rpgScreen.includes('DELETE FROM sanctuary_objects WHERE id = ?')) {
+    fail('Clearing clutter must remove the placed clutter object');
+  }
+  if (!rpgScreen.includes('deleteSanctuaryObjectInteractions(object.id)')) {
+    fail('Clearing clutter must clean interaction memory');
+  }
+  if (!rpgScreen.includes('deleteSanctuaryObjectRelationsForObject(object.id)')) {
+    fail('Clearing clutter must clean object relations');
+  }
+  if (!rpgScreen.includes('Cleared ${item.name}: ${rewardText}')) {
+    fail('Clearing clutter must show visible reward feedback');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1061,6 +1106,7 @@ validateResourceNodeFeedback();
 validateLeverMechanicsV1();
 validateRpgToolEnergyAndCharacterUi();
 validateRpgTileArtPlaceholders();
+validateSanctuaryClutterV1();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');
