@@ -118,6 +118,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 46 | Stable action button labels | Verified | Keep bottom action controls labeled Interact and Attack across normal and build modes |
 | 47 | Empty Interact feedback | Verified | Empty Interact presses show throttled visible feedback instead of console-only logs |
 | 48 | Build placement outcome feedback | Verified | Object placement, movement, and missing inventory cases show visible feedback |
+| 49 | Attack feedback comfort pass | Verified | Attack presses show object/plot/portal/empty feedback and build mode truly disables Attack |
 
 ## Required Audit Loop For Every Phase
 
@@ -2529,5 +2530,52 @@ Expansion notes saved:
 - Consider a subtle object pulse on successful placement/move later.
 
 Phase 48 status:
+
+- Verified.
+
+### Phase 49 Audit
+
+Intended behavior:
+
+- Pressing `Attack` in normal mode always gives visible feedback.
+- Striking a placed object pulses that object and shows `Struck {target}` feedback with the object's item art.
+- Striking a crop warns `Careful: crop` without harvesting, damaging, or deleting the plot.
+- Striking a portal shows muted feedback instead of silently doing nothing.
+- Striking empty space shows muted `Swing` feedback.
+- `Attack` is truly disabled in build mode and exposes that disabled state to accessibility.
+
+Negative guarantees:
+
+- This phase must not add HP damage, enemy state, crop damage, object deletion, reward drops, combat persistence, movement changes, collision changes, or placement changes.
+- Attack feedback must reuse the same target resolver as Interact so prompts, reticles, and button effects do not drift apart.
+- Attack feedback must not perform database writes or catalog mutation.
+- Build mode must keep Interact as the placement confirm path and Attack as unavailable.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Face empty ground and tap Attack; confirm `Swing` feedback and attack animation.
+- Face a placed object and tap Attack; confirm the object pulses and feedback says `Struck {object}`.
+- Face a crop and tap Attack; confirm warning feedback and the crop remains intact.
+- Face a portal and tap Attack; confirm muted portal feedback and no zone transition.
+- Enter build mode; confirm Attack is disabled and Interact still confirms placement.
+
+Expansion notes saved:
+
+- Later combat should add enemies and hit boxes as a separate system, not by overloading object interaction feedback.
+- If mobile testing shows toast spam during repeated attacks, add a tiny attack-feedback cooldown separate from the attack animation lockout.
+
+Phase 49 status:
 
 - Verified.

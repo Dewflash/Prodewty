@@ -1050,6 +1050,27 @@ export default function RpgScreen() {
     });
   };
 
+  const showAttackFeedback = (row: number, col: number) => {
+    const target = resolveInteractionTargetAt(row, col);
+    if (target?.kind === 'object' && target.object) {
+      pulseObject(target.object.id);
+      showWorldToast({ text: `Struck ${target.label}`, item: target.item, tone: 'muted' });
+      return;
+    }
+
+    if (target?.kind === 'plot') {
+      showWorldToast({ text: 'Careful: crop', item: target.item, tone: 'warn' });
+      return;
+    }
+
+    if (target?.kind === 'portal') {
+      showWorldToast({ text: 'Weapon passes through', tone: 'muted' });
+      return;
+    }
+
+    showWorldToast({ text: 'Swing', tone: 'muted' });
+  };
+
   const pulseObject = (objectId: number) => {
     if (interactionTimer.current) clearTimeout(interactionTimer.current);
     setInteractingObjectId(objectId);
@@ -1333,6 +1354,7 @@ export default function RpgScreen() {
     setSpriteFrameCount(8);
 
     const target = getTargetedTile();
+    showAttackFeedback(target.row, target.col);
     try {
       const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
         'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
@@ -1662,6 +1684,8 @@ export default function RpgScreen() {
         <Pressable
           style={[styles.actionBtn, styles.attackBtn, buildItem && styles.disabledBtn]}
           onPress={handleAttack}
+          disabled={!!buildItem}
+          accessibilityState={{ disabled: !!buildItem }}
         >
           <Feather name="crosshair" size={20} color="#fff" />
           <Text style={styles.actionText}>Attack</Text>

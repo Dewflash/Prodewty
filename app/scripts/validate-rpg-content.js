@@ -750,6 +750,39 @@ function validateBuildPlacementFeedback() {
   }
 }
 
+function validateAttackFeedbackProtocol() {
+  if (!rpgScreen.includes('const showAttackFeedback = (row: number, col: number)')) {
+    fail('Attack feedback must be centralized by targeted tile');
+  }
+  if (!rpgScreen.includes('const target = resolveInteractionTargetAt(row, col);')) {
+    fail('Attack feedback must reuse the same target resolver as Interact');
+  }
+  if (!rpgScreen.includes('pulseObject(target.object.id);')) {
+    fail('Attack feedback must pulse struck objects');
+  }
+  if (!rpgScreen.includes('Struck ${target.label}')) {
+    fail('Attack feedback must show struck object feedback');
+  }
+  if (!rpgScreen.includes("showWorldToast({ text: 'Careful: crop'")) {
+    fail('Attack feedback must warn before hitting crops');
+  }
+  if (!rpgScreen.includes("showWorldToast({ text: 'Swing', tone: 'muted' });")) {
+    fail('Empty Attack presses must still show visible swing feedback');
+  }
+  if (!rpgScreen.includes('showAttackFeedback(target.row, target.col);')) {
+    fail('Attack button must call visible attack feedback');
+  }
+  if (!rpgScreen.includes('disabled={!!buildItem}')) {
+    fail('Attack button must be truly disabled in build mode');
+  }
+  if (!rpgScreen.includes('accessibilityState={{ disabled: !!buildItem }}')) {
+    fail('Attack button disabled state must be exposed to accessibility');
+  }
+  if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
+    fail('Attack feedback phase must not add HP damage rules');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -823,6 +856,7 @@ validateInteractionTargetPrompt();
 validateActionButtonProtocol();
 validateEmptyInteractionFeedback();
 validateBuildPlacementFeedback();
+validateAttackFeedbackProtocol();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {
