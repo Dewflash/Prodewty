@@ -6,6 +6,9 @@ export enum TileType {
   WATER = 2,
   PORTAL_DUNGEON = 3,
   PORTAL_SANCTUARY = 4,
+  BRIDGE = 5,
+  PATH = 6,
+  TILLED = 7,
 }
 
 // 0: Walkable, 1: Blocked
@@ -15,6 +18,9 @@ export const TILE_COLLISION: Record<TileType, boolean> = {
   [TileType.WATER]: true,
   [TileType.PORTAL_DUNGEON]: false,
   [TileType.PORTAL_SANCTUARY]: false,
+  [TileType.BRIDGE]: false,
+  [TileType.PATH]: false,
+  [TileType.TILLED]: false,
 };
 
 function makeMap(

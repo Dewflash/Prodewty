@@ -7,6 +7,7 @@ import {
   countRpgSourcePacks,
   getCropForSeed,
   getPlaceableItem,
+  getResourceSellPrice,
   getRpgItem,
   RPG_SOURCE_PACK_FILTERS,
   RPG_UI_FRAMES,
@@ -25,7 +26,7 @@ type InventorySlot = InventoryRow & {
   item: RpgItemDefinition | null;
 };
 
-type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
+type BackpackFilter = 'all' | 'object' | 'seed' | 'resource' | 'tool';
 type BackpackSort = 'kind' | 'name' | 'quantity';
 
 type Props = {
@@ -35,11 +36,16 @@ type Props = {
   onClose: () => void;
   onPlaceItem: (itemId: string) => void;
   onPlantSeed: (itemId: string) => void;
+  onSellItem: (itemId: string) => void;
+  onSellAllItem: (itemId: string) => void;
+  equippedToolId?: string | null;
+  onEquipTool: (itemId: string) => void;
 };
 
 const SLOT_COUNT = 12;
 const FILTERS: { id: BackpackFilter; label: string }[] = [
   { id: 'all', label: 'All' },
+  { id: 'tool', label: 'Tools' },
   { id: 'object', label: 'Objects' },
   { id: 'seed', label: 'Seeds' },
   { id: 'resource', label: 'Resources' },
@@ -52,9 +58,10 @@ const SORTS: { id: BackpackSort; label: string }[] = [
 
 function getKindRank(item: RpgItemDefinition | null) {
   if (!item) return 99;
-  if (item.kind === 'object') return 0;
-  if (item.kind === 'seed') return 1;
-  return 2;
+  if (item.kind === 'tool') return 0;
+  if (item.kind === 'object') return 1;
+  if (item.kind === 'seed') return 2;
+  return 3;
 }
 
 function formatDrop(drop: RpgDrop) {
@@ -98,7 +105,7 @@ function sortBackpackSlots(a: InventorySlot, b: InventorySlot, sort: BackpackSor
   );
 }
 
-export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed }: Props) {
+export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed, onSellItem, onSellAllItem, equippedToolId, onEquipTool }: Props) {
   const { width, height } = useWindowDimensions();
   const [inventory, setInventory] = useState<InventorySlot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -146,6 +153,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
 
   const filterCounts = useMemo(() => ({
     all: inventory.length,
+    tool: inventory.filter(slot => slot.item?.kind === 'tool').length,
     object: inventory.filter(slot => slot.item?.kind === 'object').length,
     seed: inventory.filter(slot => slot.item?.kind === 'seed').length,
     resource: inventory.filter(slot => slot.item?.kind === 'resource').length,
@@ -189,6 +197,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   );
   const selectedPlaceable = getPlaceableItem(selected?.item_id ?? null);
   const selectedSeedCrop = selectedItem?.kind === 'seed' ? getCropForSeed(selected?.item_id ?? null) : null;
+  const selectedSellPrice = getResourceSellPrice(selected?.item_id ?? null);
   const selectedFacts = [
     selectedItem?.sourceLabel ? `Source: ${selectedItem.sourceLabel}` : null,
     selectedPlaceable ? `Price: ${selectedPlaceable.price}` : null,
@@ -367,7 +376,17 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
               ))}
             </View>
           )}
-          {selectedPlaceable ? (
+          {selectedItem?.kind === 'tool' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={equippedToolId === selected?.item_id ? `Unequip ${selectedName}` : `Equip ${selectedName}`}
+              onPress={() => selected && onEquipTool(equippedToolId === selected.item_id ? '' : selected.item_id)}
+              style={[styles.placeButton, equippedToolId === selected?.item_id && styles.equippedButton]}
+            >
+              <Feather name={equippedToolId === selected?.item_id ? 'check-circle' : 'tool'} size={14} color="#fff" />
+              <Text style={styles.placeText}>{equippedToolId === selected?.item_id ? 'Equipped' : 'Equip'}</Text>
+            </Pressable>
+          ) : selectedPlaceable ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Place ${selectedName}`}
@@ -391,6 +410,29 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             </Pressable>
           ) : selectedItem?.kind === 'seed' ? (
             <Text style={styles.kindText}>Seed not plantable yet</Text>
+          ) : selected && selectedSellPrice > 0 ? (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Sell one ${selectedName} for ${selectedSellPrice} coins`}
+                onPress={() => onSellItem(selected.item_id)}
+                style={styles.placeButton}
+              >
+                <Feather name="circle" size={14} color="#fff" />
+                <Text style={styles.placeText}>Sell 1 for {selectedSellPrice}</Text>
+              </Pressable>
+              {selected.quantity > 1 && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sell all ${selected.quantity} ${selectedName} for ${selectedSellPrice * selected.quantity} coins`}
+                  onPress={() => onSellAllItem(selected.item_id)}
+                  style={[styles.placeButton, styles.sellAllButton]}
+                >
+                  <Feather name="circle" size={14} color="#fff" />
+                  <Text style={styles.placeText}>Sell all {selected.quantity} for {selectedSellPrice * selected.quantity}</Text>
+                </Pressable>
+              )}
+            </>
           ) : selected ? (
             <Text style={styles.kindText}>Resource</Text>
           ) : (
@@ -706,6 +748,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255,242,187,0.82)',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  sellAllButton: {
+    backgroundColor: '#2c6e34',
+  },
+  equippedButton: {
+    backgroundColor: '#3f6e8d',
   },
   placeButton: {
     width: '100%',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -21,6 +21,7 @@ import { SanctuaryShop } from '../src/engine/SanctuaryShop';
 import {
   getCropForSeed,
   getPlaceableItem,
+  getResourceSellPrice,
   getRpgItem,
   RPG_UI_FRAMES,
   type RpgDrop,
@@ -29,9 +30,12 @@ import {
 } from '../src/engine/RpgObjectCatalog';
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
 import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
+import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
+import { BridgeTile, FLOOR_TILE_COORD, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
 import { db } from '../src/db/schema';
 import {
   advanceGardenPlotWithInventoryItem,
+  getInventoryQuantity,
   harvestGardenPlot,
   plantSeed,
   updatePlantGrowth,
@@ -54,8 +58,9 @@ import {
 } from '../src/db/sanctuaryObjectRelations';
 import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
-import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
+import { RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
 
+const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
 const SPEED = 180;
 const MIN_ZOOM = 0.9;
@@ -111,8 +116,18 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
-type InteractionTargetKind = 'object' | 'plot' | 'portal';
+type ToolId = 'shovel' | 'bridge' | 'path' | 'plow';
+const TOOLS: { id: ToolId; itemId: string; label: string; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
+  { id: 'shovel', itemId: 'rpg_tool_shovel', label: 'Shovel', icon: 'tool', hint: 'Dig grass into a river (5 coins)' },
+  { id: 'bridge', itemId: 'rpg_tool_bridge', label: 'Bridge Kit', icon: 'link', hint: 'Bridge a river tile (3 wood)' },
+  { id: 'path', itemId: 'rpg_tool_path', label: 'Path', icon: 'minus', hint: 'Lay a walking path (1 wood)' },
+  { id: 'plow', itemId: 'rpg_tool_plow', label: 'Plow', icon: 'grid', hint: 'Till grass for planting' },
+];
+const STARTER_TOOL_ITEM_IDS = TOOLS.map(t => t.itemId);
+
+type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
+type LiveEnemy = { uid: string; defId: EnemyDefId; row: number; col: number; hp: number };
 type InteractionTarget = {
   kind: InteractionTargetKind;
   row: number;
@@ -123,12 +138,18 @@ type InteractionTarget = {
   item?: RpgItemDefinition | null;
   object?: MapObject;
   plot?: GardenPlot;
+  enemy?: LiveEnemy;
 };
 type ResolvedInteractionTarget = {
   row: number;
   col: number;
   target: InteractionTarget | null;
 };
+
+function applyTerrainOverrides(base: TileType[][], overrides: Record<string, TileType>): TileType[][] {
+  if (Object.keys(overrides).length === 0) return base;
+  return base.map((row, r) => row.map((tile, c) => overrides[`${r}:${c}`] ?? tile));
+}
 
 function clamp(value: number, min: number, max: number) {
   'worklet';
@@ -183,6 +204,7 @@ export default function RpgScreen() {
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [gardenPlots, setGardenPlots] = useState<GardenPlot[]>([]);
   const [coins, setCoins] = useState(0);
+  const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100 });
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -195,12 +217,20 @@ export default function RpgScreen() {
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
+  const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
+  const [terrainOverrides, setTerrainOverrides] = useState<Record<string, TileType>>({});
+  const [equippedTool, setEquippedTool] = useState<ToolId | null>(null);
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forageCooldowns = useRef<Record<number, number>>({});
+  const defeatedEnemyUids = useRef<Set<string>>(new Set());
   const emptyInteractCooldownUntil = useRef(0);
 
-  const mapData = activeZone === 'sanctuary' ? SanctuaryMap : DungeonMap;
+  const effectiveSanctuaryMap = useMemo(
+    () => applyTerrainOverrides(SanctuaryMap, terrainOverrides),
+    [terrainOverrides],
+  );
+  const mapData = activeZone === 'sanctuary' ? effectiveSanctuaryMap : DungeonMap;
   const mapColsCount = mapData[0].length;
   const mapRowsCount = mapData.length;
   const mapWidth = mapColsCount * TILE_SIZE;
@@ -213,6 +243,7 @@ export default function RpgScreen() {
   const avatarDirection = useSharedValue(0);
   const avatarIsPlaying = useSharedValue(false);
   const isAttacking = useSharedValue(false);
+  const staticFrame = useSharedValue(false);
   const mapScale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
   const collisionMap = useSharedValue<number[]>([]);
@@ -237,6 +268,7 @@ export default function RpgScreen() {
     [buildItem, mapObjects],
   );
 
+  const activeTool = activeZone === 'sanctuary' ? TOOLS.find(t => t.id === equippedTool) ?? null : null;
   const buildCatalogItem = getItem(buildItem?.itemId ?? null);
   const buildSeedItem = buildItem?.mode === 'plant' ? getRpgItem(buildItem.itemId) : null;
   const buildGhostWidth = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visWidth ?? 0) * TILE_SIZE;
@@ -305,6 +337,11 @@ export default function RpgScreen() {
     if (state) setCoins(state.coins);
   };
 
+  const refreshPlayerHp = () => {
+    const state = db.getFirstSync<{ hp: number; hp_max: number }>('SELECT hp, hp_max FROM rpg_state WHERE id = 1');
+    if (state) setPlayerHp(state);
+  };
+
   const refreshWeather = () => {
     try {
       const state = db.getFirstSync<{ streak_days: number }>('SELECT streak_days FROM rpg_state WHERE id = 1');
@@ -339,6 +376,17 @@ export default function RpgScreen() {
     avatarY.value = zone === 'sanctuary' ? TILE_SIZE * 2 : TILE_SIZE;
     targetRow.value = -999;
     targetCol.value = -999;
+    setEnemies(zone === 'dungeon'
+      ? DUNGEON_ENEMY_SPAWNS
+          .filter(spawn => !defeatedEnemyUids.current.has(spawn.uid))
+          .map(spawn => ({
+            uid: spawn.uid,
+            defId: spawn.defId,
+            row: spawn.row,
+            col: spawn.col,
+            hp: DUNGEON_ENEMY_DEFS[spawn.defId].maxHp,
+          }))
+      : []);
   };
 
   const setBuildAnchor = (row: number, col: number, item: Pick<ShopCatalogItem, 'colWidth' | 'colHeight'>) => {
@@ -512,11 +560,25 @@ export default function RpgScreen() {
       return null;
     }
 
+    const enemy = enemies.find(e => e.row === row && e.col === col);
+    if (enemy) {
+      const def = DUNGEON_ENEMY_DEFS[enemy.defId];
+      return {
+        kind: 'enemy',
+        row,
+        col,
+        cells: [{ row, col }],
+        label: def.name,
+        detail: `HP ${enemy.hp}/${def.maxHp}`,
+        enemy,
+      };
+    }
+
     if (DungeonMap[row]?.[col] === TileType.PORTAL_SANCTUARY) {
       return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Sanctuary portal', detail: 'Portal' };
     }
     return null;
-  }, [activeZone, buildItem, gardenPlots, mapObjects]);
+  }, [activeZone, buildItem, enemies, gardenPlots, mapObjects]);
 
   const updateInteractionPromptFromTile = useCallback((row: number, col: number) => {
     setInteractionPrompt(resolveInteractionTargetAt(row, col));
@@ -655,7 +717,7 @@ export default function RpgScreen() {
           cellReason = 'Avatar';
         } else if (
           mode === 'plant'
-            ? mapData[checkRow][checkCol] !== TileType.GRASS
+            ? mapData[checkRow][checkCol] !== TileType.TILLED
             : TILE_COLLISION[mapData[checkRow][checkCol] as TileType]
         ) {
           valid = false;
@@ -855,6 +917,26 @@ export default function RpgScreen() {
     beginPlantMode(itemId);
   };
 
+  const handleSellItem = (itemId: string) => {
+    const price = getResourceSellPrice(itemId);
+    if (price <= 0 || getInventoryQuantity(itemId) <= 0) return;
+    addSandboxInventoryItem(itemId, -1, 'inventory');
+    db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', price);
+    refreshCoins();
+    showWorldToast({ text: `Sold ${getRpgItem(itemId)?.name ?? itemId} for +${price} coins`, tone: 'success' });
+  };
+
+  const handleSellAllItem = (itemId: string) => {
+    const price = getResourceSellPrice(itemId);
+    const quantity = getInventoryQuantity(itemId);
+    if (price <= 0 || quantity <= 0) return;
+    addSandboxInventoryItem(itemId, -quantity, 'inventory');
+    const total = price * quantity;
+    db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', total);
+    refreshCoins();
+    showWorldToast({ text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins`, tone: 'success' });
+  };
+
   useEffect(() => {
     const sub = Dimensions.addEventListener('change', ({ window }) => setDimensions(window));
     return () => sub?.remove();
@@ -870,11 +952,78 @@ export default function RpgScreen() {
       refreshMapObjects();
       refreshGardenPlots();
       refreshCoins();
+      refreshPlayerHp();
       refreshWeather();
+      const kills = db.getAllSync<{ uid: string }>('SELECT uid FROM dungeon_enemy_kills');
+      kills.forEach(row => defeatedEnemyUids.current.add(row.uid));
+
+      const overrideRows = db.getAllSync<{ row: number; col: number; tile_type: number }>(
+        'SELECT row, col, tile_type FROM sanctuary_terrain_overrides',
+      );
+      if (overrideRows.length > 0) {
+        const overrides: Record<string, TileType> = {};
+        overrideRows.forEach(o => { overrides[`${o.row}:${o.col}`] = o.tile_type as TileType; });
+        setTerrainOverrides(overrides);
+      }
+
+      STARTER_TOOL_ITEM_IDS.forEach(itemId => {
+        db.runSync(
+          'INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1) ON CONFLICT(item_id) DO NOTHING',
+          itemId,
+        );
+      });
+      bumpInventoryRevision();
     } catch (e) {
       console.warn('Failed to load RPG sandbox state', e);
     }
   }, []);
+
+  useEffect(() => {
+    if (activeZone !== 'dungeon') return;
+    const interval = setInterval(() => {
+      const state = db.getFirstSync<{ hp: number }>('SELECT hp FROM rpg_state WHERE id = 1');
+      const foot = getAvatarFootCell();
+      let totalDamage = 0;
+      let attackerName = '';
+
+      setEnemies(prev => {
+        const occupied = new Set(prev.map(e => `${e.row}:${e.col}`));
+        return prev.map(enemy => {
+          const def = DUNGEON_ENEMY_DEFS[enemy.defId];
+          const dr = foot.row - enemy.row;
+          const dc = foot.col - enemy.col;
+          const dist = Math.max(Math.abs(dr), Math.abs(dc));
+
+          if (dist <= 1) {
+            if (state && state.hp > 0) {
+              totalDamage += def.atk;
+              attackerName = def.name;
+            }
+            return enemy;
+          }
+
+          if (dist > def.aggroRange) return enemy;
+
+          const stepRow = enemy.row + Math.sign(dr);
+          const stepCol = enemy.col + Math.sign(dc);
+          const key = `${stepRow}:${stepCol}`;
+          const blocked = TILE_COLLISION[DungeonMap[stepRow]?.[stepCol] as TileType] || occupied.has(key);
+          if (blocked) return enemy;
+
+          occupied.delete(`${enemy.row}:${enemy.col}`);
+          occupied.add(key);
+          return { ...enemy, row: stepRow, col: stepCol };
+        });
+      });
+
+      if (totalDamage > 0) {
+        db.runSync('UPDATE rpg_state SET hp = MAX(0, hp - ?) WHERE id = 1', totalDamage);
+        refreshPlayerHp();
+        showWorldToast({ text: `${attackerName} hits you for ${totalDamage}`, tone: 'warn' });
+      }
+    }, 700);
+    return () => clearInterval(interval);
+  }, [activeZone]);
 
   useEffect(() => {
     const item = getItem(buildItem?.itemId ?? null);
@@ -1107,7 +1256,37 @@ export default function RpgScreen() {
       return;
     }
 
+    if (target?.kind === 'enemy') {
+      return;
+    }
+
     showWorldToast({ text: 'Swing', tone: 'muted' });
+  };
+
+  const resolveEnemyHit = (enemy: LiveEnemy, atk: number) => {
+    const def = DUNGEON_ENEMY_DEFS[enemy.defId];
+    const nextHp = enemy.hp - Math.max(1, atk);
+
+    if (nextHp <= 0) {
+      defeatedEnemyUids.current.add(enemy.uid);
+      db.runSync('INSERT OR IGNORE INTO dungeon_enemy_kills (uid) VALUES (?)', enemy.uid);
+      setEnemies(prev => prev.filter(e => e.uid !== enemy.uid));
+      const drops = rollHarvestDrops(def.drops);
+      drops.forEach(drop => addSandboxInventoryItem(drop.itemId, drop.quantity, 'loot'));
+      if (def.coins > 0) {
+        db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', def.coins);
+        refreshCoins();
+      }
+      showWorldToast({
+        text: `Defeated ${def.name}! ${getRewardText(def.coins, drops)}`,
+        item: drops[0] ? getRpgItem(drops[0].itemId) : null,
+        tone: 'success',
+      });
+      return;
+    }
+
+    setEnemies(prev => prev.map(e => (e.uid === enemy.uid ? { ...e, hp: nextHp } : e)));
+    showWorldToast({ text: `Hit ${def.name} for ${atk} (${nextHp}/${def.maxHp} HP)`, tone: 'muted' });
   };
 
   const pulseObject = (objectId: number) => {
@@ -1163,7 +1342,7 @@ export default function RpgScreen() {
 
   const getForageCooldownText = (tags: string[] | undefined) => {
     if (tags?.includes('crystal')) return 'Crystal is recharging';
-    if (tags?.includes('tree')) return 'Tree is resting';
+    if (tags?.includes('tree')) return 'Tree needs time to regrow';
     if (tags?.some(tag => tag === 'bush' || tag === 'fern')) return 'Brush is resting';
     return 'Object is resting';
   };
@@ -1171,7 +1350,7 @@ export default function RpgScreen() {
   const getForageEmptyText = (item: ShopCatalogItem) => {
     const tags = item.tags ?? [];
     if (tags.includes('crystal')) return 'No shards this time';
-    if (tags.includes('tree')) return 'No seed fell';
+    if (tags.includes('tree')) return 'No wood came loose';
     if (tags.some(tag => tag === 'bush' || tag === 'fern' || tag === 'flower')) return 'Nothing in the brush';
     return 'Nothing dropped';
   };
@@ -1180,7 +1359,7 @@ export default function RpgScreen() {
     const tags = item.tags ?? [];
     const reward = `+${quantity} ${dropDef?.name ?? 'item'}`;
     if (tags.includes('crystal')) return `Chipped crystal: ${reward}`;
-    if (tags.includes('tree')) return `Shook tree: ${reward}`;
+    if (tags.includes('tree')) return `Chopped tree: ${reward}`;
     if (tags.some(tag => tag === 'bush' || tag === 'fern' || tag === 'flower')) return `Foraged brush: ${reward}`;
     return reward;
   };
@@ -1363,6 +1542,21 @@ export default function RpgScreen() {
       return;
     }
 
+    if (item.interactLoot?.repeatable) {
+      const drops = rollHarvestDrops(item.interactLoot.drops);
+      drops.forEach(drop => addSandboxInventoryItem(drop.itemId, drop.quantity, 'loot'));
+      if (item.interactLoot.coins > 0) {
+        db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', item.interactLoot.coins);
+        refreshCoins();
+      }
+      showWorldToast({
+        text: `+${item.interactLoot.coins} coins`,
+        item,
+        tone: 'success',
+      });
+      return;
+    }
+
     if (item.interactLoot) {
       const drops = rollHarvestDrops(item.interactLoot.drops);
       const result = claimSanctuaryReward(
@@ -1508,9 +1702,9 @@ export default function RpgScreen() {
       const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
         'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
       );
-      if (stats) {
+      if (stats && current.target?.kind === 'enemy' && current.target.enemy) {
         const atk = Math.floor((stats.str + stats.foc + stats.agi + stats.wis + stats.res) / 5);
-        console.log(`[Combat] Hit tile [${current.row}, ${current.col}] with ATK: ${atk}`);
+        resolveEnemyHit(current.target.enemy, atk);
       }
     } catch {}
 
@@ -1520,6 +1714,101 @@ export default function RpgScreen() {
       setSpriteFrameCount(6);
     }, 800);
   }
+
+  const setSanctuaryTile = (row: number, col: number, tile: TileType) => {
+    const key = `${row}:${col}`;
+    const nextOverrides = { ...terrainOverrides, [key]: tile };
+    setTerrainOverrides(nextOverrides);
+    db.runSync(
+      'INSERT OR REPLACE INTO sanctuary_terrain_overrides (row, col, tile_type) VALUES (?, ?, ?)',
+      row, col, tile,
+    );
+    const newMap = applyTerrainOverrides(SanctuaryMap, nextOverrides);
+    applyMovementCollision(mapObjects, 'sanctuary', newMap);
+  };
+
+  const DIG_COST = 5;
+
+  const digTile = (row: number, col: number) => {
+    const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
+    if (!state || state.coins < DIG_COST) {
+      showWorldToast({ text: `Need ${DIG_COST} coins to dig`, tone: 'warn' });
+      return;
+    }
+    db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DIG_COST);
+    refreshCoins();
+    setSanctuaryTile(row, col, TileType.WATER);
+    showWorldToast({ text: `Dug a channel — water flows in (-${DIG_COST} coins)`, tone: 'success' });
+  };
+
+  const BRIDGE_WOOD_COST = 3;
+
+  const buildBridge = (row: number, col: number) => {
+    if (getInventoryQuantity(RPG_WOOD_ITEM_ID) < BRIDGE_WOOD_COST) {
+      showWorldToast({ text: `Need ${BRIDGE_WOOD_COST} wood to build a bridge`, tone: 'warn' });
+      return;
+    }
+    addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -BRIDGE_WOOD_COST, 'inventory');
+    setSanctuaryTile(row, col, TileType.BRIDGE);
+    showWorldToast({ text: `Built a bridge (-${BRIDGE_WOOD_COST} wood)`, tone: 'success' });
+  };
+
+  const PATH_WOOD_COST = 1;
+
+  const placePath = (row: number, col: number) => {
+    if (getInventoryQuantity(RPG_WOOD_ITEM_ID) < PATH_WOOD_COST) {
+      showWorldToast({ text: `Need ${PATH_WOOD_COST} wood to lay a path`, tone: 'warn' });
+      return;
+    }
+    addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -PATH_WOOD_COST, 'inventory');
+    setSanctuaryTile(row, col, TileType.PATH);
+    showWorldToast({ text: `Laid a path (-${PATH_WOOD_COST} wood)`, tone: 'success' });
+  };
+
+  const plowTile = (row: number, col: number) => {
+    setSanctuaryTile(row, col, TileType.TILLED);
+    showWorldToast({ text: 'Tilled the soil — ready to plant', tone: 'success' });
+  };
+
+  const useEquippedTool = (row: number, col: number) => {
+    const tile = mapData[row]?.[col];
+    if (equippedTool === 'shovel') {
+      if (tile !== TileType.GRASS) {
+        showWorldToast({ text: 'Shovel only works on grass', tone: 'warn' });
+        return;
+      }
+      if (Math.abs(row - 18) <= 1 && Math.abs(col - 10) <= 1) {
+        showWorldToast({ text: "Can't dig this close to the portal", tone: 'warn' });
+        return;
+      }
+      digTile(row, col);
+      return;
+    }
+    if (equippedTool === 'bridge') {
+      if (tile !== TileType.WATER) {
+        showWorldToast({ text: 'Bridge Kit only works on water', tone: 'warn' });
+        return;
+      }
+      buildBridge(row, col);
+      return;
+    }
+    if (equippedTool === 'path') {
+      if (tile !== TileType.GRASS && tile !== TileType.TILLED) {
+        showWorldToast({ text: 'Path can only be laid on grass', tone: 'warn' });
+        return;
+      }
+      placePath(row, col);
+      return;
+    }
+    if (equippedTool === 'plow') {
+      if (tile !== TileType.GRASS) {
+        showWorldToast({ text: 'Plow only works on grass', tone: 'warn' });
+        return;
+      }
+      plowTile(row, col);
+      return;
+    }
+  };
 
   function handleInteract() {
     if (isAttacking.value) return;
@@ -1532,6 +1821,12 @@ export default function RpgScreen() {
     const current = resolveCurrentInteractionTarget();
     setInteractionPrompt(current.target);
     const resolvedTarget = current.target;
+
+    if (activeZone === 'sanctuary' && equippedTool) {
+      useEquippedTool(current.row, current.col);
+      return;
+    }
+
     if (activeZone === 'sanctuary') {
       if (resolvedTarget?.kind === 'object' && resolvedTarget.object) {
         interactWithObject(resolvedTarget.object);
@@ -1547,6 +1842,7 @@ export default function RpgScreen() {
         enterZone('dungeon');
         return;
       }
+
       showEmptyInteractionFeedback('sanctuary');
       return;
     }
@@ -1562,6 +1858,9 @@ export default function RpgScreen() {
       case TileType.WATER: return '#4d8aa8';
       case TileType.PORTAL_DUNGEON: return '#8f63b8';
       case TileType.PORTAL_SANCTUARY: return '#d7b84b';
+      case TileType.BRIDGE: return '#9a6b3c';
+      case TileType.PATH: return '#c2a06b';
+      case TileType.TILLED: return '#6b4a2e';
       default: return '#1b1f1b';
     }
   }
@@ -1573,10 +1872,24 @@ export default function RpgScreen() {
           {mapData.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.mapRow}>
               {row.map((tile, colIndex) => (
-                <View
-                  key={`tile-${rowIndex}-${colIndex}`}
-                  style={[styles.tile, { backgroundColor: getTileColor(tile as TileType) }]}
-                />
+                activeZone === 'dungeon' && (tile === TileType.GRASS || tile === TileType.WALL) ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
+                    <TilesetTile {...(tile === TileType.WALL ? WALL_TILE_COORD : FLOOR_TILE_COORD)} />
+                  </View>
+                ) : tile === TileType.WATER ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
+                    <WaterTile />
+                  </View>
+                ) : tile === TileType.BRIDGE ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
+                    <BridgeTile />
+                  </View>
+                ) : (
+                  <View
+                    key={`tile-${rowIndex}-${colIndex}`}
+                    style={[styles.tile, { backgroundColor: getTileColor(tile as TileType) }]}
+                  />
+                )
               ))}
             </View>
           ))}
@@ -1601,6 +1914,16 @@ export default function RpgScreen() {
           {activeZone === 'sanctuary' && gardenPlots.map(plot => {
             const growth = getPlotGrowthInfo(plot);
             const cropFrame = growth.crop?.stageFrames?.[growth.stage] ?? null;
+            const stageTotalMinutes = growth.crop
+              ? growth.stage >= 2
+                ? 0
+                : growth.crop.stageMinutes[(growth.stage + 1) as 0 | 1 | 2] - growth.crop.stageMinutes[growth.stage]
+              : 0;
+            const growthPercent = growth.stage >= 2
+              ? 100
+              : stageTotalMinutes > 0
+                ? Math.min(100, Math.max(0, ((stageTotalMinutes - growth.remainingMinutes) / stageTotalMinutes) * 100))
+                : 0;
             return (
               <View
                 key={plot.id}
@@ -1625,6 +1948,11 @@ export default function RpgScreen() {
                 <Text style={[styles.gardenStageText, growth.stage >= 2 && styles.gardenStageMatureText]}>
                   {growth.stage >= 2 ? '!' : growth.stage === 1 ? '+' : ''}
                 </Text>
+                {growth.crop && growth.stage < 2 && (
+                  <View style={styles.gardenGrowthTrack}>
+                    <View style={[styles.gardenGrowthFill, { width: `${growthPercent}%` }]} />
+                  </View>
+                )}
               </View>
             );
           })}
@@ -1677,6 +2005,44 @@ export default function RpgScreen() {
             />
           ))}
 
+          {activeZone === 'dungeon' && enemies.map(enemy => {
+            const def = DUNGEON_ENEMY_DEFS[enemy.defId];
+            const visualScale = def.isBoss ? 1.5 : 1;
+            const left = enemy.col * TILE_SIZE - (def.frameWidth * visualScale - TILE_SIZE) / 2;
+            const top = enemy.row * TILE_SIZE - (def.frameHeight * visualScale - TILE_SIZE);
+            return (
+              <View
+                key={enemy.uid}
+                style={{
+                  position: 'absolute',
+                  left,
+                  top,
+                  width: def.frameWidth * visualScale,
+                  zIndex: Math.floor((enemy.row * TILE_SIZE + def.frameHeight * visualScale) / TILE_SIZE),
+                }}
+              >
+                {def.isBoss && <Text style={styles.enemyBossLabel}>{def.name}</Text>}
+                <View style={styles.enemyHpTrack}>
+                  <View style={[
+                    styles.enemyHpFill,
+                    def.isBoss && styles.enemyHpFillBoss,
+                    { width: `${Math.max(0, (enemy.hp / def.maxHp) * 100)}%` },
+                  ]} />
+                </View>
+                <View style={{ transform: [{ scale: visualScale }] }}>
+                  <SpriteAnimator
+                    source={def.sprite}
+                    frameWidth={def.frameWidth}
+                    frameHeight={def.frameHeight}
+                    frameCount={4}
+                    fps={1}
+                    isPlaying={staticFrame}
+                  />
+                </View>
+              </View>
+            );
+          })}
+
           <Animated.View style={avatarStyle}>
             <SpriteAnimator
               source={spriteSource}
@@ -1687,6 +2053,11 @@ export default function RpgScreen() {
               directionRow={avatarDirection}
               isPlaying={avatarIsPlaying}
             />
+            {activeTool && (
+              <View style={styles.equippedToolBadge}>
+                <Feather name={activeTool.icon} size={12} color="#fff" />
+              </View>
+            )}
           </Animated.View>
         </Animated.View>
       </GestureDetector>
@@ -1733,13 +2104,29 @@ export default function RpgScreen() {
             accessibilityRole="button"
             accessibilityLabel="Enter dungeon"
             accessibilityState={{ selected: activeZone === 'dungeon' }}
-            onPress={() => enterZone('dungeon')}
+            onPress={() => {
+              if (activeZone === 'dungeon') return;
+              const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
+              if (!state || state.coins < DUNGEON_ENTRY_COST) {
+                Alert.alert('Not enough coins', `Entering the dungeon costs ${DUNGEON_ENTRY_COST} coins.`);
+                return;
+              }
+              db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DUNGEON_ENTRY_COST);
+              refreshCoins();
+              enterZone('dungeon');
+            }}
           >
             <Text style={[styles.tabText, activeZone === 'dungeon' && styles.tabTextActive]}>Dungeon</Text>
           </Pressable>
         </View>
 
         <View style={styles.currencyStack}>
+          {activeZone === 'dungeon' && (
+            <View style={styles.currencyPill}>
+              <Feather name="heart" size={16} color="#e74c3c" />
+              <Text style={styles.currencyText}>{playerHp.hp}/{playerHp.hp_max}</Text>
+            </View>
+          )}
           <View style={styles.currencyPill}>
             <Feather name="circle" size={16} color="#f1c40f" />
             <Text style={styles.currencyText}>{coins}</Text>
@@ -1788,13 +2175,39 @@ export default function RpgScreen() {
         </View>
       </View>
 
+      {activeZone === 'sanctuary' && !buildItem && (
+        <View style={styles.hotbar}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Unequip tool (back to Interact)"
+            style={[styles.hotbarSlot, !equippedTool && styles.hotbarSlotActive]}
+            onPress={() => setEquippedTool(null)}
+          >
+            <Feather name="mouse-pointer" size={20} color={equippedTool ? 'rgba(255,255,255,0.55)' : '#fff'} />
+          </Pressable>
+          {TOOLS.map(tool => (
+            <Pressable
+              key={tool.id}
+              accessibilityRole="button"
+              accessibilityLabel={equippedTool === tool.id ? `Unequip ${tool.label}` : `Equip ${tool.label}`}
+              style={[styles.hotbarSlot, equippedTool === tool.id && styles.hotbarSlotActive]}
+              onPress={() => setEquippedTool(current => (current === tool.id ? null : tool.id))}
+            >
+              <Feather name={tool.icon} size={20} color={equippedTool === tool.id ? '#fff' : 'rgba(255,255,255,0.55)'} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       {buildItem && (
         <View style={styles.modePill}>
           <Feather name={buildItem.mode === 'edit' ? 'move' : 'plus-square'} size={15} color="#fff" />
           <Text style={styles.modeText}>
             {placementReport?.valid
               ? `${buildItem.label}: drag ghost, Interact confirms`
-              : `${placementReport?.reason ?? 'Unavailable'}: drag to a clear cell`}
+              : placementReport?.reason === 'Terrain' && buildItem.mode === 'plant'
+                ? 'Needs plowed soil — equip the Plow tool first'
+                : `${placementReport?.reason ?? 'Unavailable'}: drag to a clear cell`}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -1863,20 +2276,24 @@ export default function RpgScreen() {
           accessibilityLabel={
             buildItem
               ? `Confirm ${buildItem.label}`
-              : interactionPrompt
-                ? `Interact with ${interactionPrompt.label}`
-                : 'Interact'
+              : activeTool
+                ? `Use ${activeTool.label}`
+                : interactionPrompt
+                  ? `Interact with ${interactionPrompt.label}`
+                  : 'Interact'
           }
           accessibilityHint={
             buildItem
               ? 'Confirms the current build placement when the footprint is valid.'
-              : 'Uses the object, crop, or portal in front of the character.'
+              : activeTool
+                ? activeTool.hint
+                : 'Uses the object, crop, or portal in front of the character.'
           }
           style={styles.actionBtn}
           onPress={handleInteract}
         >
-          <Feather name="mouse-pointer" size={20} color="#fff" />
-          <Text style={styles.actionText}>Interact</Text>
+          <Feather name={activeTool ? activeTool.icon : 'mouse-pointer'} size={20} color="#fff" />
+          <Text style={styles.actionText}>{activeTool ? activeTool.label : 'Interact'}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -1948,6 +2365,15 @@ export default function RpgScreen() {
         onClose={() => setIsBackpackOpen(false)}
         onPlaceItem={handleBackpackPlaceItem}
         onPlantSeed={handleBackpackPlantSeed}
+        onSellItem={handleSellItem}
+        onSellAllItem={handleSellAllItem}
+        equippedToolId={TOOLS.find(t => t.id === equippedTool)?.itemId ?? null}
+        onEquipTool={(itemId) => {
+          const tool = TOOLS.find(t => t.itemId === itemId);
+          setEquippedTool(tool?.id ?? null);
+          setIsBackpackOpen(false);
+          showWorldToast({ text: tool ? `Equipped ${tool.label}` : 'Unequipped tool', tone: 'success' });
+        }}
       />
       <RpgArchive
         isOpen={isArchiveOpen}
@@ -2003,6 +2429,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,242,187,0.42)',
   },
+  gardenGrowthTrack: {
+    position: 'absolute',
+    bottom: 2,
+    left: 3,
+    right: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    overflow: 'hidden',
+  },
+  gardenGrowthFill: {
+    height: 3,
+    backgroundColor: '#7ed957',
+  },
   gardenPlotGrowing: {
     backgroundColor: 'rgba(38,106,46,0.44)',
     borderColor: 'rgba(151,255,146,0.58)',
@@ -2033,6 +2473,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(53,255,112,0.18)',
     borderWidth: 1,
     borderColor: 'rgba(255,242,187,0.58)',
+  },
+  enemyHpTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    overflow: 'hidden',
+    marginBottom: 2,
+  },
+  enemyHpFill: {
+    height: 4,
+    backgroundColor: '#e74c3c',
+  },
+  enemyHpFillBoss: {
+    backgroundColor: '#f1c40f',
+  },
+  enemyBossLabel: {
+    color: '#f1c40f',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+    textAlign: 'center',
+    marginBottom: 2,
   },
   rainOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -2111,6 +2572,44 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  equippedToolBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: '#7ed957',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 60,
+  },
+  hotbar: {
+    position: 'absolute',
+    bottom: 104,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 100,
+  },
+  hotbarSlot: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hotbarSlotActive: {
+    backgroundColor: 'rgba(53,255,112,0.32)',
+    borderColor: '#7ed957',
   },
   shopBtn: {
     minWidth: 76,

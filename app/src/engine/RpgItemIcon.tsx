@@ -69,6 +69,14 @@ type ItemIconProps = {
 };
 
 export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
+  if (item?.featherIcon) {
+    return (
+      <View style={[styles.fallback, { width: size, height: size }]}>
+        <Feather name={item.featherIcon as any} size={Math.max(14, size * 0.55)} color="#eadca8" />
+      </View>
+    );
+  }
+
   if (item?.icon) {
     return <RpgSpriteFrameView frame={item.icon} size={size} />;
   }

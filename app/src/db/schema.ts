@@ -1490,6 +1490,16 @@ function runMigrations() {
     createSanctuaryObjectRelationsTable();
     db.execSync('PRAGMA user_version = 61');
   }
+
+  if (version < 62) {
+    createDungeonEnemyKillsTable();
+    db.execSync('PRAGMA user_version = 62');
+  }
+
+  if (version < 63) {
+    createSanctuaryTerrainOverridesTable();
+    db.execSync('PRAGMA user_version = 63');
+  }
 }
 
 function createRpgDiscoveriesTable() {
@@ -1545,6 +1555,26 @@ function createSanctuaryObjectRelationsTable() {
   db.execSync(`
     CREATE INDEX IF NOT EXISTS idx_sanctuary_object_relations_target
     ON sanctuary_object_relations (target_object_id, relation_kind);
+  `);
+}
+
+function createDungeonEnemyKillsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS dungeon_enemy_kills (
+      uid TEXT PRIMARY KEY NOT NULL,
+      killed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+}
+
+function createSanctuaryTerrainOverridesTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_terrain_overrides (
+      row INTEGER NOT NULL,
+      col INTEGER NOT NULL,
+      tile_type INTEGER NOT NULL,
+      PRIMARY KEY (row, col)
+    );
   `);
 }
 
@@ -1726,7 +1756,7 @@ export function performFullReset(archiveHistory: boolean = false, retainCustomiz
     'inventory', 'active_buffs', 'bible_notes',
     'game_logs', 'dungeon_runs',
     'habit_completions', 'habits',
-    'dungeon_unlocks',
+    'dungeon_unlocks', 'dungeon_enemy_kills', 'sanctuary_terrain_overrides',
     'garden_plots', 'user_inventory', 'rpg_discoveries',
   ];
   for (const t of wipeTables) {

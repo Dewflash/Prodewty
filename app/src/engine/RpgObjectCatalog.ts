@@ -1,4 +1,4 @@
-import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID } from './RpgItemIds';
+import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from './RpgItemIds';
 import {
   RPG_BUSH_OBJECT_ASSETS,
   RPG_CAVE_OBJECT_ASSETS,
@@ -27,6 +27,7 @@ export type RpgInteractionLoot = {
   claimKey: string;
   coins: number;
   drops: RpgDrop[];
+  repeatable?: boolean;
 };
 
 export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';
@@ -71,7 +72,7 @@ export function countRpgSourcePacks<T>(
 
 export type RpgInventoryItem = {
   name: string;
-  kind: 'object' | 'resource' | 'seed';
+  kind: 'object' | 'resource' | 'seed' | 'tool';
   assetId?: string;
   iconAssetId?: string;
   source?: any;
@@ -82,6 +83,8 @@ export type RpgInventoryItem = {
   rarity?: RpgItemRarity;
   sourceLabel?: string;
   crop?: RpgCropDefinition;
+  toolId?: string;
+  featherIcon?: string;
 };
 
 export type RpgPlaceableItem = RpgInventoryItem & {
@@ -111,7 +114,7 @@ export type RpgCropDefinition = {
   stageFrames?: Record<RpgGrowthStage, RpgSpriteFrame>;
 };
 
-export type RpgArchiveCategory = 'object' | 'seed' | 'resource';
+export type RpgArchiveCategory = 'object' | 'seed' | 'resource' | 'tool';
 
 export type RpgArchiveEntry = {
   itemId: string;
@@ -128,8 +131,9 @@ export type RpgArchiveEntry = {
 };
 
 const TREE_FORAGE_DROPS = (seedItemId: string): RpgDrop[] => [
-  { itemId: seedItemId, chance: 0.18, min: 1, max: 1 },
-  { itemId: 'rpg_leaves', chance: 0.72, min: 1, max: 2 },
+  { itemId: RPG_WOOD_ITEM_ID, chance: 0.55, min: 1, max: 3 },
+  { itemId: 'rpg_leaves', chance: 0.3, min: 1, max: 2 },
+  { itemId: seedItemId, chance: 0.1, min: 1, max: 1 },
 ];
 const LEAF_FORAGE_DROPS: RpgDrop[] = [
   { itemId: 'rpg_leaves', chance: 0.78, min: 1, max: 2 },
@@ -517,6 +521,68 @@ export const RPG_ITEM_CATALOG = {
     tags: ['crystal', 'crafting'],
     description: 'Sharp crafting fragments gathered from sanctuary crystals.',
   },
+  [RPG_WOOD_ITEM_ID]: {
+    name: 'Wood',
+    kind: 'resource',
+    assetId: 'resource.wood',
+    iconAssetId: 'resource.wood',
+    rarity: 'common',
+    sourceLabel: 'Tree Drops',
+    tags: ['wood', 'crafting'],
+    description: 'Sturdy timber chopped from sanctuary trees.',
+  },
+  rpg_coin_mine: {
+    name: 'Coin Mine (Test)',
+    kind: 'object',
+    price: 0,
+    colWidth: 1,
+    colHeight: 1,
+    visWidth: 2,
+    visHeight: 2,
+    icon: RPG_TEMPLE_OBJECT_ASSETS.find(a => a.itemId === 'Temple_animated_chest')?.frame,
+    animation: RPG_TEMPLE_OBJECT_ASSETS.find(a => a.itemId === 'Temple_animated_chest')?.animation,
+    tags: ['coin_mine'],
+    rarity: 'common',
+    sourceLabel: 'Dev Tools',
+    description: 'Temporary testing aid — interact for 200 coins, repeatable, no cooldown limit.',
+    interactLoot: { claimKey: 'coin_mine', coins: 200, drops: [], repeatable: true },
+  },
+  rpg_tool_shovel: {
+    name: 'Shovel',
+    kind: 'tool',
+    toolId: 'shovel',
+    featherIcon: 'tool',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'Dig a patch of grass into a river (5 coins per dig).',
+  },
+  rpg_tool_bridge: {
+    name: 'Bridge Kit',
+    kind: 'tool',
+    toolId: 'bridge',
+    featherIcon: 'link',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'Lay a bridge across a river tile (3 wood per bridge).',
+  },
+  rpg_tool_path: {
+    name: 'Path Layer',
+    kind: 'tool',
+    toolId: 'path',
+    featherIcon: 'minus',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'Lay a walking path on grass or tilled soil (1 wood per tile).',
+  },
+  rpg_tool_plow: {
+    name: 'Plow',
+    kind: 'tool',
+    toolId: 'plow',
+    featherIcon: 'grid',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'Till grass into soil ready for planting. Free.',
+  },
   White_tree1_seed: {
     name: 'White Tree Seed',
     kind: 'seed',
@@ -585,6 +651,7 @@ export const SHOP_CATALOG = {
   ...RPG_BUSH_OBJECT_CATALOG,
   ...RPG_CAVE_OBJECT_CATALOG,
   ...RPG_TEMPLE_OBJECT_CATALOG,
+  rpg_coin_mine: RPG_ITEM_CATALOG.rpg_coin_mine,
 } satisfies Record<string, RpgPlaceableItem>;
 
 export type ShopCatalogItem = RpgPlaceableItem;
@@ -597,6 +664,18 @@ export function getRpgItem(itemId: string | null): RpgItemDefinition | null {
 export function getCropForSeed(itemId: string | null): RpgCropDefinition | null {
   if (!itemId) return null;
   return RPG_CROP_CATALOG[itemId as keyof typeof RPG_CROP_CATALOG] ?? null;
+}
+
+const RESOURCE_SELL_PRICES: Record<string, number> = {
+  rpg_leaves: 2,
+  [RPG_WOOD_ITEM_ID]: 3,
+  [RPG_WATER_DROPS_ITEM_ID]: 4,
+  [RPG_CRYSTAL_SHARDS_ITEM_ID]: 8,
+};
+
+export function getResourceSellPrice(itemId: string | null): number {
+  if (!itemId) return 0;
+  return RESOURCE_SELL_PRICES[itemId] ?? 0;
 }
 
 export function getPlaceableItem(itemId: string | null): RpgPlaceableItem | null {
@@ -623,7 +702,9 @@ export function getRpgArchiveEntries(): RpgArchiveEntry[] {
         ? 'Buy or place this object to record it.'
         : item.kind === 'seed'
           ? 'Find this seed through sanctuary interactions.'
-          : 'Collect this resource to record it.',
+          : item.kind === 'tool'
+            ? 'Granted automatically — equip it from the Backpack.'
+            : 'Collect this resource to record it.',
     }))
     .sort((a, b) => (
       categoryRank(a.category) - categoryRank(b.category) ||
@@ -656,7 +737,8 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
       facts.push('Forage: none');
     }
     if (item.interactLoot) {
-      facts.push(`Interact: once, ${formatLoot(item.interactLoot, catalog)}`);
+      const frequency = item.interactLoot.repeatable ? 'repeatable' : 'once';
+      facts.push(`Interact: ${frequency}, ${formatLoot(item.interactLoot, catalog)}`);
     }
   }
 
