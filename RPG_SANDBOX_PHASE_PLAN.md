@@ -66,12 +66,12 @@ These rules must remain true after every phase.
 | 9 | Productivity energy hook | Verified | Water Drops resource, activity rewards, atomic crop acceleration |
 | 10 | Streak weather | Verified | Streak rain overlay, crop watering effect, `npx tsc --noEmit`, Expo export |
 | 11 | Runtime asset registry | In progress | `RpgAssetRegistry.ts`, catalog asset IDs |
-| 12 | Player archive book V1 | Draft complete | `RpgArchive.tsx`, `rpg_discoveries` v58 migration, durable discovery hooks |
+| 12 | Player archive book V1 | Verified | `RpgArchive.tsx`, `rpg_discoveries` v58 migration, durable discovery hooks |
 | 13 | Forest content mapping V1 | In progress | 40 forest objects mapped into registry/catalog/archive/shop pages |
 | 14 | Farming art reset | In progress | Existing crop plots use verified seed/leaves placeholders; wrong plant frames removed |
-| 15 | Archive usability filters | Draft complete | Archive category/scope filters, discovery summary counts, empty state |
-| 16 | RPG content validation harness | Draft complete | `npm run validate:rpg` checks catalog, registry, drops, seeds, and asset files |
-| 17 | Forest rarity and source metadata | Draft complete | Catalog rarity/source labels surfaced in shop/archive and enforced by validator |
+| 15 | Archive usability filters | Verified | Archive category/scope filters, discovery summary counts, empty state |
+| 16 | RPG content validation harness | Verified | `npm run validate:rpg` checks catalog, registry, drops, seeds, and asset files |
+| 17 | Forest rarity and source metadata | Verified | Catalog rarity/source labels surfaced in shop/archive and enforced by validator |
 | 18 | Shop catalog sorting | Verified | Shop sort controls for name, rarity, and price over the forest catalog |
 | 19 | Shop/backpack interaction repair | Verified | Larger tappable shop/backpack surfaces, inline buy feedback, farm-sheet seed/crop art |
 | 20 | Catalog detail facts | Verified | Archive/backpack facts derive price, footprint, forage, harvest, and growth data from catalog metadata |
