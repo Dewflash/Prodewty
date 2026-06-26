@@ -116,6 +116,7 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
+type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';
 const TOOLS: { id: ToolId; itemId: string; label: string; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
   { id: 'shovel', itemId: 'rpg_tool_shovel', label: 'Shovel', icon: 'tool', hint: 'Dig grass into a river (5 coins)' },
@@ -176,6 +177,44 @@ const CRAFTING_RECIPES = [
     ],
   },
 ];
+const SEASON_CONFIG: Record<SeasonId, { label: string; icon: keyof typeof Feather.glyphMap; color: string; bonus: HarvestDrop; hint: string }> = {
+  spring: {
+    label: 'Spring',
+    icon: 'wind',
+    color: '#9ee6a8',
+    bonus: { itemId: 'rpg_leaves', quantity: 1 },
+    hint: '+Leaves on harvest',
+  },
+  summer: {
+    label: 'Summer',
+    icon: 'sun',
+    color: '#ffd166',
+    bonus: { itemId: RPG_WATER_DROPS_ITEM_ID, quantity: 1 },
+    hint: '+Water Drops on harvest',
+  },
+  autumn: {
+    label: 'Autumn',
+    icon: 'package',
+    color: '#f4a261',
+    bonus: { itemId: RPG_WOOD_ITEM_ID, quantity: 1 },
+    hint: '+Wood on harvest',
+  },
+  winter: {
+    label: 'Winter',
+    icon: 'cloud-snow',
+    color: '#9bd7ff',
+    bonus: { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, quantity: 1 },
+    hint: '+Crystal Shards on harvest',
+  },
+};
+
+function getCurrentSeason(date = new Date()): SeasonId {
+  const month = date.getMonth();
+  if (month >= 2 && month <= 4) return 'spring';
+  if (month >= 5 && month <= 7) return 'summer';
+  if (month >= 8 && month <= 10) return 'autumn';
+  return 'winter';
+}
 
 type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
@@ -251,6 +290,8 @@ function pickPlacementReason(current: PlacementReason, next: PlacementReason) {
 }
 
 export default function RpgScreen() {
+  const currentSeason = getCurrentSeason();
+  const seasonInfo = SEASON_CONFIG[currentSeason];
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [activeZone, setActiveZone] = useState<Zone>('sanctuary');
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
@@ -1977,7 +2018,11 @@ export default function RpgScreen() {
       return;
     }
 
-    const drops = rollHarvestDrops(growth.crop.harvest.drops);
+    const seasonalBonus = { ...seasonInfo.bonus };
+    const drops = [
+      ...rollHarvestDrops(growth.crop.harvest.drops),
+      seasonalBonus,
+    ];
     const result = harvestGardenPlot(plot.id, growth.crop.harvest.coins, drops);
     if (!result.ok) {
       showWorldToast({
@@ -1995,8 +2040,9 @@ export default function RpgScreen() {
     const firstDrop = result.drops[0];
     const firstDropItem = firstDrop ? getRpgItem(firstDrop.itemId) : null;
     const dropText = firstDrop ? `, +${firstDrop.quantity} ${firstDropItem?.name ?? firstDrop.itemId}` : '';
+    const seasonalItem = getRpgItem(seasonalBonus.itemId);
     showWorldToast({
-      text: `Harvested +${result.coins} coins${dropText}`,
+      text: `Harvested +${result.coins} coins${dropText}, ${seasonInfo.label} +${seasonalBonus.quantity} ${seasonalItem?.name ?? seasonalBonus.itemId}`,
       item: firstDropItem ?? getRpgItem(plot.seed_item_id),
       tone: 'success',
     });
@@ -2473,6 +2519,17 @@ export default function RpgScreen() {
             <Feather name="circle" size={16} color="#f1c40f" />
             <Text style={styles.currencyText}>{coins}</Text>
           </View>
+          {activeZone === 'sanctuary' && (
+            <View style={[styles.weatherPill, { borderColor: seasonInfo.color }]}>
+              <Feather name={isRaining ? 'cloud-rain' : seasonInfo.icon} size={13} color={seasonInfo.color} />
+              <View style={styles.weatherTextStack}>
+                <Text numberOfLines={1} style={[styles.weatherText, { color: seasonInfo.color }]}>
+                  {seasonInfo.label} {isRaining ? 'Rain' : 'Clear'}
+                </Text>
+                <Text numberOfLines={1} style={styles.weatherHint}>{seasonInfo.hint}</Text>
+              </View>
+            </View>
+          )}
           {!buildItem && (
             <View style={styles.hudActions}>
               <Pressable
@@ -3061,6 +3118,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 16,
     marginLeft: 6,
+  },
+  weatherPill: {
+    minWidth: 132,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    backgroundColor: 'rgba(0,0,0,0.54)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weatherTextStack: {
+    marginLeft: 6,
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  weatherText: {
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  weatherHint: {
+    marginTop: 1,
+    color: 'rgba(255,255,255,0.68)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   hudActions: {
     marginTop: 8,

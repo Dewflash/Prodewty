@@ -155,6 +155,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 80 | Performance and save-state hardening V2 | Not started | Runtime profiling, transactional persistence audits, migration simulations, and device baseline |
 | 81 | Tool terrain art V2 | Verified | Bridge, Path, and Tilled Soil now render tracked sprite frames instead of hand-drawn View fills |
 | 82 | Backpack/tool ownership split | Verified | Backpack hides tools; hotbar and character/equipment panel own tool equip/unequip |
+| 83 | Seasons and weather farm loop V2 | Verified | Season/weather HUD chip plus season-specific transactional harvest bonus drops |
 
 ## Future Development Roadmap
 
@@ -3629,5 +3630,79 @@ Expansion notes saved:
 - Later tune starter inventory migration if old saves keep tool item rows that are now intentionally hidden from Backpack.
 
 Phase 82 status:
+
+- Verified.
+
+### Phase 83 Audit
+
+Intended behavior:
+
+- Make sanctuary weather/seasons more than cosmetic by adding season-specific harvest bonuses.
+- Derive current season from the real month without adding a migration.
+- Show a compact sanctuary HUD chip with current season, clear/rain state, and harvest bonus hint.
+- Keep existing streak rain behavior: rain still appears from streak state and can advance immature crops without Water Drops.
+- Add seasonal bonus drops to the same `harvestGardenPlot` transaction so failed harvests do not grant bonus inventory.
+
+Negative guarantees:
+
+- This phase must not add normal-world action buttons.
+- This phase must not change crop planting, crop growth tables, Water Drops spending, rain overlay pointer events, or harvest coin values.
+- This phase must not claim full calendar, forecast, season-specific crop restrictions, or day/night simulation is complete.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- Existing rain already had a real crop effect, so the higher-value gap was adding a broader season/weather loop players can read at a glance.
+- Month-derived seasons avoid new persistence while still giving the farm a changing cadence.
+- Harvest bonuses are resource drops rather than direct coin inflation, preserving existing crop coin tuning.
+
+Implementation attack findings:
+
+- `SEASON_CONFIG` centralizes labels, icons, colors, bonus drops, and player-facing hints.
+- `getCurrentSeason()` derives Spring/Summer/Autumn/Winter from `Date.getMonth()`.
+- Harvest merges `seasonInfo.bonus` into the drop list before `harvestGardenPlot`, keeping inventory writes transactional.
+- The HUD chip is sanctuary-only and does not affect dungeon UI or normal controls.
+- Validator now enforces season IDs, config, transaction placement, and HUD copy.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Enter Sanctuary and confirm the HUD shows current season and Clear/Rain state.
+- Harvest a mature crop and confirm the toast includes the season bonus.
+- Confirm the bonus item appears in Backpack resources.
+- Set streak rain active and confirm the chip says Rain while existing rain crop behavior still works.
+- Enter Dungeon and confirm the season/weather chip is not shown.
+
+Expansion notes saved:
+
+- Later add persisted in-game day/season calendars if real-month seasons feel too slow.
+- Later add forecast UI, weather sounds, rare weather drops, and season-specific crop affinities.
+- Later make seasons affect animal yields or clutter regrowth once those loops are more stable.
+
+Future RPG development log:
+
+- Phase 84: Asset correctness pass. Replace remaining placeholder/wrong icons for leaves, seeds, animal products, levers, gates, traps, mechanisms, crop stages, and terrain tools with verified atlas entries; update `RPG_ASSET_ATLAS.md` with source paths, frame coordinates, intended size, collision footprint, and fallback policy.
+- Phase 85: Farming loop depth. Add crop-specific season affinities, clearer mature/boost/harvest feedback, crop product icons, and a lightweight crop journal page in the Archive so players understand what each seed produces before planting.
+- Phase 86: Interaction juice and feedback. Add small object interaction reactions for trees, animals, crops, mechanisms, and resource nodes: sprite nudge, sparkle/drop toast, cooldown/readiness state, and no extra normal-world buttons beyond `Interact` and `Attack`.
+- Phase 87: Movement and placement polish. Revisit tile size, sprite visual footprint, collision footprint, avatar footprint, and direct placement so object blocking stays physically honest while still feeling close to Stardew-style readable top-down spacing.
+- Phase 88: World progression. Add clutter/regrowth scheduling, seasonal spawn pools, rain/weather spawn modifiers, and sanctuary cleanup/reward pacing without creating save bloat or frame-time spikes.
+- Phase 89: Performance and save-state audit. Profile dense sanctuary scenes, animation timers, database writes, inventory transactions, and map rendering on device; lock in budgets for object count, crop count, animal count, and particle effects.
+
+Phase 83 status:
 
 - Verified.

@@ -1075,6 +1075,36 @@ function validateRpgToolEnergyAndCharacterUi() {
   }
 }
 
+function validateSeasonWeatherFarmLoopV2() {
+  if (!rpgScreen.includes("type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';")) {
+    fail('RPG screen must expose explicit season ids');
+  }
+  if (!rpgScreen.includes('const SEASON_CONFIG: Record<SeasonId')) {
+    fail('RPG screen must centralize season harvest bonuses');
+  }
+  ['spring', 'summer', 'autumn', 'winter'].forEach(season => {
+    if (!rpgScreen.includes(`${season}: {`)) fail(`Missing season config: ${season}`);
+  });
+  if (!rpgScreen.includes('function getCurrentSeason(date = new Date()): SeasonId')) {
+    fail('RPG screen must derive current season from date');
+  }
+  if (!rpgScreen.includes('const seasonInfo = SEASON_CONFIG[currentSeason];')) {
+    fail('RPG screen must resolve current season info for HUD and gameplay');
+  }
+  if (!rpgScreen.includes('const seasonalBonus = { ...seasonInfo.bonus };')) {
+    fail('Harvest must include the active seasonal bonus without mutating season config');
+  }
+  if (!rpgScreen.includes('...rollHarvestDrops(growth.crop.harvest.drops),\n      seasonalBonus,')) {
+    fail('Seasonal bonus must be included before harvestGardenPlot so it is transactional');
+  }
+  if (!rpgScreen.includes('styles.weatherPill')) {
+    fail('RPG HUD must show current season/weather status');
+  }
+  if (!rpgScreen.includes("{seasonInfo.label} {isRaining ? 'Rain' : 'Clear'}")) {
+    fail('Weather chip must distinguish rain from clear weather');
+  }
+}
+
 function validateRpgTerrainTileArtV2() {
   const tileArtPath = path.join(engineDir, 'TileArt.tsx');
   const tileArt = fs.readFileSync(tileArtPath, 'utf8');
@@ -1279,6 +1309,7 @@ validateSanctuaryObjectRelations();
 validateResourceNodeFeedback();
 validateLeverMechanicsV1();
 validateRpgToolEnergyAndCharacterUi();
+validateSeasonWeatherFarmLoopV2();
 validateRpgTerrainTileArtV2();
 validateSanctuaryClutterV1();
 validateRpgCraftingV1();
