@@ -31,7 +31,7 @@ import {
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
 import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
 import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
-import { BridgeTile, FLOOR_TILE_COORD, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
+import { BridgeTile, FLOOR_TILE_COORD, PathTile, TilledTile, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
 import { db } from '../src/db/schema';
 import {
   advanceGardenPlotWithInventoryItem,
@@ -116,14 +116,22 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
-type ToolId = 'shovel' | 'bridge' | 'path' | 'plow';
+type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';
 const TOOLS: { id: ToolId; itemId: string; label: string; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
   { id: 'shovel', itemId: 'rpg_tool_shovel', label: 'Shovel', icon: 'tool', hint: 'Dig grass into a river (5 coins)' },
   { id: 'bridge', itemId: 'rpg_tool_bridge', label: 'Bridge Kit', icon: 'link', hint: 'Bridge a river tile (3 wood)' },
   { id: 'path', itemId: 'rpg_tool_path', label: 'Path', icon: 'minus', hint: 'Lay a walking path (1 wood)' },
-  { id: 'plow', itemId: 'rpg_tool_plow', label: 'Plow', icon: 'grid', hint: 'Till grass for planting' },
+  { id: 'plow', itemId: 'rpg_tool_plow', label: 'Plow', icon: 'grid', hint: 'Till grass for planting (3 energy)' },
+  { id: 'watering', itemId: 'rpg_tool_watering_can', label: 'Water', icon: 'droplet', hint: 'Water a crop with energy and Water Drops' },
 ];
 const STARTER_TOOL_ITEM_IDS = TOOLS.map(t => t.itemId);
+const TOOL_ENERGY_COST: Record<ToolId, number> = {
+  shovel: 6,
+  bridge: 4,
+  path: 2,
+  plow: 3,
+  watering: 4,
+};
 
 type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
@@ -204,10 +212,11 @@ export default function RpgScreen() {
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [gardenPlots, setGardenPlots] = useState<GardenPlot[]>([]);
   const [coins, setCoins] = useState(0);
-  const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100 });
+  const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100, mp: 100 });
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
@@ -338,7 +347,7 @@ export default function RpgScreen() {
   };
 
   const refreshPlayerHp = () => {
-    const state = db.getFirstSync<{ hp: number; hp_max: number }>('SELECT hp, hp_max FROM rpg_state WHERE id = 1');
+    const state = db.getFirstSync<{ hp: number; hp_max: number; mp: number }>('SELECT hp, hp_max, mp FROM rpg_state WHERE id = 1');
     if (state) setPlayerHp(state);
   };
 
@@ -355,6 +364,20 @@ export default function RpgScreen() {
     setInventoryRevision(current => current + 1);
   };
 
+  const spendToolEnergy = (toolId: ToolId) => {
+    const cost = TOOL_ENERGY_COST[toolId];
+    if (cost <= 0) return true;
+    const state = db.getFirstSync<{ mp: number }>('SELECT mp FROM rpg_state WHERE id = 1');
+    const currentMp = state?.mp ?? 0;
+    if (currentMp < cost) {
+      showWorldToast({ text: `Too tired: need ${cost} energy`, tone: 'warn' });
+      return false;
+    }
+    db.runSync('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1', cost);
+    refreshPlayerHp();
+    return true;
+  };
+
   const enterZone = (zone: Zone) => {
     setActiveZone(zone);
     setBuildItem(null);
@@ -362,6 +385,7 @@ export default function RpgScreen() {
     setIsShopOpen(false);
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
+    setIsCharacterOpen(false);
     setInteractionPrompt(null);
     buildActive.value = 0;
     buildColWidth.value = 0;
@@ -432,6 +456,7 @@ export default function RpgScreen() {
     setIsShopOpen(false);
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
+    setIsCharacterOpen(false);
   };
 
   const beginPlantMode = (seedItemId: string) => {
@@ -462,6 +487,7 @@ export default function RpgScreen() {
     setIsShopOpen(false);
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
+    setIsCharacterOpen(false);
   };
 
   const clearBuildMode = () => {
@@ -1616,6 +1642,61 @@ export default function RpgScreen() {
     });
   };
 
+  const waterGardenPlot = (plot: GardenPlot) => {
+    const growth = getPlotGrowthInfo(plot);
+    if (!growth.crop) {
+      showWorldToast({ text: 'Crop data missing', tone: 'warn' });
+      return;
+    }
+
+    if (growth.stage >= 2) {
+      showWorldToast({ text: 'Ready to harvest', item: getRpgItem(plot.seed_item_id), tone: 'success' });
+      return;
+    }
+
+    const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
+    if (isRaining) {
+      if (!spendToolEnergy('watering')) return;
+      updatePlantGrowth(plot.id, nextStage);
+      refreshGardenPlots();
+      showWorldToast({
+        text: nextStage >= 2 ? 'Rain helped it mature' : 'Rain helped water crop',
+        item: getRpgItem(plot.seed_item_id),
+        tone: 'success',
+      });
+      return;
+    }
+
+    if (getInventoryQuantity(RPG_WATER_DROPS_ITEM_ID) <= 0) {
+      showWorldToast({ text: 'Need Water Drops', item: getRpgItem(RPG_WATER_DROPS_ITEM_ID), tone: 'warn' });
+      return;
+    }
+    if (!spendToolEnergy('watering')) return;
+    const result = advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage);
+    if (result.ok) {
+      bumpInventoryRevision();
+      refreshGardenPlots();
+      showWorldToast({
+        text: result.stage >= 2 ? 'Watered to mature' : 'Watered crop',
+        item: getRpgItem(RPG_WATER_DROPS_ITEM_ID),
+        tone: 'success',
+      });
+    } else {
+      if (growth.stage !== plot.growth_stage) {
+        refreshGardenPlots();
+      }
+      showWorldToast({
+        text: result.reason === 'no_item'
+          ? 'Need Water Drops'
+          : result.reason === 'no_plot'
+            ? 'Plot missing'
+            : 'Could not water',
+        item: result.reason === 'no_item' ? getRpgItem(RPG_WATER_DROPS_ITEM_ID) : getRpgItem(plot.seed_item_id),
+        tone: 'warn',
+      });
+    }
+  };
+
   const inspectOrHarvestPlot = (plot: GardenPlot) => {
     const growth = getPlotGrowthInfo(plot);
     if (!growth.crop) {
@@ -1624,8 +1705,8 @@ export default function RpgScreen() {
     }
 
     if (growth.stage < 2) {
-      const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
       if (isRaining) {
+        const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
         updatePlantGrowth(plot.id, nextStage);
         refreshGardenPlots();
         showWorldToast({
@@ -1635,30 +1716,11 @@ export default function RpgScreen() {
         });
         return;
       }
-
-      const result = advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage);
-      if (result.ok) {
-        bumpInventoryRevision();
-        refreshGardenPlots();
-        showWorldToast({
-          text: result.stage >= 2 ? 'Watered to mature' : 'Watered crop',
-          item: getRpgItem(RPG_WATER_DROPS_ITEM_ID),
-          tone: 'success',
-        });
-      } else {
-        if (growth.stage !== plot.growth_stage) {
-          refreshGardenPlots();
-        }
-        showWorldToast({
-          text: result.reason === 'no_item'
-            ? `${growth.label}: ${growth.remainingMinutes}m left`
-            : result.reason === 'no_plot'
-              ? 'Plot missing'
-              : 'Could not water',
-          item: getRpgItem(plot.seed_item_id),
-          tone: result.reason === 'no_item' ? 'muted' : 'warn',
-        });
-      }
+      showWorldToast({
+        text: `${growth.label}: ${growth.remainingMinutes}m left`,
+        item: getRpgItem(plot.seed_item_id),
+        tone: 'muted',
+      });
       return;
     }
 
@@ -1735,6 +1797,7 @@ export default function RpgScreen() {
       showWorldToast({ text: `Need ${DIG_COST} coins to dig`, tone: 'warn' });
       return;
     }
+    if (!spendToolEnergy('shovel')) return;
     db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DIG_COST);
     refreshCoins();
     setSanctuaryTile(row, col, TileType.WATER);
@@ -1748,6 +1811,7 @@ export default function RpgScreen() {
       showWorldToast({ text: `Need ${BRIDGE_WOOD_COST} wood to build a bridge`, tone: 'warn' });
       return;
     }
+    if (!spendToolEnergy('bridge')) return;
     addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -BRIDGE_WOOD_COST, 'inventory');
     setSanctuaryTile(row, col, TileType.BRIDGE);
     showWorldToast({ text: `Built a bridge (-${BRIDGE_WOOD_COST} wood)`, tone: 'success' });
@@ -1760,18 +1824,29 @@ export default function RpgScreen() {
       showWorldToast({ text: `Need ${PATH_WOOD_COST} wood to lay a path`, tone: 'warn' });
       return;
     }
+    if (!spendToolEnergy('path')) return;
     addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -PATH_WOOD_COST, 'inventory');
     setSanctuaryTile(row, col, TileType.PATH);
     showWorldToast({ text: `Laid a path (-${PATH_WOOD_COST} wood)`, tone: 'success' });
   };
 
   const plowTile = (row: number, col: number) => {
+    if (!spendToolEnergy('plow')) return;
     setSanctuaryTile(row, col, TileType.TILLED);
     showWorldToast({ text: 'Tilled the soil — ready to plant', tone: 'success' });
   };
 
   const useEquippedTool = (row: number, col: number) => {
     const tile = mapData[row]?.[col];
+    const plot = gardenPlots.find(item => item.row === row && item.col === col);
+    if (equippedTool === 'watering') {
+      if (!plot) {
+        showWorldToast({ text: 'Watering Can needs a crop', tone: 'warn' });
+        return;
+      }
+      waterGardenPlot(plot);
+      return;
+    }
     if (equippedTool === 'shovel') {
       if (tile !== TileType.GRASS) {
         showWorldToast({ text: 'Shovel only works on grass', tone: 'warn' });
@@ -1883,6 +1958,14 @@ export default function RpgScreen() {
                 ) : tile === TileType.BRIDGE ? (
                   <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
                     <BridgeTile />
+                  </View>
+                ) : tile === TileType.PATH ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
+                    <PathTile />
+                  </View>
+                ) : tile === TileType.TILLED ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
+                    <TilledTile />
                   </View>
                 ) : (
                   <View
@@ -2127,6 +2210,12 @@ export default function RpgScreen() {
               <Text style={styles.currencyText}>{playerHp.hp}/{playerHp.hp_max}</Text>
             </View>
           )}
+          {activeZone === 'sanctuary' && (
+            <View style={styles.currencyPill}>
+              <Feather name="zap" size={16} color="#70d6ff" />
+              <Text style={styles.energyText}>{playerHp.mp}/100</Text>
+            </View>
+          )}
           <View style={styles.currencyPill}>
             <Feather name="circle" size={16} color="#f1c40f" />
             <Text style={styles.currencyText}>{coins}</Text>
@@ -2140,10 +2229,24 @@ export default function RpgScreen() {
                 onPress={() => {
                   setIsShopOpen(false);
                   setIsArchiveOpen(false);
+                  setIsCharacterOpen(false);
                   setIsBackpackOpen(true);
                 }}
               >
                 <RpgSpriteFrameView frame={RPG_UI_FRAMES.backpack} size={24} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open character equipment"
+                style={styles.iconHudBtn}
+                onPress={() => {
+                  setIsShopOpen(false);
+                  setIsArchiveOpen(false);
+                  setIsBackpackOpen(false);
+                  setIsCharacterOpen(true);
+                }}
+              >
+                <Feather name="user" size={18} color="#fff2bb" />
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -2152,6 +2255,7 @@ export default function RpgScreen() {
                 onPress={() => {
                   setIsShopOpen(false);
                   setIsBackpackOpen(false);
+                  setIsCharacterOpen(false);
                   setIsArchiveOpen(true);
                 }}
               >
@@ -2164,6 +2268,7 @@ export default function RpgScreen() {
                 onPress={() => {
                   setIsBackpackOpen(false);
                   setIsArchiveOpen(false);
+                  setIsCharacterOpen(false);
                   setIsShopOpen(true);
                 }}
               >
@@ -2270,6 +2375,75 @@ export default function RpgScreen() {
         </View>
       )}
 
+      {isCharacterOpen && !buildItem && (
+        <View style={styles.characterPanel}>
+          <View style={styles.characterHeader}>
+            <View style={styles.characterPortrait}>
+              <Feather name="user" size={30} color="#fff2bb" />
+              {activeTool && (
+                <View style={styles.characterToolBadge}>
+                  <Feather name={activeTool.icon} size={13} color="#fff" />
+                </View>
+              )}
+            </View>
+            <View style={styles.characterTitleStack}>
+              <Text style={styles.characterTitle}>Character</Text>
+              <Text style={styles.characterSubtitle}>
+                {activeTool ? `Equipped: ${activeTool.label}` : 'No tool equipped'}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close character equipment"
+              style={styles.characterCloseButton}
+              onPress={() => setIsCharacterOpen(false)}
+            >
+              <Feather name="x" size={15} color="#fff" />
+            </Pressable>
+          </View>
+          <View style={styles.characterBars}>
+            <View style={styles.characterBarRow}>
+              <Text style={styles.characterBarLabel}>HP</Text>
+              <View style={styles.characterBarTrack}>
+                <View style={[styles.characterHpFill, { width: `${Math.max(0, Math.min(100, (playerHp.hp / Math.max(1, playerHp.hp_max)) * 100))}%` }]} />
+              </View>
+              <Text style={styles.characterBarValue}>{playerHp.hp}/{playerHp.hp_max}</Text>
+            </View>
+            <View style={styles.characterBarRow}>
+              <Text style={styles.characterBarLabel}>Energy</Text>
+              <View style={styles.characterBarTrack}>
+                <View style={[styles.characterEnergyFill, { width: `${Math.max(0, Math.min(100, playerHp.mp))}%` }]} />
+              </View>
+              <Text style={styles.characterBarValue}>{playerHp.mp}/100</Text>
+            </View>
+          </View>
+          <View style={styles.characterSlots}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Unequip current tool"
+              style={[styles.characterToolSlot, !equippedTool && styles.characterToolSlotActive]}
+              onPress={() => setEquippedTool(null)}
+            >
+              <Feather name="mouse-pointer" size={17} color="#fff" />
+              <Text numberOfLines={1} style={styles.characterToolLabel}>Hands</Text>
+            </Pressable>
+            {TOOLS.map(tool => (
+              <Pressable
+                key={tool.id}
+                accessibilityRole="button"
+                accessibilityLabel={equippedTool === tool.id ? `Unequip ${tool.label}` : `Equip ${tool.label}`}
+                style={[styles.characterToolSlot, equippedTool === tool.id && styles.characterToolSlotActive]}
+                onPress={() => setEquippedTool(current => (current === tool.id ? null : tool.id))}
+              >
+                <Feather name={tool.icon} size={17} color="#fff" />
+                <Text numberOfLines={1} style={styles.characterToolLabel}>{tool.label}</Text>
+                <Text numberOfLines={1} style={styles.characterToolCost}>{TOOL_ENERGY_COST[tool.id]} EN</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
       <View style={styles.actionBtns}>
         <Pressable
           accessibilityRole="button"
@@ -2293,7 +2467,7 @@ export default function RpgScreen() {
           onPress={handleInteract}
         >
           <Feather name={activeTool ? activeTool.icon : 'mouse-pointer'} size={20} color="#fff" />
-          <Text style={styles.actionText}>{activeTool ? activeTool.label : 'Interact'}</Text>
+          <Text style={styles.actionText}>Interact</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -2557,6 +2731,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 6,
   },
+  energyText: {
+    color: '#70d6ff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 16,
+    marginLeft: 6,
+  },
   hudActions: {
     marginTop: 8,
     flexDirection: 'row',
@@ -2743,6 +2923,140 @@ const styles = StyleSheet.create({
     color: '#d4e4d1',
     fontFamily: fonts.ui.regular,
     fontSize: 10,
+  },
+  characterPanel: {
+    position: 'absolute',
+    top: 128,
+    right: 20,
+    width: 272,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: 'rgba(20,18,16,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.32)',
+    zIndex: 115,
+  },
+  characterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  characterPortrait: {
+    width: 52,
+    height: 52,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,242,187,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.32)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  characterToolBadge: {
+    position: 'absolute',
+    right: -5,
+    bottom: -5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2d6a4f',
+    borderWidth: 1,
+    borderColor: '#b7ffb0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  characterTitleStack: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 10,
+  },
+  characterTitle: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 16,
+  },
+  characterSubtitle: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 11,
+  },
+  characterCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  characterBars: {
+    gap: 6,
+    marginBottom: 10,
+  },
+  characterBarRow: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  characterBarLabel: {
+    width: 44,
+    color: 'rgba(255,242,187,0.72)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  characterBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    overflow: 'hidden',
+  },
+  characterHpFill: {
+    height: 6,
+    backgroundColor: '#e74c3c',
+  },
+  characterEnergyFill: {
+    height: 6,
+    backgroundColor: '#70d6ff',
+  },
+  characterBarValue: {
+    width: 48,
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+    textAlign: 'right',
+  },
+  characterSlots: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  characterToolSlot: {
+    width: 80,
+    height: 54,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  characterToolSlotActive: {
+    backgroundColor: 'rgba(53,255,112,0.24)',
+    borderColor: '#7ed957',
+  },
+  characterToolLabel: {
+    marginTop: 3,
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  characterToolCost: {
+    marginTop: 1,
+    color: 'rgba(112,214,255,0.86)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   actionBtns: {
     position: 'absolute',

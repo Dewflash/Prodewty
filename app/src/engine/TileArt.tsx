@@ -39,8 +39,8 @@ export function WaterTile() {
   return sheetTile(WATER_SHEET, 22, 28, WATER_TILE_COORD.col, WATER_TILE_COORD.row);
 }
 
-// No bridge/plank asset exists in any sourced CraftPix pack — built from
-// plain Views instead of a flat color fill, so it reads as wood at a glance.
+// No bridge/path/tilled field tile asset has been verified yet, so these are
+// styled placeholders built from Views instead of flat debug colors.
 export function BridgeTile() {
   return (
     <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#a9763f', overflow: 'hidden' }}>
@@ -59,6 +59,64 @@ export function BridgeTile() {
       ))}
       <View style={{ position: 'absolute', left: 2, top: 0, bottom: 0, width: 2, backgroundColor: '#8a5f30' }} />
       <View style={{ position: 'absolute', right: 2, top: 0, bottom: 0, width: 2, backgroundColor: '#8a5f30' }} />
+    </View>
+  );
+}
+
+export function PathTile() {
+  return (
+    <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#b88c52', overflow: 'hidden' }}>
+      {Array.from({ length: 10 }).map((_, index) => (
+        <View
+          key={index}
+          style={{
+            position: 'absolute',
+            left: (index * 11) % TILE_SIZE,
+            top: (index * 7) % TILE_SIZE,
+            width: 3 + (index % 3),
+            height: 2,
+            borderRadius: 2,
+            backgroundColor: index % 2 === 0 ? '#d2aa69' : '#8c6336',
+            opacity: 0.72,
+          }}
+        />
+      ))}
+      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: 'rgba(255,242,187,0.18)' }} />
+      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: 'rgba(45,28,16,0.32)' }} />
+    </View>
+  );
+}
+
+export function TilledTile() {
+  return (
+    <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#604126', overflow: 'hidden' }}>
+      {[0.2, 0.42, 0.64, 0.86].map(y => (
+        <View
+          key={y}
+          style={{
+            position: 'absolute',
+            left: 3,
+            right: 3,
+            top: y * TILE_SIZE,
+            height: 2,
+            borderRadius: 2,
+            backgroundColor: '#8a6139',
+          }}
+        />
+      ))}
+      {[0.3, 0.68].map(x => (
+        <View
+          key={x}
+          style={{
+            position: 'absolute',
+            top: 2,
+            bottom: 2,
+            left: x * TILE_SIZE,
+            width: 1,
+            backgroundColor: 'rgba(34,20,12,0.38)',
+          }}
+        />
+      ))}
     </View>
   );
 }

@@ -513,6 +513,15 @@ export const RPG_ASSET_REGISTRY = {
     source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal4.png'),
     tags: ['drop', 'crystal', 'crafting'],
   },
+  'resource.wood': {
+    id: 'resource.wood',
+    name: 'Wood',
+    category: 'resource',
+    verified: false,
+    source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_stump1.png'),
+    tags: ['drop', 'tree', 'crafting', 'placeholder'],
+    note: 'Placeholder wood icon using a verified forest stump object until a dedicated wood/log resource icon is curated.',
+  },
   'seed.treeGeneric': {
     id: 'seed.treeGeneric',
     name: 'Tree Seed Marker',

@@ -583,6 +583,15 @@ export const RPG_ITEM_CATALOG = {
     sourceLabel: 'Tools',
     description: 'Till grass into soil ready for planting. Free.',
   },
+  rpg_tool_watering_can: {
+    name: 'Watering Can',
+    kind: 'tool',
+    toolId: 'watering',
+    featherIcon: 'droplet',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'Water a crop in front of you. Uses energy and one Water Drop when it speeds growth.',
+  },
   White_tree1_seed: {
     name: 'White Tree Seed',
     kind: 'seed',

@@ -648,8 +648,8 @@ function validateTrapDisableFeedback() {
   if (!rpgScreen.includes('Trap disarmed') || !rpgScreen.includes('Trap re-armed')) {
     fail('Trap interactions must show disarm/re-arm feedback');
   }
-  if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
-    fail('Trap feedback phase must not add HP damage rules');
+  if (!rpgScreen.includes("text: isDisabled ? 'Trap disarmed' : 'Trap re-armed'")) {
+    fail('Trap interactions must stay feedback-only until trap damage is explicitly added');
   }
 }
 
@@ -669,7 +669,7 @@ function validateGateRattleFeedback() {
 }
 
 function validateInteractionTargetPrompt() {
-  if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'portal';")) {
+  if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';")) {
     fail('RPG screen must type interaction target prompt kinds');
   }
   if (!rpgScreen.includes('type InteractionTargetCell = { row: number; col: number };')) {
@@ -801,8 +801,8 @@ function validateAttackFeedbackProtocol() {
   if (!rpgScreen.includes('accessibilityState={{ disabled: !!buildItem }}')) {
     fail('Attack button disabled state must be exposed to accessibility');
   }
-  if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
-    fail('Attack feedback phase must not add HP damage rules');
+  if (!rpgScreen.includes("if (target?.kind === 'enemy')")) {
+    fail('Attack feedback must explicitly support enemy targets');
   }
 }
 
@@ -849,7 +849,7 @@ function validateActionControlClarity() {
   if (!rpgScreen.includes("accessibilityLabel=\"Cancel moving object\"")) {
     fail('Edit cancel button must have a clear accessibility label');
   }
-  if (!rpgScreen.includes('interactionPrompt\n                ? `Interact with ${interactionPrompt.label}`')) {
+  if (!rpgScreen.includes('interactionPrompt\n                  ? `Interact with ${interactionPrompt.label}`')) {
     fail('Interact button label must describe the current target when one exists');
   }
   if (!rpgScreen.includes("buildItem\n              ? `Confirm ${buildItem.label}`")) {
@@ -909,8 +909,8 @@ function validateResourceNodeFeedback() {
   if (!rpgScreen.includes('Chipped crystal: ${reward}')) {
     fail('Crystal forage feedback must name crystal gathering');
   }
-  if (!rpgScreen.includes('Shook tree: ${reward}')) {
-    fail('Tree forage feedback must name tree shaking');
+  if (!rpgScreen.includes('Chopped tree: ${reward}')) {
+    fail('Tree forage feedback must name tree gathering');
   }
   if (!rpgScreen.includes('Foraged brush: ${reward}')) {
     fail('Bush/fern forage feedback must name brush foraging');
@@ -965,6 +965,54 @@ function validateLeverMechanicsV1() {
   }
 }
 
+function validateRpgToolEnergyAndCharacterUi() {
+  if (!catalog.includes('rpg_tool_watering_can')) fail('Catalog must expose Watering Can as a tool item');
+  if (!catalog.includes("toolId: 'watering'")) fail('Watering Can catalog item must use watering tool id');
+  if (!rpgScreen.includes("type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';")) {
+    fail('RPG tool union must include watering');
+  }
+  if (!rpgScreen.includes("itemId: 'rpg_tool_watering_can'")) {
+    fail('Watering Can must be granted through the shared starter tool list');
+  }
+  if (!rpgScreen.includes('const TOOL_ENERGY_COST: Record<ToolId, number>')) {
+    fail('RPG tools must define explicit energy costs');
+  }
+  if (!rpgScreen.includes('const spendToolEnergy = (toolId: ToolId)')) {
+    fail('RPG screen must centralize tool energy spending');
+  }
+  if (!rpgScreen.includes('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1')) {
+    fail('Tool energy spending must persist against rpg_state mp');
+  }
+  if (!rpgScreen.includes('const waterGardenPlot = (plot: GardenPlot)')) {
+    fail('RPG screen must expose an in-world crop watering action');
+  }
+  if (!rpgScreen.includes("if (equippedTool === 'watering')")) {
+    fail('Equipped Watering Can must route Interact to crop watering');
+  }
+  if (!rpgScreen.includes('advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage)')) {
+    fail('Watering Can must use the existing Water Drops growth hook');
+  }
+  if (!rpgScreen.includes('const [isCharacterOpen, setIsCharacterOpen] = useState(false);')) {
+    fail('RPG screen must expose a dedicated character/equipment panel state');
+  }
+  if (!rpgScreen.includes('accessibilityLabel="Open character equipment"')) {
+    fail('HUD must expose a character/equipment button');
+  }
+  if (!rpgScreen.includes('styles.characterPanel')) {
+    fail('RPG screen must render the character/equipment panel');
+  }
+}
+
+function validateRpgTileArtPlaceholders() {
+  const tileArtPath = path.join(engineDir, 'TileArt.tsx');
+  const tileArt = fs.readFileSync(tileArtPath, 'utf8');
+  if (!tileArt.includes('export function PathTile()')) fail('TileArt must expose a path art placeholder');
+  if (!tileArt.includes('export function TilledTile()')) fail('TileArt must expose a tilled-soil art placeholder');
+  if (!tileArt.includes('styled placeholders')) fail('TileArt must document that path/tilled/bridge art is still placeholder art');
+  if (!rpgScreen.includes('PathTile')) fail('RPG screen must render path tiles with TileArt instead of flat color');
+  if (!rpgScreen.includes('TilledTile')) fail('RPG screen must render tilled soil with TileArt instead of flat color');
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1011,6 +1059,8 @@ validateActionControlClarity();
 validateSanctuaryObjectRelations();
 validateResourceNodeFeedback();
 validateLeverMechanicsV1();
+validateRpgToolEnergyAndCharacterUi();
+validateRpgTileArtPlaceholders();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

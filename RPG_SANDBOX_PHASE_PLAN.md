@@ -1,6 +1,6 @@
 # RPG Sandbox Phase Plan
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 This ledger is the authoritative plan for the RPG sandbox work from Phase 0 onward. It exists so every pass can be judged against explicit goals, tests, evidence, and deferred expansion notes instead of memory.
 
@@ -138,6 +138,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 63 | Dungeon/sanctuary object split | Not started | Separate safe sanctuary decor from dungeon hazards, loot, locks, and combat props |
 | 64 | Economy balance and crafting foundations | Not started | Price resources, rewards, chests, processors, and future crafting loops coherently |
 | 65 | Performance and save-state hardening | Not started | Profile runtime hotspots, persistence transactions, migrations, and recovery paths |
+| 66 | Tool energy, watering, and character panel | Verified | Watering Can action, MP energy costs, character/equipment panel, textured tile placeholders |
 
 ## Future Development Roadmap
 
@@ -2951,5 +2952,57 @@ Expansion notes saved:
 - Later add a small script that validates every Phase Overview row has a matching audit block or is explicitly `Not started`.
 
 Phase 56 status:
+
+- Verified.
+
+### Phase 66 Audit
+
+Intended behavior:
+
+- Add Watering Can as a real RPG starter tool using the same catalog, backpack, hotbar, and archive path as the other tools.
+- Plain Interact on immature crops inspects progress; equipped Watering Can performs the deliberate in-world watering action.
+- Watering uses the existing Water Drops growth hook and spends RPG MP as action energy only when the action can actually proceed.
+- Shovel, Bridge Kit, Path, and Plow also spend explicit MP energy after their terrain/resource validation succeeds.
+- Sanctuary HUD shows current energy, and a dedicated character/equipment panel shows avatar status, HP, energy, equipped tool, tool slots, and tool energy costs.
+- Bridge, Path, and Tilled Soil render with textured view-built placeholders instead of flat color fills.
+
+Negative guarantees:
+
+- This phase must not add new normal-world action buttons; `Interact` and `Attack` remain the only bottom gameplay actions.
+- This phase must not add a schema migration; action energy reuses existing `rpg_state.mp`.
+- Failed tool validation must not spend energy or resources.
+- Watering must not bypass crop occupancy, growth stage, or Water Drops checks.
+- Placeholder tile art must be logged as placeholder, not claimed as verified final asset art.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/TileArt.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgAssetRegistry.ts app/src/engine/TileArt.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Confirm Watering Can appears in the hotbar, Backpack Tools filter, and character/equipment panel.
+- Till grass, plant a seed, equip Watering Can, face the crop, press Interact, and confirm energy and Water Drops decrease only on successful watering.
+- Press Interact on an immature crop with no tool and confirm it reports crop progress instead of spending Water Drops.
+- Try each tool with invalid terrain/resources and confirm energy does not decrease.
+- Open the character panel and confirm HP, energy, equipped tool, and tool slots are readable on device.
+- Confirm Bridge, Path, and Tilled Soil no longer look like single flat debug colors.
+
+Expansion notes saved:
+
+- No verified final bridge/path/tilled-soil terrain art was found in the active runtime mapping during this pass; current versions are styled placeholders.
+- A future phase should make Water Drops and MP balance less confusing, likely by naming MP as Energy in the RPG sandbox or introducing a proper daily farm-energy stat.
+- A future phase should move tools out of the Backpack entirely if the desired final structure is a character/equipment inventory separate from seeds/resources.
+
+Phase 66 status:
 
 - Verified.
