@@ -116,7 +116,7 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
-type ObjectReaction = {
+type WorldCellReaction = {
   id: number;
   row: number;
   col: number;
@@ -319,7 +319,7 @@ export default function RpgScreen() {
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
   const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
-  const [objectReaction, setObjectReaction] = useState<ObjectReaction | null>(null);
+  const [worldCellReaction, setWorldCellReaction] = useState<WorldCellReaction | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
   const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
@@ -327,7 +327,7 @@ export default function RpgScreen() {
   const [equippedTool, setEquippedTool] = useState<ToolId | null>(null);
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const objectReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const worldCellReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forageCooldowns = useRef<Record<number, number>>({});
   const defeatedEnemyUids = useRef<Set<string>>(new Set());
   const emptyInteractCooldownUntil = useRef(0);
@@ -1164,7 +1164,7 @@ export default function RpgScreen() {
   useEffect(() => () => {
     if (worldToastTimer.current) clearTimeout(worldToastTimer.current);
     if (interactionTimer.current) clearTimeout(interactionTimer.current);
-    if (objectReactionTimer.current) clearTimeout(objectReactionTimer.current);
+    if (worldCellReactionTimer.current) clearTimeout(worldCellReactionTimer.current);
   }, []);
 
   useEffect(() => {
@@ -1523,11 +1523,11 @@ export default function RpgScreen() {
     object: MapObject,
     label: string,
     item: RpgItemDefinition | null | undefined,
-    tone: ObjectReaction['tone'] = 'muted',
+    tone: WorldCellReaction['tone'] = 'muted',
   ) => {
     const objectItem = getPlaceableItem(object.type);
-    if (objectReactionTimer.current) clearTimeout(objectReactionTimer.current);
-    setObjectReaction({
+    if (worldCellReactionTimer.current) clearTimeout(worldCellReactionTimer.current);
+    setWorldCellReaction({
       id: Date.now(),
       row: object.row,
       col: object.col,
@@ -1536,7 +1536,26 @@ export default function RpgScreen() {
       item,
       tone,
     });
-    objectReactionTimer.current = setTimeout(() => setObjectReaction(null), 900);
+    worldCellReactionTimer.current = setTimeout(() => setWorldCellReaction(null), 900);
+  };
+
+  const showPlotReaction = (
+    plot: GardenPlot,
+    label: string,
+    item: RpgItemDefinition | null | undefined,
+    tone: WorldCellReaction['tone'] = 'muted',
+  ) => {
+    if (worldCellReactionTimer.current) clearTimeout(worldCellReactionTimer.current);
+    setWorldCellReaction({
+      id: Date.now(),
+      row: plot.row,
+      col: plot.col,
+      colWidth: 1,
+      label,
+      item,
+      tone,
+    });
+    worldCellReactionTimer.current = setTimeout(() => setWorldCellReaction(null), 900);
   };
 
   const addSandboxInventoryItem = (itemId: string, quantity: number, source: RpgDiscoverySource = 'inventory') => {
@@ -1985,11 +2004,13 @@ export default function RpgScreen() {
   const waterGardenPlot = (plot: GardenPlot) => {
     const growth = getPlotGrowthInfo(plot);
     if (!growth.crop) {
+      showPlotReaction(plot, 'missing', null, 'warn');
       showWorldToast({ text: 'Crop data missing', tone: 'warn' });
       return;
     }
 
     if (growth.stage >= 2) {
+      showPlotReaction(plot, 'ready', getRpgItem(plot.seed_item_id), 'success');
       showWorldToast({ text: 'Ready to harvest', item: getRpgItem(plot.seed_item_id), tone: 'success' });
       return;
     }
@@ -1999,6 +2020,7 @@ export default function RpgScreen() {
       if (!spendToolEnergy('watering')) return;
       updatePlantGrowth(plot.id, nextStage);
       refreshGardenPlots();
+      showPlotReaction(plot, nextStage >= 2 ? 'mature' : '+growth', getRpgItem(plot.seed_item_id), 'success');
       showWorldToast({
         text: nextStage >= 2 ? 'Rain helped it mature' : 'Rain helped water crop',
         item: getRpgItem(plot.seed_item_id),
@@ -2008,6 +2030,7 @@ export default function RpgScreen() {
     }
 
     if (getInventoryQuantity(RPG_WATER_DROPS_ITEM_ID) <= 0) {
+      showPlotReaction(plot, 'need drop', getRpgItem(RPG_WATER_DROPS_ITEM_ID), 'warn');
       showWorldToast({ text: 'Need Water Drops', item: getRpgItem(RPG_WATER_DROPS_ITEM_ID), tone: 'warn' });
       return;
     }
@@ -2016,6 +2039,7 @@ export default function RpgScreen() {
     if (result.ok) {
       bumpInventoryRevision();
       refreshGardenPlots();
+      showPlotReaction(plot, result.stage >= 2 ? 'mature' : '+growth', getRpgItem(RPG_WATER_DROPS_ITEM_ID), 'success');
       showWorldToast({
         text: result.stage >= 2 ? 'Watered to mature' : 'Watered crop',
         item: getRpgItem(RPG_WATER_DROPS_ITEM_ID),
@@ -2034,12 +2058,19 @@ export default function RpgScreen() {
         item: result.reason === 'no_item' ? getRpgItem(RPG_WATER_DROPS_ITEM_ID) : getRpgItem(plot.seed_item_id),
         tone: 'warn',
       });
+      showPlotReaction(
+        plot,
+        result.reason === 'no_item' ? 'need drop' : result.reason === 'no_plot' ? 'missing' : 'failed',
+        result.reason === 'no_item' ? getRpgItem(RPG_WATER_DROPS_ITEM_ID) : getRpgItem(plot.seed_item_id),
+        'warn',
+      );
     }
   };
 
   const inspectOrHarvestPlot = (plot: GardenPlot) => {
     const growth = getPlotGrowthInfo(plot);
     if (!growth.crop) {
+      showPlotReaction(plot, 'missing', null, 'warn');
       showWorldToast({ text: 'Crop data missing', tone: 'warn' });
       return;
     }
@@ -2049,6 +2080,7 @@ export default function RpgScreen() {
         const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
         updatePlantGrowth(plot.id, nextStage);
         refreshGardenPlots();
+        showPlotReaction(plot, nextStage >= 2 ? 'mature' : '+rain', getRpgItem(plot.seed_item_id), 'success');
         showWorldToast({
           text: nextStage >= 2 ? 'Rain matured crop' : 'Rain watered crop',
           item: getRpgItem(plot.seed_item_id),
@@ -2061,6 +2093,7 @@ export default function RpgScreen() {
         item: getRpgItem(plot.seed_item_id),
         tone: 'muted',
       });
+      showPlotReaction(plot, `${growth.remainingMinutes}m`, getRpgItem(plot.seed_item_id), 'muted');
       return;
     }
 
@@ -2075,6 +2108,7 @@ export default function RpgScreen() {
         text: result.reason === 'no_plot' ? 'Already harvested' : 'Harvest failed',
         tone: 'warn',
       });
+      showPlotReaction(plot, result.reason === 'no_plot' ? 'gone' : 'failed', getRpgItem(plot.seed_item_id), 'warn');
       refreshGardenPlots();
       return;
     }
@@ -2087,6 +2121,7 @@ export default function RpgScreen() {
     const firstDropItem = firstDrop ? getRpgItem(firstDrop.itemId) : null;
     const dropText = firstDrop ? `, +${firstDrop.quantity} ${firstDropItem?.name ?? firstDrop.itemId}` : '';
     const seasonalItem = getRpgItem(seasonalBonus.itemId);
+    showPlotReaction(plot, `+${result.coins}`, firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');
     showWorldToast({
       text: `Harvested +${result.coins} coins${dropText}, ${seasonInfo.label} +${seasonalBonus.quantity} ${seasonalItem?.name ?? seasonalBonus.itemId}`,
       item: firstDropItem ?? getRpgItem(plot.seed_item_id),
@@ -2339,29 +2374,6 @@ export default function RpgScreen() {
             />
           ))}
 
-          {activeZone === 'sanctuary' && objectReaction && (
-            <View
-              key={objectReaction.id}
-              pointerEvents="none"
-              style={[
-                styles.objectReaction,
-                objectReaction.tone === 'success' && styles.objectReactionSuccess,
-                objectReaction.tone === 'warn' && styles.objectReactionWarn,
-                {
-                  left: (objectReaction.col + objectReaction.colWidth / 2) * TILE_SIZE - 36,
-                  top: objectReaction.row * TILE_SIZE - 28,
-                },
-              ]}
-            >
-              {objectReaction.item ? (
-                <RpgItemIcon item={objectReaction.item} size={18} />
-              ) : (
-                <Feather name={objectReaction.tone === 'warn' ? 'alert-circle' : 'star'} size={14} color="#fff2bb" />
-              )}
-              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.objectReactionText}>{objectReaction.label}</Text>
-            </View>
-          )}
-
           {activeZone === 'sanctuary' && gardenPlots.map(plot => {
             const growth = getPlotGrowthInfo(plot);
             const cropFrame = growth.crop?.stageFrames?.[growth.stage] ?? null;
@@ -2407,6 +2419,29 @@ export default function RpgScreen() {
               </View>
             );
           })}
+
+          {activeZone === 'sanctuary' && worldCellReaction && (
+            <View
+              key={worldCellReaction.id}
+              pointerEvents="none"
+              style={[
+                styles.worldCellReaction,
+                worldCellReaction.tone === 'success' && styles.worldCellReactionSuccess,
+                worldCellReaction.tone === 'warn' && styles.worldCellReactionWarn,
+                {
+                  left: (worldCellReaction.col + worldCellReaction.colWidth / 2) * TILE_SIZE - 36,
+                  top: worldCellReaction.row * TILE_SIZE - 28,
+                },
+              ]}
+            >
+              {worldCellReaction.item ? (
+                <RpgItemIcon item={worldCellReaction.item} size={18} />
+              ) : (
+                <Feather name={worldCellReaction.tone === 'warn' ? 'alert-circle' : 'star'} size={14} color="#fff2bb" />
+              )}
+              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.worldCellReactionText}>{worldCellReaction.label}</Text>
+            </View>
+          )}
 
           {(buildCatalogItem || buildSeedItem) && (
             <>
@@ -3368,7 +3403,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 8,
   },
-  objectReaction: {
+  worldCellReaction: {
     position: 'absolute',
     zIndex: 108,
     width: 72,
@@ -3383,15 +3418,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  objectReactionSuccess: {
+  worldCellReactionSuccess: {
     borderColor: 'rgba(53,255,112,0.58)',
     backgroundColor: 'rgba(15,42,24,0.78)',
   },
-  objectReactionWarn: {
+  worldCellReactionWarn: {
     borderColor: 'rgba(255,114,114,0.58)',
     backgroundColor: 'rgba(58,25,24,0.78)',
   },
-  objectReactionText: {
+  worldCellReactionText: {
     flexShrink: 1,
     minWidth: 0,
     marginLeft: 4,

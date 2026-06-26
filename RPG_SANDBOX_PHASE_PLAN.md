@@ -159,6 +159,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 84 | Asset correctness and placeholder honesty V3 | Verified | Mechanism compact markers no longer hide art; animal products use distinct labeled placeholders |
 | 85 | Archive farm guide V1 | Verified | Archive now explains crop stages, watering/rain acceleration, season harvest bonuses, animal products, and current tool equip surface |
 | 86 | Object interaction reactions V1 | Verified | Interacting with animals, forage objects, clutter, chests, gates, traps, and levers now shows a small in-world reaction badge |
+| 87 | Crop plot reactions V1 | Verified | Watering, rain growth, not-ready, ready, and harvest states now show small in-world crop badges |
 
 ## Future Development Roadmap
 
@@ -3870,7 +3871,7 @@ Design attack findings:
 
 Implementation attack findings:
 
-- `ObjectReaction` stores temporary world coordinates and display metadata, then clears through its own timer.
+- `WorldCellReaction` stores temporary world coordinates and display metadata, then clears through its own timer.
 - `showObjectReaction` derives the object footprint from catalog metadata so the badge centers over the object's blocked base.
 - Existing transaction and reward paths are unchanged; reactions are emitted after those paths determine success/failure.
 - Validator now checks the state, timer cleanup, renderer, styles, and representative animal/mechanism reaction calls.
@@ -3891,8 +3892,69 @@ Manual test checklist:
 Expansion notes saved:
 
 - Later replace static badges with short pixel particles or sprite-specific animation hooks once final assets are steadier.
-- Later add crop plot reaction badges for watering/harvest if the garden plot UI needs the same spatial feedback treatment.
+- Later replace static badges with richer crop-specific particles if the garden plot UI needs more feedback than Phase 87's shared badge.
 
 Phase 86 status:
+
+- Verified.
+
+### Phase 87 Audit
+
+Intended behavior:
+
+- Extend in-world reaction badges to crop plots so watering, rain growth, not-ready inspection, ready state, and harvest all point at the crop tile.
+- Reuse the same temporary world-cell reaction renderer as object interactions.
+- Keep crop interactions on the existing normal `Interact`/tool action flow; no new buttons.
+
+Negative guarantees:
+
+- This phase must not change crop growth timing, Water Drops costs, rain growth rules, harvest transactions, seasonal bonus logic, crop rendering, or placement rules.
+- This phase must not add persistent reaction state.
+- This phase must not stage unrelated settings or loose asset folders.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- Crop plots are not `SanctuaryObject` instances, so the object-only reaction state would leave farming feedback behind.
+- Generalizing the reaction to `WorldCellReaction` keeps one renderer and one cleanup timer for objects and plots.
+- Rendering the badge after garden plots makes crop reactions visible above stage sprites and growth bars.
+
+Implementation attack findings:
+
+- `showPlotReaction` anchors the shared reaction badge to the plot's row/col with a 1x1 footprint.
+- `waterGardenPlot` emits reactions for mature, rain growth, Water Drop growth, missing Water Drops, and failures.
+- `inspectOrHarvestPlot` emits reactions for rain growth, remaining minutes, failed harvest, and successful coin harvest.
+- Validator now checks shared world-cell reaction state plus representative object and plot reaction calls.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Use Watering Can on an immature crop and confirm a `+growth` or `mature` badge appears above the crop.
+- Try watering without Water Drops and confirm a `need drop` badge appears above the crop.
+- Interact with an immature crop and confirm the remaining minutes badge appears above the crop.
+- Harvest a mature crop and confirm a coin/reward badge appears above the crop before it disappears.
+- Confirm object reaction badges from Phase 86 still appear for animals and trees.
+
+Expansion notes saved:
+
+- Later add crop-specific watering/harvest particles once final crop art is stronger.
+- Later show season-affinity badges if seasons become crop-specific mechanics.
+
+Phase 87 status:
 
 - Verified.
