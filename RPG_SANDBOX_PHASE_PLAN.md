@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-26
 
-This ledger is the authoritative plan for the RPG sandbox work from Phase 0 through Phase 10. It exists so every pass can be judged against explicit goals, tests, evidence, and deferred expansion notes instead of memory.
+This ledger is the authoritative plan for the RPG sandbox work from Phase 0 onward. It exists so every pass can be judged against explicit goals, tests, evidence, and deferred expansion notes instead of memory.
 
 ## Current Baseline
 
@@ -12,6 +12,9 @@ Shipped commits relevant to this ledger:
 - `6b4ef82` Add drag-based RPG build placement
 - `7af28a2` Add RPG foraging and inventory catalog
 - `ef36720` Add RPG backpack inventory
+- `1510f8d` Add RPG resource and mechanism interactions
+- `c1fab19` Hide RPG normal target debug visuals
+- `f2e85a7` Surface RPG mechanisms in shop
 
 Known unrelated worktree noise at the time this ledger was created:
 
@@ -125,6 +128,44 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 53 | Lever mechanism V1 | Verified | Levers auto-link nearby gates/traps and toggle passability plus visual inactive state |
 | 54 | Disable normal target debug visuals | Verified | Normal gameplay hides object outlines and target grid boxes while preserving debug reticle code |
 | 55 | Mechanism shop surfacing | Verified | Shop exposes a direct Mechanisms filter, mechanism hints, and stable curated item icons |
+| 56 | Future roadmap and logging discipline | Verified | Ledger now records the next RPG backlog and documentation protocol |
+| 57 | Icon QA and semantic asset cleanup | Not started | Fix remaining wrong shop/backpack/drop icons through verified asset mappings |
+| 58 | Mechanism usability V2 | Not started | Make lever/gate/trap ownership, linking, and state feedback obvious on device |
+| 59 | Shop/backpack visual density pass | Not started | Tune card scale, row position, hit targets, item labels, and empty states after device testing |
+| 60 | Full asset archive expansion | Not started | Map all usable asset packs into registry/catalog/archive without promoting junk frames |
+| 61 | Farming art and seed taxonomy V2 | Not started | Replace placeholders with crop-specific seeds, plant stages, and harvest produce |
+| 62 | Build/editor UX V3 | Not started | Polish Clash-style drag preview, footprint feedback, snapping, stash, and move flows |
+| 63 | Dungeon/sanctuary object split | Not started | Separate safe sanctuary decor from dungeon hazards, loot, locks, and combat props |
+| 64 | Economy balance and crafting foundations | Not started | Price resources, rewards, chests, processors, and future crafting loops coherently |
+| 65 | Performance and save-state hardening | Not started | Profile runtime hotspots, persistence transactions, migrations, and recovery paths |
+
+## Future Development Roadmap
+
+The next RPG work should proceed in this order unless a device-blocking bug appears. Each phase must leave the game playable and should be small enough to commit independently.
+
+| Phase | Focus | Why it matters | Main files likely touched | Acceptance target |
+| --- | --- | --- | --- | --- |
+| 57 | Icon QA and semantic asset cleanup | Wrong icons break trust fastest; this is the highest-value polish pass after the mechanism shop fix. | `RpgAssetRegistry.ts`, `RpgObjectCatalog.ts`, `RpgItemIcon.tsx`, `validate-rpg-content.js`, `RPG_ASSET_ATLAS.md` | Every visible resource/drop/shop/backpack icon has a named verified mapping or an explicit placeholder label. |
+| 58 | Mechanism usability V2 | Levers/gates/traps are mechanically useful only if the player can understand links and current state. | `rpg.tsx`, `SanctuaryObject.tsx`, `sanctuaryInteractions.ts`, `RpgObjectCatalog.ts` | A player can place a lever and nearby gate/trap, trigger it, and understand what changed without debug boxes. |
+| 59 | Shop/backpack visual density pass | The device UI needs to feel like a game inventory, not a debug catalog. | `SanctuaryShop.tsx`, `RpgBackpack.tsx`, `RpgArchive.tsx`, shared item card helpers if extracted | Items are tappable, readable, lower on the book/panel where needed, and still scale across phone sizes. |
+| 60 | Full asset archive expansion | The archive should become the player's content book and the developer's content map. | `RpgAssetRegistry.ts`, `RpgObjectCatalog.ts`, `RpgArchive.tsx`, validator | All asset packs are triaged into production, candidate, deprecated, or ignored groups before more gameplay uses them. |
+| 61 | Farming art and seed taxonomy V2 | Farming needs correct seed/crop/produce identity before balancing growth or rewards. | `garden.ts`, `RpgObjectCatalog.ts`, `RpgAssetRegistry.ts`, `rpg.tsx` | Planting, growth, harvest, backpack, and archive show crop-specific art and names. |
+| 62 | Build/editor UX V3 | Placement should stay direct, tactile, and predictable. | `rpg.tsx`, `SanctuaryObject.tsx`, placement helpers if extracted | Drag placement never requires walking, invalid cells are clear, stash/move remain edit-only, and avatar/object collision stays authoritative. |
+| 63 | Dungeon/sanctuary object split | Cozy sanctuary objects and risky dungeon props need separate rules before combat expands. | Catalog tags, interaction handlers, zone state, dungeon map data | Sanctuary stays safe/decorative; dungeon hazards, chests, locks, and combat props can evolve without leaking rules into sanctuary. |
+| 64 | Economy balance and crafting foundations | Rewards need sinks before the catalog becomes too large. | Inventory DB helpers, shop pricing, reward tables, future processor tables | Prices, drops, chest rewards, Water Drops, and crafting candidates have a coherent tuning model. |
+| 65 | Performance and save-state hardening | Content volume is rising; the runtime needs protection before more animation and AI. | `rpg.tsx`, DB helpers, migration scripts, validator/perf notes | No per-frame DB/catalog work, writes are transactional, migrations are simulated, and device performance has a profiling baseline. |
+
+## Logging Protocol
+
+Use this section as the rule for every future RPG pass.
+
+- Add one Phase Overview row before coding when the phase is substantial.
+- Add a full `### Phase N Audit` block before committing.
+- Record intended behavior, negative guarantees, files changed, verification evidence, manual test checklist, and expansion notes.
+- Keep device-reported issues as first-class acceptance criteria, not as loose chat memory.
+- Record known unverified assets as candidates or placeholders; do not imply visual correctness until checked.
+- For code changes, run the fastest relevant static checks before commit. For docs-only changes, at minimum run `git diff --check` on the edited docs.
+- Stage only the phase files. Leave unrelated settings, plans, and loose assets untouched unless the phase explicitly owns them.
 
 ## Required Audit Loop For Every Phase
 
@@ -2870,5 +2911,45 @@ Expansion notes saved:
 - Later add visual labels for tiny flat assets like floor levers inside shop cards if the icon remains too subtle on-device.
 
 Phase 55 status:
+
+- Verified.
+
+### Phase 56 Audit
+
+Intended behavior:
+
+- The RPG ledger accurately describes itself as the authoritative plan from Phase 0 onward, not only Phase 0 through Phase 10.
+- Recent shipped RPG commits are recorded in the current baseline.
+- Future RPG development is logged as explicit backlog phases, not scattered only through chat or expansion notes.
+- The next roadmap prioritizes device-visible polish first: wrong icons, mechanism clarity, shop/backpack readability, asset archive scale, farming art, editor UX, dungeon split, economy, and performance hardening.
+- A repeatable logging protocol makes future passes easier to audit, commit, and resume.
+
+Negative guarantees:
+
+- This phase must not change runtime behavior, migrations, gameplay mechanics, assets, item IDs, shop prices, inventory logic, interaction handlers, or validation rules.
+- Future roadmap rows must remain plans until their phases are implemented and audited.
+- This documentation pass must not stage unrelated dirty settings, older planning docs, or loose untracked assets.
+
+Files changed:
+
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md`
+
+Manual test checklist:
+
+- Confirm Phase Overview includes Phase 56 and planned Phase 57 through Phase 65 rows.
+- Confirm `Future Development Roadmap` gives the next implementation order and acceptance targets.
+- Confirm `Logging Protocol` states what each future pass must record.
+- Confirm no runtime files are changed by this phase.
+
+Expansion notes saved:
+
+- Later split this ledger into generated GitHub issues if the backlog becomes too large to scan in one markdown file.
+- Later add a small script that validates every Phase Overview row has a matching audit block or is explicitly `Not started`.
+
+Phase 56 status:
 
 - Verified.
