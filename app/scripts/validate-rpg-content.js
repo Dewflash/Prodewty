@@ -321,6 +321,9 @@ function validateContentMetadata() {
 
 function validateArchiveScalabilityControls() {
   if (!archive.includes("type ArchiveSort = 'name' | 'rarity' | 'status';")) fail('Archive must expose stable sort modes');
+  if (!archive.includes("type ArchiveSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Archive must expose source pack filters');
+  if (!archive.includes('ARCHIVE_SOURCE_FILTERS')) fail('Archive must define source pack filter controls');
+  if (!archive.includes('archiveSourceMatches')) fail('Archive source filters must use catalog source labels');
   if (!archive.includes('TextInput')) fail('Archive must include search input for large catalogs');
   if (!archive.includes('archiveEntryMatchesQuery')) fail('Archive search must use catalog-derived entry data');
   if (!archive.includes('Showing {filteredEntries.length}')) fail('Archive summary must expose filtered result count');
@@ -334,6 +337,9 @@ function validateBackpackScalabilityControls() {
 }
 
 function validateShopScalabilityControls() {
+  if (!shop.includes("type ShopSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Shop must expose source pack filters');
+  if (!shop.includes('SHOP_SOURCE_FILTERS')) fail('Shop must define source pack filter controls');
+  if (!shop.includes('matchesShopSource')) fail('Shop source filters must use catalog source labels');
   if (!shop.includes('TextInput')) fail('Shop must include search input for large catalogs');
   if (!shop.includes('shopEntryMatchesQuery')) fail('Shop search must use catalog-derived item data');
   if (!shop.includes('Showing {filteredShopEntries.length}')) fail('Shop summary must expose filtered result count');

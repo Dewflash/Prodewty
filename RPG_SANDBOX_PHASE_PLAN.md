@@ -83,6 +83,7 @@ These rules must remain true after every phase.
 | 26 | Frame-capable world art renderer | Verified | Placed objects and build ghosts can render catalog sprite frames or standalone PNGs |
 | 27 | Shop search and empty states | Verified | Search across catalog metadata, result counts, and safe empty shop states |
 | 28 | Cave content pack V1 | Verified | 32 curated tracked cave objects mapped into registry/catalog/archive/shop |
+| 29 | Source-pack filters | Verified | Archive and shop source filters split Forest/Crystal/Bush/Cave packs from gameplay tags |
 
 ## Required Audit Loop For Every Phase
 
@@ -1026,6 +1027,38 @@ Manual test checklist:
 - Search `Cave Archive`, `totem`, `skeleton`, and `mushroom`.
 - Buy and place a cave rock, cave mushroom, and larger cave structure.
 - Confirm large cave structures block multiple tiles and compact cave props remain 1x1.
+
+## Phase 29: Source-Pack Filters
+
+Goal: make the 160-item catalog easier to inspect by filtering content packs directly, without overloading gameplay tag filters.
+
+Deliverables:
+
+- Add archive source filters for Forest, Crystal, Bush, and Cave catalog labels.
+- Add shop source filters for the same pack labels.
+- Keep existing gameplay tag filters intact for trees, mushrooms, structures, crystals, bushes, cacti, and cave-tagged items.
+- Extend `validate:rpg` so source filters remain mandatory as more packs are mapped.
+
+Acceptance gates:
+
+- Source filtering uses catalog `sourceLabel` metadata, not ad hoc item IDs or asset paths.
+- Category/tag filters and source filters compose together.
+- Page, selected item, and empty states recover cleanly when filters change.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgArchive.tsx app/src/engine/SanctuaryShop.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-source-filters-export`
+
+Manual test checklist:
+
+- Open archive and tap Forest, Crystal, Bush, and Cave source filters.
+- Combine archive source filters with Objects/Seeds/Resources, Seen/Known/Locked, search, and sort.
+- Open shop and tap Forest, Crystal, Bush, and Cave source filters.
+- Combine shop source filters with gameplay tag filters and search, then buy one visible item.
 
 ## Manual Regression Script
 

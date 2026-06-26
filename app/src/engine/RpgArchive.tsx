@@ -22,6 +22,7 @@ type CountRow = {
 type ArchiveFilter = 'all' | RpgArchiveCategory;
 type ArchiveScope = 'all' | 'discovered' | 'known' | 'locked';
 type ArchiveSort = 'name' | 'rarity' | 'status';
+type ArchiveSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
 
 type ArchiveEntryState = RpgArchiveEntry & {
   quantity: number;
@@ -44,6 +45,13 @@ const FILTERS: { id: ArchiveFilter; label: string }[] = [
   { id: 'object', label: 'Objects' },
   { id: 'seed', label: 'Seeds' },
   { id: 'resource', label: 'Resources' },
+];
+const ARCHIVE_SOURCE_FILTERS: { id: ArchiveSource; label: string; sourceLabel?: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
+  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
+  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
+  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
 ];
 const SCOPE_FILTERS: { id: ArchiveScope; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -96,6 +104,12 @@ function archiveScopeMatches(entry: ArchiveEntryState, scope: ArchiveScope) {
   if (scope === 'discovered') return entry.discovered;
   if (scope === 'known') return !entry.discovered && entry.known;
   return !entry.discovered && !entry.known;
+}
+
+function archiveSourceMatches(entry: ArchiveEntryState, source: ArchiveSource) {
+  if (source === 'all') return true;
+  const sourceFilter = ARCHIVE_SOURCE_FILTERS.find(item => item.id === source);
+  return !!sourceFilter?.sourceLabel && entry.sourceLabel === sourceFilter.sourceLabel;
 }
 
 function rarityColor(rarity: RpgItemRarity | undefined) {
@@ -172,6 +186,7 @@ function ArchiveItemArt({ asset, discovered, known }: {
 export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
   const { width, height } = useWindowDimensions();
   const [filter, setFilter] = useState<ArchiveFilter>('all');
+  const [source, setSource] = useState<ArchiveSource>('all');
   const [scope, setScope] = useState<ArchiveScope>('all');
   const [sort, setSort] = useState<ArchiveSort>('name');
   const [query, setQuery] = useState('');
@@ -181,7 +196,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
 
   const scale = Math.max(
     1.05,
-    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 300) / RPG_ARCHIVE_FRAMES.openBook.height),
+    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 336) / RPG_ARCHIVE_FRAMES.openBook.height),
   );
   const bookWidth = RPG_ARCHIVE_FRAMES.openBook.width * scale;
   const bookHeight = RPG_ARCHIVE_FRAMES.openBook.height * scale;
@@ -223,6 +238,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
     () => entries
       .filter(entry => (
         (filter === 'all' || entry.category === filter) &&
+        archiveSourceMatches(entry, source) &&
         archiveScopeMatches(entry, scope) &&
         archiveEntryMatchesQuery(entry, query)
       ))
@@ -235,7 +251,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         }
         return a.name.localeCompare(b.name);
       }),
-    [entries, filter, query, scope, sort],
+    [entries, filter, query, scope, sort, source],
   );
   const archiveCounts = useMemo(() => ({
     total: entries.length,
@@ -255,7 +271,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         ? current
         : filteredEntries[0]?.itemId ?? null
     ));
-  }, [filter, filteredEntries, isOpen, query, scope, sort]);
+  }, [filter, filteredEntries, isOpen, query, scope, sort, source]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);
@@ -280,6 +296,23 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
                 style={[styles.filterButton, active && styles.filterButtonActive]}
               >
                 <Text style={[styles.filterText, active && styles.filterTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.sourceBar}>
+          {ARCHIVE_SOURCE_FILTERS.map(item => {
+            const active = source === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} archive source`}
+                onPress={() => setSource(item.id)}
+                style={[styles.sourceButton, active && styles.sourceButtonActive]}
+              >
+                <Text style={[styles.sourceText, active && styles.sourceTextActive]}>{item.label}</Text>
               </Pressable>
             );
           })}
@@ -531,6 +564,35 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   scopeTextActive: {
+    color: '#fff2bb',
+  },
+  sourceBar: {
+    width: '100%',
+    minHeight: 30,
+    marginBottom: 4,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(27,18,14,0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.2)',
+    flexDirection: 'row',
+  },
+  sourceButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sourceButtonActive: {
+    backgroundColor: 'rgba(247,230,165,0.18)',
+  },
+  sourceText: {
+    color: 'rgba(247,230,165,0.66)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  sourceTextActive: {
     color: '#fff2bb',
   },
   searchRow: {
