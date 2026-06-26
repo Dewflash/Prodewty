@@ -606,8 +606,11 @@ function validateLeverToggleFeedback() {
   if (!rpgScreen.includes('toggle.count % 2 === 1')) {
     fail('Lever toggle state must derive from persisted toggle count parity');
   }
-  if (!rpgScreen.includes('Lever switched on') || !rpgScreen.includes('Lever switched off')) {
-    fail('Lever interactions must show on/off feedback');
+  if (!rpgScreen.includes("`Lever ${isOn ? 'on' : 'off'}: ${affectedText}`")) {
+    fail('Lever interactions must show linked on/off feedback');
+  }
+  if (!rpgScreen.includes("`Lever switched ${isOn ? 'on' : 'off'} (nothing linked)`")) {
+    fail('Lever interactions must explain when no mechanism is linked');
   }
   if (rpgScreen.includes('UPDATE sanctuary_objects SET type')) {
     fail('Lever toggle feedback must not mutate object type or placement state');
@@ -630,7 +633,6 @@ function validateTrapDisableFeedback() {
   if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
     fail('Trap feedback phase must not add HP damage rules');
   }
-  if (rpgScreen.includes('disable_trap_collision')) fail('Trap feedback must not mutate movement collision state');
 }
 
 function validateGateRattleFeedback() {
@@ -645,9 +647,6 @@ function validateGateRattleFeedback() {
   }
   if (!rpgScreen.includes('Gate rattles') || !rpgScreen.includes('Gate stays locked')) {
     fail('Gate interactions must show locked gate feedback');
-  }
-  if (rpgScreen.includes('open_gate_collision') || rpgScreen.includes('gateOpen')) {
-    fail('Gate rattle feedback phase must not mutate gate open/collision state');
   }
 }
 
@@ -807,6 +806,42 @@ function validateResolvedActionTargetProtocol() {
   }
 }
 
+function validateActionControlClarity() {
+  if (!rpgScreen.includes('accessibilityLabel="Leave RPG sandbox"')) {
+    fail('Back button must have a clear accessibility label');
+  }
+  if (!rpgScreen.includes('accessibilityLabel="Enter sanctuary"') || !rpgScreen.includes('accessibilityLabel="Enter dungeon"')) {
+    fail('Zone tabs must have clear accessibility labels');
+  }
+  if (!rpgScreen.includes("accessibilityState={{ selected: activeZone === 'sanctuary' }}")) {
+    fail('Sanctuary tab must expose selected state');
+  }
+  if (!rpgScreen.includes("accessibilityState={{ selected: activeZone === 'dungeon' }}")) {
+    fail('Dungeon tab must expose selected state');
+  }
+  if (!rpgScreen.includes("accessibilityLabel={`Stash ${buildItem?.label ?? 'object'}`}")) {
+    fail('Stash button must name the object being stashed when available');
+  }
+  if (!rpgScreen.includes("accessibilityLabel=\"Cancel moving object\"")) {
+    fail('Edit cancel button must have a clear accessibility label');
+  }
+  if (!rpgScreen.includes('interactionPrompt\n                ? `Interact with ${interactionPrompt.label}`')) {
+    fail('Interact button label must describe the current target when one exists');
+  }
+  if (!rpgScreen.includes("buildItem\n              ? `Confirm ${buildItem.label}`")) {
+    fail('Interact button label must describe build confirmation in build mode');
+  }
+  if (!rpgScreen.includes('interactionPrompt\n                ? `Attack toward ${interactionPrompt.label}`')) {
+    fail('Attack button label must describe the current target when one exists');
+  }
+  if (!rpgScreen.includes("buildItem\n              ? 'Attack unavailable while building'")) {
+    fail('Attack button label must clarify disabled build mode state');
+  }
+  if (!rpgScreen.includes('Swings toward the tile in front of the character.')) {
+    fail('Attack button must expose a concise action hint');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -835,8 +870,74 @@ function validateSanctuaryObjectRelations() {
   if (!rpgScreen.includes('deleteSanctuaryObjectRelationsForObject(selectedObject.id)')) {
     fail('Stashing an object must clear source and target object relations');
   }
-  if (rpgScreen.includes('lever_opens_gate') || rpgScreen.includes('lever_disarms_trap')) {
-    fail('Relation foundation phase must not wire lever relation side effects into the RPG screen');
+}
+
+function validateResourceNodeFeedback() {
+  if (!assetRegistry.includes('leaves: rpgFarmSupply(6, 2)')) {
+    fail('Leaves must use the verified green leaf farm-supply frame, not the old ambiguous icon');
+  }
+  if (!rpgScreen.includes('const getForageEmptyText = (item: ShopCatalogItem)')) {
+    fail('Forage empty feedback must be source-aware');
+  }
+  if (!rpgScreen.includes('const getForageSuccessText = (item: ShopCatalogItem')) {
+    fail('Forage success feedback must be source-aware');
+  }
+  if (!rpgScreen.includes('Chipped crystal: ${reward}')) {
+    fail('Crystal forage feedback must name crystal gathering');
+  }
+  if (!rpgScreen.includes('Shook tree: ${reward}')) {
+    fail('Tree forage feedback must name tree shaking');
+  }
+  if (!rpgScreen.includes('Foraged brush: ${reward}')) {
+    fail('Bush/fern forage feedback must name brush foraging');
+  }
+}
+
+function validateLeverMechanicsV1() {
+  if (!sanctuaryInteractions.includes("'open_gate'")) {
+    fail('Object interaction memory must support open_gate state');
+  }
+  if (!sanctuaryInteractions.includes('export function getSanctuaryObjectInteractionCount')) {
+    fail('Object interaction memory must expose state count reads');
+  }
+  if (!sanctuaryInteractions.includes('export function setSanctuaryObjectInteractionActive')) {
+    fail('Object interaction memory must expose parity-based state setting');
+  }
+  if (!rpgScreen.includes('const getObjectMechanicState = (obj: MapObject)')) {
+    fail('RPG screen must centralize gate/trap mechanic state');
+  }
+  if (!rpgScreen.includes("getSanctuaryObjectInteractionCount(obj.id, 'open_gate') % 2 === 1")) {
+    fail('Open gate state must derive from persisted object interactions');
+  }
+  if (!rpgScreen.includes('const isObjectMechanicallyPassable = (obj: MapObject)')) {
+    fail('RPG screen must centralize mechanically passable objects');
+  }
+  if (!rpgScreen.includes('if (isObjectMechanicallyPassable(obj)) return;')) {
+    fail('Open gates and disabled traps must be removed from movement collision');
+  }
+  if (!sanctuaryObject.includes("mechanicState?: 'open_gate' | 'disabled_trap' | null;")) {
+    fail('SanctuaryObject must accept visual mechanic state');
+  }
+  if (!rpgScreen.includes('mechanicState={getObjectMechanicState(obj)}')) {
+    fail('Placed objects must receive mechanic state for visual feedback');
+  }
+  if (!rpgScreen.includes('const ensureLeverRelations = (lever: MapObject)')) {
+    fail('Lever interactions must auto-link nearby mechanisms');
+  }
+  if (!rpgScreen.includes("upsertSanctuaryObjectRelation(")) {
+    fail('Lever auto-linking must persist object relations');
+  }
+  if (!rpgScreen.includes('const applyLeverRelation = (')) {
+    fail('Lever interactions must apply linked relation side effects');
+  }
+  if (!rpgScreen.includes("setSanctuaryObjectInteractionActive(target.id, target.type, 'open_gate', active)")) {
+    fail('Lever-gate links must set open gate state');
+  }
+  if (!rpgScreen.includes("setSanctuaryObjectInteractionActive(target.id, target.type, 'disable_trap', active)")) {
+    fail('Lever-trap links must set disabled trap state');
+  }
+  if (!rpgScreen.includes('applyMovementCollision(mapObjects);')) {
+    fail('Gate/trap interaction state changes must refresh movement collision');
   }
 }
 
@@ -882,7 +983,10 @@ validateEmptyInteractionFeedback();
 validateBuildPlacementFeedback();
 validateAttackFeedbackProtocol();
 validateResolvedActionTargetProtocol();
+validateActionControlClarity();
 validateSanctuaryObjectRelations();
+validateResourceNodeFeedback();
+validateLeverMechanicsV1();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

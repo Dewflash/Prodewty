@@ -14,6 +14,7 @@ interface Props {
   avatarY: SharedValue<number>;
   isInteracting?: boolean;
   isTargeted?: boolean;
+  mechanicState?: 'open_gate' | 'disabled_trap' | null;
   onMoveRequest?: (id: number) => void;
 }
 
@@ -28,6 +29,7 @@ export function SanctuaryObject({
   avatarY,
   isInteracting = false,
   isTargeted = false,
+  mechanicState = null,
   onMoveRequest,
 }: Props) {
   const catalogItem = getPlaceableItem(type);
@@ -59,8 +61,10 @@ export function SanctuaryObject({
 
     const isBehind = dx < (width / 2) && dy > 0 && dy < height;
 
+    const baseOpacity = mechanicState === 'open_gate' ? 0.38 : mechanicState === 'disabled_trap' ? 0.58 : 1;
+
     return {
-      opacity: withTiming(isBehind ? 0.4 : 1, { duration: 150 }),
+      opacity: withTiming(isBehind ? Math.min(baseOpacity, 0.4) : baseOpacity, { duration: 150 }),
       transform: [{ scale: withTiming(isInteracting ? 1.08 : isTargeted ? 1.03 : 1, { duration: 120 }) }],
     };
   });
@@ -86,6 +90,7 @@ export function SanctuaryObject({
             borderWidth: isTargeted ? 2 : 0,
             borderColor: isTargeted ? 'rgba(255,242,187,0.82)' : 'transparent',
             borderRadius: isTargeted ? 6 : 0,
+            backgroundColor: mechanicState ? 'rgba(53, 255, 112, 0.12)' : 'transparent',
           }
         ]}
       >

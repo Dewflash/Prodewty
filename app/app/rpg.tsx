@@ -42,9 +42,16 @@ import {
 import { recordRpgDiscovery, type RpgDiscoverySource } from '../src/db/rpgDiscovery';
 import {
   deleteSanctuaryObjectInteractions,
+  getSanctuaryObjectInteractionCount,
   markSanctuaryObjectInteraction,
+  setSanctuaryObjectInteractionActive,
 } from '../src/db/sanctuaryInteractions';
-import { deleteSanctuaryObjectRelationsForObject } from '../src/db/sanctuaryObjectRelations';
+import {
+  deleteSanctuaryObjectRelationsForObject,
+  getSanctuaryObjectRelations,
+  upsertSanctuaryObjectRelation,
+  type SanctuaryObjectRelationKind,
+} from '../src/db/sanctuaryObjectRelations';
 import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
 import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
@@ -234,12 +241,30 @@ export default function RpgScreen() {
   const buildGhostWidth = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visWidth ?? 0) * TILE_SIZE;
   const buildGhostHeight = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visHeight ?? 0) * TILE_SIZE;
 
+  const getObjectMechanicState = (obj: MapObject): 'open_gate' | 'disabled_trap' | null => {
+    const item = getItem(obj.type);
+    const tags = item?.tags ?? [];
+    if (tags.includes('gate') && getSanctuaryObjectInteractionCount(obj.id, 'open_gate') % 2 === 1) {
+      return 'open_gate';
+    }
+    if (
+      (tags.includes('trap') || tags.includes('hazard')) &&
+      getSanctuaryObjectInteractionCount(obj.id, 'disable_trap') % 2 === 1
+    ) {
+      return 'disabled_trap';
+    }
+    return null;
+  };
+
+  const isObjectMechanicallyPassable = (obj: MapObject) => getObjectMechanicState(obj) !== null;
+
   const makeMovementCollisionFlat = (objects: MapObject[], zone: Zone = activeZone, data: TileType[][] = mapData) => {
     const cols = data[0]?.length ?? 0;
     const flat = data.flat().map(tile => (TILE_COLLISION[tile as TileType] ? 1 : 0));
     if (zone !== 'sanctuary') return flat;
 
     objects.forEach(obj => {
+      if (isObjectMechanicallyPassable(obj)) return;
       const item = getItem(obj.type);
       const width = item?.colWidth ?? 1;
       const height = item?.colHeight ?? 1;
@@ -1142,6 +1167,23 @@ export default function RpgScreen() {
     return 'Object is resting';
   };
 
+  const getForageEmptyText = (item: ShopCatalogItem) => {
+    const tags = item.tags ?? [];
+    if (tags.includes('crystal')) return 'No shards this time';
+    if (tags.includes('tree')) return 'No seed fell';
+    if (tags.some(tag => tag === 'bush' || tag === 'fern' || tag === 'flower')) return 'Nothing in the brush';
+    return 'Nothing dropped';
+  };
+
+  const getForageSuccessText = (item: ShopCatalogItem, dropDef: RpgItemDefinition | null, quantity: number) => {
+    const tags = item.tags ?? [];
+    const reward = `+${quantity} ${dropDef?.name ?? 'item'}`;
+    if (tags.includes('crystal')) return `Chipped crystal: ${reward}`;
+    if (tags.includes('tree')) return `Shook tree: ${reward}`;
+    if (tags.some(tag => tag === 'bush' || tag === 'fern' || tag === 'flower')) return `Foraged brush: ${reward}`;
+    return reward;
+  };
+
   const isLeverObject = (item: ShopCatalogItem) => (
     item.tags?.includes('lever') || item.assetId === 'object.temple.Floor_lever'
   );
@@ -1154,13 +1196,83 @@ export default function RpgScreen() {
     item.tags?.includes('gate')
   );
 
+  const relationTargetKind = (relationKind: SanctuaryObjectRelationKind) => (
+    relationKind === 'lever_opens_gate' ? 'gate' : 'trap'
+  );
+
+  const objectDistanceScore = (source: MapObject, target: MapObject) => {
+    const dr = source.row - target.row;
+    const dc = source.col - target.col;
+    return dr * dr + dc * dc;
+  };
+
+  const findNearestMechanicTarget = (
+    source: MapObject,
+    relationKind: SanctuaryObjectRelationKind,
+  ) => (
+    mapObjects
+      .filter(candidate => candidate.id !== source.id)
+      .filter(candidate => {
+        const candidateItem = getPlaceableItem(candidate.type);
+        if (!candidateItem) return false;
+        return relationKind === 'lever_opens_gate'
+          ? isGateObject(candidateItem)
+          : isTrapObject(candidateItem);
+      })
+      .sort((a, b) => objectDistanceScore(source, a) - objectDistanceScore(source, b))[0] ?? null
+  );
+
+  const ensureLeverRelations = (lever: MapObject) => {
+    const existing = getSanctuaryObjectRelations(lever.id);
+    const relationKinds: SanctuaryObjectRelationKind[] = ['lever_opens_gate', 'lever_disarms_trap'];
+    const linked: string[] = [];
+
+    relationKinds.forEach(relationKind => {
+      if (existing.some(relation => relation.relation_kind === relationKind)) return;
+      const target = findNearestMechanicTarget(lever, relationKind);
+      if (!target) return;
+      const result = upsertSanctuaryObjectRelation(
+        lever.id,
+        target.id,
+        relationKind,
+        lever.type,
+        target.type,
+      );
+      if (result.ok) {
+        const targetItem = getPlaceableItem(target.type);
+        linked.push(targetItem?.name ?? relationTargetKind(relationKind));
+      }
+    });
+
+    return {
+      relations: getSanctuaryObjectRelations(lever.id),
+      linked,
+    };
+  };
+
+  const applyLeverRelation = (
+    relationKind: SanctuaryObjectRelationKind,
+    target: MapObject,
+    active: boolean,
+  ) => {
+    const targetItem = getPlaceableItem(target.type);
+    const result = relationKind === 'lever_opens_gate'
+      ? setSanctuaryObjectInteractionActive(target.id, target.type, 'open_gate', active)
+      : setSanctuaryObjectInteractionActive(target.id, target.type, 'disable_trap', active);
+    if (!result.ok) return null;
+    pulseObject(target.id);
+    const label = targetItem?.name ?? relationTargetKind(relationKind);
+    if (relationKind === 'lever_opens_gate') return `${label} ${active ? 'open' : 'closed'}`;
+    return `${label} ${active ? 'safe' : 'armed'}`;
+  };
+
   const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
     const detail = (() => {
-      if (tags.includes('trap') || tags.includes('hazard')) return 'Dormant trap';
-      if (tags.includes('lever')) return 'Lever is not linked yet';
-      if (tags.includes('gate')) return 'Gate is locked in place';
-      if (tags.includes('mechanism')) return 'Mechanism is not linked yet';
+      if (tags.includes('trap') || tags.includes('hazard')) return 'Trap can be disarmed';
+      if (tags.includes('lever')) return 'Lever links to nearby mechanisms';
+      if (tags.includes('gate')) return 'Gate can be linked to a lever';
+      if (tags.includes('mechanism')) return 'Mechanism can be linked';
       if (tags.includes('chest')) return 'Chest is sealed for now';
       if (tags.includes('fire')) return 'Flame flickers';
       if (tags.some(tag => ['relic', 'statue', 'idol'].includes(tag))) return 'Ancient relic';
@@ -1191,10 +1303,27 @@ export default function RpgScreen() {
         return;
       }
       const isOn = toggle.count % 2 === 1;
+      const { relations, linked } = ensureLeverRelations(object);
+      const affected = relations
+        .map(relation => {
+          const target = mapObjects.find(candidate => candidate.id === relation.target_object_id);
+          if (!target) return null;
+          return applyLeverRelation(relation.relation_kind, target, isOn);
+        })
+        .filter(Boolean) as string[];
+
+      applyMovementCollision(mapObjects);
+      const affectedText = affected.length > 2
+        ? `${affected.slice(0, 2).join(', ')} +${affected.length - 2}`
+        : affected.join(', ');
       showWorldToast({
-        text: isOn ? 'Lever switched on' : 'Lever switched off',
+        text: affected.length
+          ? `Lever ${isOn ? 'on' : 'off'}: ${affectedText}`
+          : linked.length
+            ? `Lever linked: ${linked.slice(0, 2).join(', ')}`
+            : `Lever switched ${isOn ? 'on' : 'off'} (nothing linked)`,
         item,
-        tone: 'muted',
+        tone: affected.length ? 'success' : 'muted',
       });
       return;
     }
@@ -1206,15 +1335,20 @@ export default function RpgScreen() {
         return;
       }
       const isDisabled = toggle.count % 2 === 1;
+      applyMovementCollision(mapObjects);
       showWorldToast({
         text: isDisabled ? 'Trap disarmed' : 'Trap re-armed',
         item,
-        tone: 'muted',
+        tone: isDisabled ? 'success' : 'muted',
       });
       return;
     }
 
     if (isGateObject(item)) {
+      if (getSanctuaryObjectInteractionCount(object.id, 'open_gate') % 2 === 1) {
+        showWorldToast({ text: 'Gate is open', item, tone: 'success' });
+        return;
+      }
       const rattle = markSanctuaryObjectInteraction(object.id, object.type, 'rattle_gate');
       if (!rattle.ok) {
         showWorldToast({ text: 'Gate does not budge', item, tone: 'warn' });
@@ -1274,14 +1408,14 @@ export default function RpgScreen() {
 
     const drop = rollForageDrop(item.forageDrops);
     if (!drop) {
-      showWorldToast({ text: 'Nothing dropped', tone: 'muted' });
+      showWorldToast({ text: getForageEmptyText(item), item, tone: 'muted' });
       return;
     }
 
     const dropDef = getRpgItem(drop.itemId);
     addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
     showWorldToast({
-      text: `+${drop.quantity} ${dropDef?.name ?? drop.itemId}`,
+      text: getForageSuccessText(item, dropDef, drop.quantity),
       item: dropDef,
       tone: 'success',
     });
@@ -1458,6 +1592,7 @@ export default function RpgScreen() {
               avatarY={avatarY}
               isInteracting={interactingObjectId === obj.id}
               isTargeted={interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
+              mechanicState={getObjectMechanicState(obj)}
               onMoveRequest={handleObjectLongPress}
             />
           ))}
@@ -1575,15 +1710,30 @@ export default function RpgScreen() {
       )}
 
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Leave RPG sandbox"
+          style={styles.backBtn}
+          onPress={() => router.back()}
+        >
           <Feather name="arrow-left" size={24} color="#fff" />
         </Pressable>
 
         <View style={styles.tabs}>
-          <Pressable onPress={() => enterZone('sanctuary')}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Enter sanctuary"
+            accessibilityState={{ selected: activeZone === 'sanctuary' }}
+            onPress={() => enterZone('sanctuary')}
+          >
             <Text style={[styles.tabText, activeZone === 'sanctuary' && styles.tabTextActive]}>Sanctuary</Text>
           </Pressable>
-          <Pressable onPress={() => enterZone('dungeon')}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Enter dungeon"
+            accessibilityState={{ selected: activeZone === 'dungeon' }}
+            onPress={() => enterZone('dungeon')}
+          >
             <Text style={[styles.tabText, activeZone === 'dungeon' && styles.tabTextActive]}>Dungeon</Text>
           </Pressable>
         </View>
@@ -1645,7 +1795,12 @@ export default function RpgScreen() {
               ? `${buildItem.label}: drag ghost, Interact confirms`
               : `${placementReport?.reason ?? 'Unavailable'}: drag to a clear cell`}
           </Text>
-          <Pressable style={styles.modeCloseBtn} onPress={clearBuildMode}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel build mode"
+            style={styles.modeCloseBtn}
+            onPress={clearBuildMode}
+          >
             <Feather name="x" size={14} color="#fff" />
           </Pressable>
         </View>
@@ -1653,11 +1808,21 @@ export default function RpgScreen() {
 
       {selectedObject && (
         <View style={styles.editBar}>
-          <Pressable style={styles.editBtn} onPress={stashEditingObject}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Stash ${buildItem?.label ?? 'object'}`}
+            style={styles.editBtn}
+            onPress={stashEditingObject}
+          >
             <Feather name="archive" size={17} color="#fff" />
             <Text style={styles.editText}>Stash</Text>
           </Pressable>
-          <Pressable style={styles.editBtn} onPress={clearBuildMode}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel moving object"
+            style={styles.editBtn}
+            onPress={clearBuildMode}
+          >
             <Feather name="x" size={17} color="#fff" />
             <Text style={styles.editText}>Cancel</Text>
           </Pressable>
@@ -1692,11 +1857,36 @@ export default function RpgScreen() {
       )}
 
       <View style={styles.actionBtns}>
-        <Pressable style={styles.actionBtn} onPress={handleInteract}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            buildItem
+              ? `Confirm ${buildItem.label}`
+              : interactionPrompt
+                ? `Interact with ${interactionPrompt.label}`
+                : 'Interact'
+          }
+          accessibilityHint={
+            buildItem
+              ? 'Confirms the current build placement when the footprint is valid.'
+              : 'Uses the object, crop, or portal in front of the character.'
+          }
+          style={styles.actionBtn}
+          onPress={handleInteract}
+        >
           <Feather name="mouse-pointer" size={20} color="#fff" />
           <Text style={styles.actionText}>Interact</Text>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            buildItem
+              ? 'Attack unavailable while building'
+              : interactionPrompt
+                ? `Attack toward ${interactionPrompt.label}`
+                : 'Attack'
+          }
+          accessibilityHint="Swings toward the tile in front of the character."
           style={[styles.actionBtn, styles.attackBtn, buildItem && styles.disabledBtn]}
           onPress={handleAttack}
           disabled={!!buildItem}

@@ -1,7 +1,12 @@
 import { db } from './schema';
 import { sqlNow } from '../utils/date';
 
-export type SanctuaryObjectInteractionKind = 'inspect' | 'toggle_lever' | 'disable_trap' | 'rattle_gate';
+export type SanctuaryObjectInteractionKind =
+  | 'inspect'
+  | 'toggle_lever'
+  | 'disable_trap'
+  | 'rattle_gate'
+  | 'open_gate';
 
 export type SanctuaryObjectInteractionResult =
   | { ok: true; isFirst: boolean; count: number }
@@ -46,6 +51,40 @@ export function markSanctuaryObjectInteraction(
     console.warn('Failed to record sanctuary object interaction', e);
     return { ok: false, reason: 'db_error' };
   }
+}
+
+export function getSanctuaryObjectInteractionCount(
+  objectId: number,
+  interactionKind: SanctuaryObjectInteractionKind,
+): number {
+  try {
+    const row = db.getFirstSync<{ count: number }>(
+      `SELECT count
+       FROM sanctuary_object_interactions
+       WHERE object_id = ? AND interaction_kind = ?
+       LIMIT 1`,
+      objectId,
+      interactionKind,
+    );
+    return row?.count ?? 0;
+  } catch (e) {
+    console.warn('Failed to read sanctuary object interaction count', e);
+    return 0;
+  }
+}
+
+export function setSanctuaryObjectInteractionActive(
+  objectId: number,
+  itemId: string,
+  interactionKind: SanctuaryObjectInteractionKind,
+  active: boolean,
+): SanctuaryObjectInteractionResult {
+  const count = getSanctuaryObjectInteractionCount(objectId, interactionKind);
+  const isActive = count % 2 === 1;
+  if (isActive === active) {
+    return { ok: true, isFirst: count === 0, count };
+  }
+  return markSanctuaryObjectInteraction(objectId, itemId, interactionKind);
 }
 
 export function deleteSanctuaryObjectInteractions(objectId: number): boolean {

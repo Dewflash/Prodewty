@@ -391,8 +391,9 @@ const RPG_CAVE_OBJECT_CATALOG = Object.fromEntries(
 ) as Record<string, RpgPlaceableItem>;
 
 function templeObjectDescription(asset: RpgObjectAsset) {
-  if (asset.tags.includes('trap')) return `${asset.name} from the temple archive. A decorative hazard prop reserved for future trap mechanics.`;
-  if (asset.tags.includes('mechanism')) return `${asset.name} from the temple archive. A mechanism prop reserved for future puzzle and gate rules.`;
+  if (asset.tags.includes('trap')) return `${asset.name} from the temple archive. Interact to arm or disarm it; linked levers can also toggle it.`;
+  if (asset.tags.includes('gate')) return `${asset.name} from the temple archive. Link it to a lever to open or close its blocked tile.`;
+  if (asset.tags.includes('mechanism')) return `${asset.name} from the temple archive. A mechanism prop that can link to nearby gates and traps.`;
   if (asset.tags.includes('structure')) return `${asset.name} from the temple archive. A ruin landmark for sanctuary layouts and future dungeon progression.`;
   if (asset.tags.includes('fire')) return `${asset.name} from the temple archive. An animated flame prop for livelier sanctuary rooms.`;
   if (asset.tags.includes('statue') || asset.tags.includes('relic')) return `${asset.name} from the temple archive. A relic object for future shrine and lore hooks.`;

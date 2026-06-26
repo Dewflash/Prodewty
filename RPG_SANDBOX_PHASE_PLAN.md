@@ -120,6 +120,9 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 48 | Build placement outcome feedback | Verified | Object placement, movement, and missing inventory cases show visible feedback |
 | 49 | Attack feedback comfort pass | Verified | Attack presses show object/plot/portal/empty feedback and build mode truly disables Attack |
 | 50 | Shared action target protocol | Verified | Prompt, Interact, and Attack consume one resolved facing-target packet |
+| 51 | Action control clarity | Verified | Core RPG buttons expose clear roles, labels, selected states, hints, and disabled state |
+| 52 | Resource node feedback V2 | Verified | Leaves use verified art and tree/bush/crystal forage feedback is source-aware |
+| 53 | Lever mechanism V1 | Verified | Levers auto-link nearby gates/traps and toggle passability plus visual inactive state |
 
 ## Required Audit Loop For Every Phase
 
@@ -2624,5 +2627,153 @@ Expansion notes saved:
 - Future enemies should become another `InteractionTargetKind` rather than a separate combat-only targeting model.
 
 Phase 50 status:
+
+- Verified.
+
+### Phase 51 Audit
+
+Intended behavior:
+
+- Core RPG controls expose clear accessibility roles and labels without adding visible controls.
+- Zone tabs expose selected state for sanctuary/dungeon.
+- Interact describes build confirmation, current target interaction, or default interaction depending on state.
+- Attack describes its current target and clearly reports that it is unavailable while building.
+- Edit-mode Stash/Cancel and the RPG back button are labeled clearly.
+- The RPG validator enforces the core action-control clarity contract.
+
+Negative guarantees:
+
+- This phase must not change button placement, visible labels, gameplay behavior, collision, placement math, inventory, economy, target resolution, or persistence.
+- This phase must not add new permanent buttons or expose build-only controls outside build/edit state.
+- Accessibility hints must describe existing behavior, not promise unimplemented mechanics.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/db/sanctuaryInteractions.ts app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryObject.tsx app/scripts/validate-rpg-content.js`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-mechanics-export`
+
+Manual test checklist:
+
+- In normal mode, confirm visible buttons are still only `Interact` and `Attack`.
+- Face an object/crop/portal and confirm action behavior is unchanged.
+- Enter build mode; confirm Interact still confirms placement and Attack is disabled.
+- Long-press an object; confirm Stash and Cancel remain edit-only.
+- With VoiceOver/manual inspection, confirm labels describe the current target or state.
+
+Expansion notes saved:
+
+- If controller support is added, mirror these labels into an input-hint model.
+- Add haptics later only after the visual and accessibility feedback loops are settled.
+
+Phase 51 status:
+
+- Verified.
+
+### Phase 52 Audit
+
+Intended behavior:
+
+- `Leaves` use the verified loose green leaf frame from the farm supplies sheet.
+- Tree, bush/fern/flower, and crystal forage feedback names the source action.
+- Empty forage rolls are source-aware instead of all saying the same generic text.
+- Drop toasts still show the actual dropped item icon and add the item to inventory through the existing inventory/discovery path.
+- The RPG validator enforces the new resource-node feedback contract.
+
+Negative guarantees:
+
+- This phase must not change forage drop probabilities, quantities, cooldown duration, item IDs, inventory arithmetic, shop prices, placement rules, or crop harvest math.
+- Tree-specific seed drops must remain limited to trees with mapped seed items.
+- Resource feedback must not invent drops when the forage roll fails.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/db/sanctuaryInteractions.ts app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryObject.tsx app/scripts/validate-rpg-content.js`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-mechanics-export`
+
+Manual test checklist:
+
+- Interact with a tree; confirm success says `Shook tree` or failure says `No seed fell`.
+- Interact with a bush/fern/flower; confirm success says `Foraged brush`.
+- Interact with a crystal; confirm success says `Chipped crystal`.
+- Confirm Leaves show as a green leaf icon in the toast/backpack/archive.
+- Confirm drop quantities and cooldowns feel unchanged.
+
+Expansion notes saved:
+
+- Later add tiny resource pickup particles/sound once icons and copy are stable.
+- If more resource types are added, move source-aware forage copy into catalog metadata.
+
+Phase 52 status:
+
+- Verified.
+
+### Phase 53 Audit
+
+Intended behavior:
+
+- Interacting with a lever auto-links it to the nearest gate and nearest trap if it has no relation of that kind yet.
+- Lever links persist in `sanctuary_object_relations`.
+- Toggling a linked lever opens/closes linked gates and disarms/re-arms linked traps through persisted interaction state.
+- Open gates and disabled traps are removed from movement collision.
+- Open gates and disabled traps render with a muted/green inactive visual state.
+- Direct trap interaction still disarms/re-arms and refreshes collision.
+- Direct gate interaction reports `Gate is open` when lever state has opened it, otherwise it keeps locked/rattle feedback.
+- The RPG validator enforces the linked mechanism contract.
+
+Negative guarantees:
+
+- This phase must not add HP damage, enemies, puzzle failure states, extra action buttons, non-transactional inventory writes, placement rule changes, shop changes, or crop changes.
+- Lever auto-linking must not link an object to itself.
+- Open/disabled state must come from persisted object interaction state, not transient React-only state.
+- Placement collision must still treat existing placed objects as occupied; passability only affects avatar movement.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/db/sanctuaryInteractions.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/SanctuaryObject.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/db/sanctuaryInteractions.ts app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryObject.tsx app/scripts/validate-rpg-content.js`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-mechanics-export`
+
+Manual test checklist:
+
+- Place a lever and gate; interact with the lever and confirm the gate opens visually and becomes walkable.
+- Interact with the lever again and confirm the gate closes and blocks movement.
+- Place a lever and trap; interact with the lever and confirm the trap becomes visibly safe and walkable.
+- Interact directly with a trap; confirm it toggles safe/armed and collision updates.
+- Stash a linked object; confirm relation cleanup still prevents stale links.
+
+Expansion notes saved:
+
+- Later add explicit link-edit UI instead of nearest-object auto-linking.
+- Later add gate open/closed animation frames if the asset sheet has a clean alternate state.
+- Later make traps damage or slow the avatar only after the movement/collision contract is proven.
+
+Phase 53 status:
 
 - Verified.

@@ -320,7 +320,7 @@ export const RPG_UI_FRAMES = {
   backpack: rpgUiIcon(0, 3),
   inventoryPanel: rpgSpriteFrame(RPG_UI_INVENTORY_SHEET, 224, 0, 112, 128, 336, 160),
   shopPanel: rpgSpriteFrame(RPG_UI_SHOP_SHEET, 384, 0, 128, 128, 512, 240),
-  leaves: rpgFarmSupply(6, 1),
+  leaves: rpgFarmSupply(6, 2),
   seed: rpgFarmSupply(1, 1),
   waterDrop: rpgUiIcon(13, 3),
 } satisfies Record<string, RpgSpriteFrame>;
