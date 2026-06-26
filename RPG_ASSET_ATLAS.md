@@ -1,6 +1,6 @@
 # RPG Asset Atlas
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 This document records verified RPG sandbox assets and coordinates. It is the companion artifact for Phase 1 of `RPG_SANDBOX_PHASE_PLAN.md`.
 
@@ -29,8 +29,8 @@ These frames are safe for current production use.
 | `backpack` | `Icons.png` | row 0, col 3 | 16x16 | HUD backpack button |
 | `inventoryPanel` | `Inventory.png` | x 224, y 0 | 112x128 | Backpack overlay panel |
 | `shopPanel` | `Shop.png` | x 384, y 0 | 128x128 | Shop overlay panel |
-| `leaves` | `Icons.png` | row 5, col 4 | 16x16 | `rpg_leaves` |
-| `seed` | `Icons.png` | row 15, col 3 | 16x16 | Tree seed placeholder/sapling marker |
+| `leaves` | `Supplies.png` | row 6, col 2 | 32x32 | `rpg_leaves` |
+| `seed` | `Supplies.png` | row 1, col 1 | 32x32 | Tree seed placeholder/sapling marker |
 | `archiveClosedBook` | `Open_book.png` | row 0, col 0 | 272x272 | Archive HUD button |
 | `archiveOpenBook` | `Open_book.png` | row 2, col 3 | 272x272 | Archive overlay panel |
 
@@ -39,6 +39,17 @@ Notes:
 - `leaves` is visually a green leaf cluster and replaces the prior worm-looking numbered icon.
 - `seed` is currently a sprout/plant marker. It is acceptable for the draft tree-seed item, but Phase 7 may replace it with a seed-bag or crop-specific seed once farming is live.
 - `inventoryPanel` includes the full right-side inventory panel from the source sheet. Earlier code used a narrower local crop; this was corrected by moving the frame into `RpgObjectCatalog.ts`.
+
+## Labeled Placeholder Frames
+
+These frames are intentionally not final art, but they are semantically safer than reusing unrelated icons. The runtime overlays a text badge on these items so players can see what the item is while final produce art remains unverified.
+
+| Name | Source | Coordinates | Size | Current use |
+| --- | --- | --- | --- | --- |
+| `eggProduct` | `Supplies.png` | row 3, col 8 | 32x32 | `rpg_egg` placeholder with `EGG` badge |
+| `milkProduct` | `Supplies.png` | row 6, col 6 | 32x32 | `rpg_milk` placeholder with `MILK` badge |
+| `woolProduct` | `Supplies.png` | row 6, col 0 | 32x32 | `rpg_wool` placeholder with `WOOL` badge |
+| `truffleProduct` | `Supplies.png` | row 6, col 5 | 32x32 | `rpg_truffle` placeholder with `TRUF` badge |
 
 ## Verified Candidate Frames
 
@@ -177,7 +188,7 @@ Runtime behavior:
 - All four animals are archive-visible and shop-visible.
 - Animals are placeable world objects with 1x1 collision footprints.
 - Interacting with animals can grant products through the inventory/discovery path.
-- Product icons are placeholder mappings, not final verified produce art.
+- Product icons are labeled placeholder mappings, not final verified produce art.
 
 ## Open Asset Issues
 

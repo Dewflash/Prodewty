@@ -156,6 +156,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 81 | Tool terrain art V2 | Verified | Bridge, Path, and Tilled Soil now render tracked sprite frames instead of hand-drawn View fills |
 | 82 | Backpack/tool ownership split | Verified | Backpack hides tools; hotbar and character/equipment panel own tool equip/unequip |
 | 83 | Seasons and weather farm loop V2 | Verified | Season/weather HUD chip plus season-specific transactional harvest bonus drops |
+| 84 | Asset correctness and placeholder honesty V3 | Verified | Mechanism compact markers no longer hide art; animal products use distinct labeled placeholders |
 
 ## Future Development Roadmap
 
@@ -3704,5 +3705,68 @@ Future RPG development log:
 - Phase 89: Performance and save-state audit. Profile dense sanctuary scenes, animation timers, database writes, inventory transactions, and map rendering on device; lock in budgets for object count, crop count, animal count, and particle effects.
 
 Phase 83 status:
+
+- Verified.
+
+### Phase 84 Audit
+
+Intended behavior:
+
+- Make compact mechanism icons easier to read by preserving full-size lever/gate/trap/mechanism art and using a small corner marker instead of a bottom badge that covers the sprite.
+- Stop animal products from looking like unrelated items: Egg must not look like a seed packet, Milk must not look like Water Drops, Wool must not look like Leaves, and Truffle must not use a cave object without an explicit product placeholder path.
+- Keep placeholder product art honest by labeling it in UI and documenting the exact farm-supply frames in `RPG_ASSET_ATLAS.md`.
+- Keep all normal-world controls unchanged: only `Interact` and `Attack` in normal play.
+
+Negative guarantees:
+
+- This phase must not claim final egg, milk, wool, or truffle art exists.
+- This phase must not change animal collection probability, cooldowns, inventory quantities, shop pricing, placement, collision, or archive discovery rules.
+- This phase must not stage loose untracked asset folders.
+
+Files changed:
+
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_ASSET_ATLAS.md`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- Wrong semantic icons break trust faster than missing final art, so labeled placeholders are better than pretending a seed, water drop, leaf, or cave mushroom is the correct animal product.
+- Mechanism items already have real temple frames, but the previous full-width badge competed with tiny floor-lever art in compact UI.
+- Product placeholders should live in the asset registry as named frame decisions, not as one-off catalog hacks.
+
+Implementation attack findings:
+
+- `RPG_UI_FRAMES` now exposes distinct `eggProduct`, `milkProduct`, `woolProduct`, and `truffleProduct` farm-supply frames.
+- `RPG_ITEM_CATALOG` points each animal product at its own placeholder asset id and frame.
+- `RpgItemIcon` renders animal-product placeholder labels (`EGG`, `MILK`, `WOOL`, `TRUF`) while mechanism icons use compact corner markers (`L`, `G`, `T`, `M`) that leave the sprite visible.
+- Validator now guards against the old seed-packet and water-drop animal product copy returning.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_ASSET_ATLAS.md RPG_SANDBOX_PHASE_PLAN.md app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgItemIcon.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Shop Mechanisms and confirm floor levers, gates, and traps show actual art with only a tiny marker.
+- Open Backpack resources after collecting animal products and confirm Egg, Milk, Wool, and Truffle are labeled and no longer appear as seed, Water Drops, Leaves, or an unlabeled cave mushroom.
+- Interact with placed Chick, Calf, Sheep, and Piglet and confirm product collection still uses the normal `Interact` button and existing cooldown feedback.
+
+Expansion notes saved:
+
+- Later replace `eggProduct`, `milkProduct`, `woolProduct`, and `truffleProduct` with true product sprites if a better tracked asset is verified.
+- Later add an asset QA screen or Archive filter that lists every placeholder explicitly so art debt is visible.
+
+Phase 84 status:
 
 - Verified.

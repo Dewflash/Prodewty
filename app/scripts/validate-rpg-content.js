@@ -1217,13 +1217,19 @@ function validateIconQaAndMechanismReadabilityV2() {
   if (!itemIcon.includes('function mechanismLabel(item: RpgItemDefinition | null | undefined)')) {
     fail('Compact item icons must centralize mechanism labels');
   }
-  ['LEVER', 'GATE', 'TRAP', 'MECH'].forEach(label => {
+  ['L', 'G', 'T', 'M'].forEach(label => {
     if (!itemIcon.includes(`return '${label}'`)) {
-      fail(`Mechanism icon labels must include ${label}`);
+      fail(`Mechanism icon labels must include compact ${label} marker`);
     }
   });
   if (!itemIcon.includes('styles.mechanismBadge')) {
     fail('Mechanism item icons must render a readable badge in compact UI');
+  }
+  if (!itemIcon.includes('function placeholderProductLabel(item: RpgItemDefinition | null | undefined)')) {
+    fail('Animal product placeholders must render explicit semantic labels');
+  }
+  if (!itemIcon.includes('styles.placeholderProductBadge')) {
+    fail('Animal product placeholder icons must show a readable product badge');
   }
 }
 
@@ -1231,13 +1237,22 @@ function validateFarmAnimalsV1() {
   ['rpg_egg', 'rpg_milk', 'rpg_wool', 'rpg_truffle'].forEach(itemId => {
     if (!catalog.includes(itemId)) fail(`Catalog must expose animal product resource: ${itemId}`);
   });
-  ['rpg_egg', 'rpg_milk', 'rpg_wool'].forEach(itemId => {
+  ['rpg_egg', 'rpg_milk', 'rpg_wool', 'rpg_truffle'].forEach(itemId => {
     if (!catalog.includes("tags: ['animal_product'")) {
       fail(`Animal product resources must be tagged as placeholders until verified icons exist: ${itemId}`);
     }
   });
-  if (!assetRegistry.includes("'resource.animalProduct'")) {
-    fail('Asset registry must declare an animal product placeholder asset');
+  ['resource.egg', 'resource.milk', 'resource.wool', 'resource.truffle'].forEach(assetId => {
+    if (!assetRegistry.includes(`'${assetId}'`)) fail(`Asset registry must declare product placeholder: ${assetId}`);
+  });
+  ['eggProduct', 'milkProduct', 'woolProduct', 'truffleProduct'].forEach(frameId => {
+    if (!assetRegistry.includes(frameId)) fail(`Asset registry must expose ${frameId} frame`);
+  });
+  if (catalog.includes("description: 'A small egg from a Chick. Placeholder seed-packet art")) {
+    fail('Egg must no longer use seed-packet placeholder copy');
+  }
+  if (catalog.includes("description: 'Fresh milk from a Calf. Placeholder droplet art")) {
+    fail('Milk must no longer use water-drop placeholder copy');
   }
   if (!rpgScreen.includes('const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;')) {
     fail('Animal product collection must have an explicit cooldown');

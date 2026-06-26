@@ -70,16 +70,27 @@ type ItemIconProps = {
 
 function mechanismLabel(item: RpgItemDefinition | null | undefined) {
   const tags = item?.tags ?? [];
-  if (tags.includes('lever')) return 'LEVER';
-  if (tags.includes('gate')) return 'GATE';
-  if (tags.some(tag => tag === 'trap' || tag === 'hazard')) return 'TRAP';
-  if (tags.includes('mechanism')) return 'MECH';
+  if (tags.includes('lever')) return 'L';
+  if (tags.includes('gate')) return 'G';
+  if (tags.some(tag => tag === 'trap' || tag === 'hazard')) return 'T';
+  if (tags.includes('mechanism')) return 'M';
   return null;
+}
+
+function placeholderProductLabel(item: RpgItemDefinition | null | undefined) {
+  const tags = item?.tags ?? [];
+  if (!tags.includes('animal_product') || !tags.includes('placeholder')) return null;
+  if (tags.includes('egg')) return 'EGG';
+  if (tags.includes('milk')) return 'MILK';
+  if (tags.includes('wool')) return 'WOOL';
+  if (tags.includes('truffle')) return 'TRUF';
+  return item?.name?.slice(0, 4).toUpperCase() ?? null;
 }
 
 export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
   const label = mechanismLabel(item);
-  const contentSize = label ? Math.max(18, Math.floor(size * 0.82)) : size;
+  const productLabel = placeholderProductLabel(item);
+  const contentSize = size;
   const maybeWrapMechanism = (node: React.ReactNode) => {
     if (!label) return node;
     return (
@@ -87,6 +98,17 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
         {node}
         <View style={styles.mechanismBadge}>
           <Text numberOfLines={1} adjustsFontSizeToFit style={styles.mechanismBadgeText}>{label}</Text>
+        </View>
+      </View>
+    );
+  };
+  const maybeWrapPlaceholderProduct = (node: React.ReactNode) => {
+    if (!productLabel) return node;
+    return (
+      <View style={[styles.placeholderProductIcon, { width: size, height: size }]}>
+        {node}
+        <View style={styles.placeholderProductBadge}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.placeholderProductBadgeText}>{productLabel}</Text>
         </View>
       </View>
     );
@@ -101,15 +123,15 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
   }
 
   if (item?.icon) {
-    return maybeWrapMechanism(<RpgSpriteFrameView frame={item.icon} size={contentSize} />);
+    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteFrameView frame={item.icon} size={contentSize} />));
   }
 
   if (item?.animation) {
-    return maybeWrapMechanism(<RpgSpriteAnimationView animation={item.animation} size={contentSize} />);
+    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteAnimationView animation={item.animation} size={contentSize} />));
   }
 
   if (item?.source) {
-    return maybeWrapMechanism(<Image source={item.source} resizeMode="contain" style={{ width: contentSize, height: contentSize }} />);
+    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<Image source={item.source} resizeMode="contain" style={{ width: contentSize, height: contentSize }} />));
   }
 
   return (
@@ -187,20 +209,42 @@ const styles = StyleSheet.create({
   },
   mechanismBadge: {
     position: 'absolute',
-    left: 1,
-    right: 1,
-    bottom: 0,
-    minHeight: 12,
-    borderRadius: 4,
+    top: 0,
+    right: 0,
+    width: 13,
+    height: 13,
+    borderRadius: 6,
     backgroundColor: 'rgba(18,22,18,0.88)',
     borderWidth: 1,
     borderColor: 'rgba(158,230,168,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 2,
   },
   mechanismBadgeText: {
     color: '#b9f5b8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
+  placeholderProductIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderProductBadge: {
+    position: 'absolute',
+    left: 1,
+    right: 1,
+    bottom: 0,
+    minHeight: 11,
+    borderRadius: 4,
+    backgroundColor: 'rgba(38,29,22,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(234,220,168,0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  placeholderProductBadgeText: {
+    color: '#fff2bb',
     fontFamily: fonts.ui.bold,
     fontSize: 7,
   },
