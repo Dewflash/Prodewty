@@ -655,6 +655,12 @@ function validateInteractionTargetPrompt() {
   if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'portal';")) {
     fail('RPG screen must type interaction target prompt kinds');
   }
+  if (!rpgScreen.includes('type InteractionTargetCell = { row: number; col: number };')) {
+    fail('RPG screen must type interaction target reticle cells');
+  }
+  if (!rpgScreen.includes('cells: InteractionTargetCell[];')) {
+    fail('Interaction target model must carry reticle footprint cells');
+  }
   if (!rpgScreen.includes('const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);')) {
     fail('RPG screen must keep a current interaction prompt state');
   }
@@ -669,6 +675,15 @@ function validateInteractionTargetPrompt() {
   }
   if (!rpgScreen.includes('styles.interactionPrompt')) {
     fail('RPG screen must render a visible interaction prompt');
+  }
+  if (!rpgScreen.includes('interactionPrompt?.cells.map')) {
+    fail('RPG screen must render world-space reticle cells from the target model');
+  }
+  if (!rpgScreen.includes('styles.interactionTargetCell')) {
+    fail('RPG screen must style target reticle cells');
+  }
+  if (!rpgScreen.includes('{!buildItem && interactionPrompt?.cells.map')) {
+    fail('Target reticle must hide while build mode is active');
   }
   if (!rpgScreen.includes("isTargeted={interactionPrompt?.kind === 'object'")) {
     fail('Targeted placed object must receive highlight state');

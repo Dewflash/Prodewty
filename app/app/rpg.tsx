@@ -104,10 +104,12 @@ type WorldToast = {
   tone: 'success' | 'muted' | 'warn';
 };
 type InteractionTargetKind = 'object' | 'plot' | 'portal';
+type InteractionTargetCell = { row: number; col: number };
 type InteractionTarget = {
   kind: InteractionTargetKind;
   row: number;
   col: number;
+  cells: InteractionTargetCell[];
   label: string;
   detail: string;
   item?: RpgItemDefinition | null;
@@ -444,6 +446,12 @@ export default function RpgScreen() {
           kind: 'object',
           row,
           col,
+          cells: Array.from({ length: item?.colHeight ?? 1 }).flatMap((_, dr) => (
+            Array.from({ length: item?.colWidth ?? 1 }).map((__, dc) => ({
+              row: object.row + dr,
+              col: object.col + dc,
+            }))
+          )),
           label: item?.name ?? object.type,
           detail,
           item,
@@ -458,6 +466,7 @@ export default function RpgScreen() {
           kind: 'plot',
           row,
           col,
+          cells: [{ row: plot.row, col: plot.col }],
           label: growth.crop?.name ?? 'Garden plot',
           detail: growth.stage >= 2 ? 'Ready' : growth.stage === 1 ? 'Growing' : 'Seeded',
           item: getRpgItem(plot.seed_item_id),
@@ -466,13 +475,13 @@ export default function RpgScreen() {
       }
 
       if (SanctuaryMap[row]?.[col] === TileType.PORTAL_DUNGEON) {
-        return { kind: 'portal', row, col, label: 'Dungeon portal', detail: 'Portal' };
+        return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Dungeon portal', detail: 'Portal' };
       }
       return null;
     }
 
     if (DungeonMap[row]?.[col] === TileType.PORTAL_SANCTUARY) {
-      return { kind: 'portal', row, col, label: 'Sanctuary portal', detail: 'Portal' };
+      return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Sanctuary portal', detail: 'Portal' };
     }
     return null;
   }, [activeZone, buildItem, gardenPlots, mapObjects]);
@@ -1466,6 +1475,20 @@ export default function RpgScreen() {
             </>
           )}
 
+          {!buildItem && interactionPrompt?.cells.map((cell, index) => (
+            <View
+              key={`target-${interactionPrompt.kind}-${cell.row}:${cell.col}:${index}`}
+              pointerEvents="none"
+              style={[
+                styles.interactionTargetCell,
+                {
+                  left: cell.col * TILE_SIZE,
+                  top: cell.row * TILE_SIZE,
+                },
+              ]}
+            />
+          ))}
+
           <Animated.View style={avatarStyle}>
             <SpriteAnimator
               source={spriteSource}
@@ -1715,6 +1738,15 @@ const styles = StyleSheet.create({
     height: TILE_SIZE,
     borderWidth: 3,
     zIndex: 2000,
+  },
+  interactionTargetCell: {
+    position: 'absolute',
+    width: TILE_SIZE,
+    height: TILE_SIZE,
+    borderWidth: 2,
+    borderColor: '#fff2bb',
+    backgroundColor: 'rgba(255,242,187,0.14)',
+    zIndex: 1990,
   },
   gardenPlot: {
     position: 'absolute',

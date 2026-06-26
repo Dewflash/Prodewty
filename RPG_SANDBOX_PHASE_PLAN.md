@@ -114,6 +114,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 42 | Object relation foundation V1 | Verified | Persist source-target object links for future lever, gate, and trap mechanics |
 | 43 | Gate rattle feedback V1 | Verified | Gate interactions persist locked feedback without opening or collision side effects |
 | 44 | Interaction target prompt V1 | Verified | Show the current Interact target and highlight target objects without adding controls |
+| 45 | Interaction target reticle V1 | Verified | Show the exact world-space target footprint for the current Interact target |
 
 ## Required Audit Loop For Every Phase
 
@@ -2336,5 +2337,54 @@ Expansion notes saved:
 - Keep all targetable gameplay tied to tile/footprint metadata rather than sprite bounds.
 
 Phase 44 status:
+
+- Verified.
+
+### Phase 45 Audit
+
+Intended behavior:
+
+- The current interaction target model carries world-space reticle cells.
+- Normal mode renders a lightweight reticle over the exact target tile or object footprint.
+- Object targets highlight their full collision footprint, not just the sprite center or the single faced tile.
+- Crop and portal targets highlight their single target tile.
+- The reticle shares the same world transform as map tiles, objects, crops, and avatar.
+
+Negative guarantees:
+
+- The reticle must not add controls, mutate gameplay state, affect collision, affect placement validity, change persistence, or change interaction outcomes.
+- The reticle must not render in build mode, where placement cells already own grid feedback.
+- The reticle must not be computed from sprite bounds; it must come from tile footprints.
+- The frame loop must not perform any extra SQLite or asset work for the reticle.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-interaction-reticle-export`
+- Passed: source inspection confirmed reticle cells come from the interaction target model, render inside the world transform, and do not add persistence or gameplay side effects.
+
+Manual test checklist:
+
+- Face a one-tile tree/prop and confirm one target cell appears.
+- Face a multi-tile object and confirm every blocked footprint cell is highlighted.
+- Face a crop plot and confirm one crop tile is highlighted.
+- Face a portal and confirm one portal tile is highlighted.
+- Enter build/edit mode and confirm reticle disappears while placement cells remain.
+
+Expansion notes saved:
+
+- If this feels too visually busy on-device, reduce opacity or show only the footprint border.
+- Reuse target cells for future tool swings, NPC clicks, and controller focus.
+- Add accessibility haptics only after the visual interaction path is stable.
+
+Phase 45 status:
 
 - Verified.
