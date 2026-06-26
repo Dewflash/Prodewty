@@ -73,6 +73,7 @@ export type RpgArchiveEntry = {
   rarity: RpgItemRarity;
   sourceLabel: string;
   tags: string[];
+  facts: string[];
 };
 
 const TREE_FORAGE_DROPS = (seedItemId: string): RpgDrop[] => [
@@ -306,6 +307,7 @@ export function getRpgArchiveEntries(): RpgArchiveEntry[] {
       rarity: item.rarity ?? 'common',
       sourceLabel: item.sourceLabel ?? 'Sanctuary',
       tags: item.tags ?? [],
+      facts: getRpgItemFacts(item, catalog),
       unlockHint: item.kind === 'object'
         ? 'Buy or place this object to record it.'
         : item.kind === 'seed'
@@ -322,4 +324,42 @@ function categoryRank(category: RpgArchiveCategory) {
   if (category === 'object') return 0;
   if (category === 'seed') return 1;
   return 2;
+}
+
+function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgItemDefinition>) {
+  const facts: string[] = [`Source: ${item.sourceLabel ?? 'Sanctuary'}`];
+
+  if (isPlaceableItemDefinition(item)) {
+    facts.push(`Price: ${item.price}`);
+    facts.push(`Footprint: ${item.colWidth}x${item.colHeight}`);
+    if (item.forageDrops?.length) {
+      facts.push(`Forage: ${item.forageDrops.map(drop => formatDrop(drop, catalog)).join(', ')}`);
+    } else {
+      facts.push('Forage: none');
+    }
+  }
+
+  if (item.kind === 'seed' && item.crop) {
+    facts.push(`Harvest: ${item.crop.harvest.coins} coins`);
+    facts.push(`Mature: ${item.crop.stageMinutes[2]} min`);
+    if (item.crop.harvest.drops.length) {
+      facts.push(`Yield: ${item.crop.harvest.drops.map(drop => formatDrop(drop, catalog)).join(', ')}`);
+    }
+  }
+
+  if (item.kind === 'resource' && item.tags?.length) {
+    facts.push(`Tags: ${item.tags.join(', ')}`);
+  }
+
+  return facts;
+}
+
+function isPlaceableItemDefinition(item: RpgItemDefinition): item is RpgPlaceableItem {
+  return item.kind === 'object' && 'price' in item;
+}
+
+function formatDrop(drop: RpgDrop, catalog: Record<string, RpgItemDefinition>) {
+  const itemName = catalog[drop.itemId]?.name ?? drop.itemId;
+  const amount = drop.min === drop.max ? `x${drop.min}` : `x${drop.min}-${drop.max}`;
+  return `${Math.round(drop.chance * 100)}% ${itemName} ${amount}`;
 }

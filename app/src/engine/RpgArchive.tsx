@@ -361,6 +361,15 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           {selected && !selected.discovered && (
             <Text numberOfLines={1} style={styles.detailMeta}>{selected.sourceLabel}</Text>
           )}
+          {selected && (selected.discovered || selected.known) && selected.facts.length > 0 && (
+            <View style={styles.factGrid}>
+              {selected.facts.slice(0, 4).map(fact => (
+                <View key={fact} style={styles.factPill}>
+                  <Text numberOfLines={1} style={styles.factText}>{fact}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -538,7 +547,7 @@ const styles = StyleSheet.create({
   },
   detailBar: {
     width: '100%',
-    minHeight: 74,
+    minHeight: 96,
     marginTop: -6,
     padding: 10,
     borderRadius: 8,
@@ -591,5 +600,26 @@ const styles = StyleSheet.create({
     color: '#f7e6a5',
     fontFamily: fonts.ui.bold,
     fontSize: 9,
+  },
+  factGrid: {
+    marginTop: 7,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  factPill: {
+    maxWidth: '48%',
+    minHeight: 20,
+    paddingHorizontal: 7,
+    borderRadius: 6,
+    backgroundColor: 'rgba(247,230,165,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.24)',
+    justifyContent: 'center',
+  },
+  factText: {
+    color: 'rgba(255,242,187,0.84)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
 });

@@ -74,6 +74,7 @@ These rules must remain true after every phase.
 | 17 | Forest rarity and source metadata | Draft complete | Catalog rarity/source labels surfaced in shop/archive and enforced by validator |
 | 18 | Shop catalog sorting | Verified | Shop sort controls for name, rarity, and price over the forest catalog |
 | 19 | Shop/backpack interaction repair | Verified | Larger tappable shop/backpack surfaces, inline buy feedback, farm-sheet seed/crop art |
+| 20 | Catalog detail facts | Verified | Archive/backpack facts derive price, footprint, forage, harvest, and growth data from catalog metadata |
 
 ## Required Audit Loop For Every Phase
 
@@ -711,6 +712,41 @@ Manual test checklist:
 - Try buying an unaffordable item and confirm inline shortfall text.
 - Open backpack and confirm larger slots, backpack header icon, and visible object/seed/resource art.
 - Plant a seed and confirm the in-world crop icon is a plant-stage sprite rather than the wrong worm-like asset.
+
+## Phase 20: Catalog Detail Facts
+
+Goal: make archive and backpack item inspection useful without creating a second item metadata source.
+
+Deliverables:
+
+- Derive archive fact rows from `RpgObjectCatalog.ts`.
+- Show object price, placement footprint, and forage drops.
+- Show seed harvest coins, maturity time, and crop yield.
+- Show source metadata for resources and held items.
+- Surface the same compact facts inside backpack details.
+- Extend `validate:rpg` so archive facts cannot be accidentally removed from catalog generation.
+
+Acceptance gates:
+
+- Archive and backpack facts come from catalog/drop/crop metadata, not duplicated UI literals.
+- Locked archive items still use unlock hints instead of exposing full detail facts.
+- Fact chips are capped so they do not crowd out the primary action controls.
+- Normal world controls remain `Interact` and `Attack`.
+- Validator and TypeScript pass.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgArchive.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgObjectCatalog.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-catalog-facts-export`
+
+Manual test checklist:
+
+- Open archive, select a tree, and confirm price, footprint, and forage facts appear.
+- Select a seed and confirm harvest/maturity/yield facts appear.
+- Open backpack and confirm held objects/seeds show the same gameplay facts before Place/Plant.
+- Filter archive to Locked and confirm locked items still show unlock guidance rather than full facts.
 
 ## Manual Regression Script
 

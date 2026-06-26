@@ -8,6 +8,7 @@ import {
   getPlaceableItem,
   getRpgItem,
   RPG_UI_FRAMES,
+  type RpgDrop,
   type RpgItemDefinition,
 } from './RpgObjectCatalog';
 import { RpgItemIcon, RpgSpriteFrameView } from './RpgItemIcon';
@@ -45,6 +46,12 @@ function getKindRank(item: RpgItemDefinition | null) {
   if (item.kind === 'object') return 0;
   if (item.kind === 'seed') return 1;
   return 2;
+}
+
+function formatDrop(drop: RpgDrop) {
+  const item = getRpgItem(drop.itemId);
+  const amount = drop.min === drop.max ? `x${drop.min}` : `x${drop.min}-${drop.max}`;
+  return `${Math.round(drop.chance * 100)}% ${item?.name ?? drop.itemId} ${amount}`;
 }
 
 export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed }: Props) {
@@ -125,6 +132,15 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   );
   const selectedPlaceable = getPlaceableItem(selected?.item_id ?? null);
   const selectedSeedCrop = selectedItem?.kind === 'seed' ? getCropForSeed(selected?.item_id ?? null) : null;
+  const selectedFacts = [
+    selectedItem?.sourceLabel ? `Source: ${selectedItem.sourceLabel}` : null,
+    selectedPlaceable ? `Price: ${selectedPlaceable.price}` : null,
+    selectedPlaceable ? `Footprint: ${selectedPlaceable.colWidth}x${selectedPlaceable.colHeight}` : null,
+    selectedPlaceable?.forageDrops?.length ? `Forage: ${selectedPlaceable.forageDrops.map(formatDrop).join(', ')}` : null,
+    selectedSeedCrop ? `Harvest: ${selectedSeedCrop.harvest.coins} coins` : null,
+    selectedSeedCrop ? `Mature: ${selectedSeedCrop.stageMinutes[2]} min` : null,
+    selectedSeedCrop?.harvest.drops.length ? `Yield: ${selectedSeedCrop.harvest.drops.map(formatDrop).join(', ')}` : null,
+  ].filter((fact): fact is string => !!fact);
   const maxPage = Math.max(0, Math.ceil(filteredInventory.length / SLOT_COUNT) - 1);
   const panelWidth = Math.min(width - 24, 430);
   const panelMaxHeight = Math.min(height - 80, 650);
@@ -228,6 +244,15 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             {selected && <Text style={styles.detailCount}>x{selected.quantity}</Text>}
           </View>
           <Text numberOfLines={2} style={styles.detailDescription}>{selectedDescription}</Text>
+          {selectedFacts.length > 0 && (
+            <View style={styles.factGrid}>
+              {selectedFacts.slice(0, 4).map(fact => (
+                <View key={fact} style={styles.factPill}>
+                  <Text numberOfLines={1} style={styles.factText}>{fact}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           {selectedPlaceable ? (
             <Pressable
               accessibilityRole="button"
@@ -425,7 +450,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   details: {
-    minHeight: 112,
+    minHeight: 136,
     marginTop: 10,
     padding: 10,
     borderRadius: 8,
@@ -456,6 +481,27 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 12,
     marginTop: 1,
+  },
+  factGrid: {
+    marginTop: 7,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  factPill: {
+    maxWidth: '48%',
+    minHeight: 20,
+    paddingHorizontal: 7,
+    borderRadius: 6,
+    backgroundColor: 'rgba(247,230,165,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.25)',
+    justifyContent: 'center',
+  },
+  factText: {
+    color: 'rgba(255,242,187,0.82)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   placeButton: {
     width: '100%',

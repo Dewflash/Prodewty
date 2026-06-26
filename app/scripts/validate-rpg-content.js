@@ -155,6 +155,9 @@ function validateContentMetadata() {
   if (!catalog.includes("sourceLabel: 'Forest Archive'")) fail('Forest objects must expose source label metadata');
   if (!catalog.includes("rarity: item.rarity ?? 'common'")) fail('Archive entries must preserve item rarity');
   if (!catalog.includes("sourceLabel: item.sourceLabel ?? 'Sanctuary'")) fail('Archive entries must preserve item source label');
+  if (!catalog.includes('facts: getRpgItemFacts(item, catalog)')) fail('Archive entries must derive detail facts from catalog metadata');
+  if (!catalog.includes('Footprint:')) fail('Object facts must expose placement footprint metadata');
+  if (!catalog.includes('Harvest:')) fail('Seed facts must expose harvest metadata');
 }
 
 const forestAssets = parseForestAssets();
