@@ -116,6 +116,11 @@ type InteractionTarget = {
   object?: MapObject;
   plot?: GardenPlot;
 };
+type ResolvedInteractionTarget = {
+  row: number;
+  col: number;
+  target: InteractionTarget | null;
+};
 
 function clamp(value: number, min: number, max: number) {
   'worklet';
@@ -397,7 +402,7 @@ export default function RpgScreen() {
     targetCol.value = -999;
   };
 
-  const getTargetedTile = () => {
+  const getTargetedTile = useCallback(() => {
     const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
     const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
     let col = Math.floor(footX / TILE_SIZE);
@@ -410,7 +415,7 @@ export default function RpgScreen() {
     else if (dir === 3) row -= 1;
 
     return { row, col };
-  };
+  }, [avatarDirection, avatarX, avatarY]);
 
   const getObjectAtTile = (row: number, col: number) => (
     mapObjects.find(obj => {
@@ -490,6 +495,14 @@ export default function RpgScreen() {
   const updateInteractionPromptFromTile = useCallback((row: number, col: number) => {
     setInteractionPrompt(resolveInteractionTargetAt(row, col));
   }, [resolveInteractionTargetAt]);
+
+  const resolveCurrentInteractionTarget = useCallback((): ResolvedInteractionTarget => {
+    const tile = getTargetedTile();
+    return {
+      ...tile,
+      target: resolveInteractionTargetAt(tile.row, tile.col),
+    };
+  }, [getTargetedTile, resolveInteractionTargetAt]);
 
   const getAvatarFootCell = () => {
     const cells = avatarCells(avatarX.value, avatarY.value);
@@ -862,9 +875,9 @@ export default function RpgScreen() {
       setInteractionPrompt(null);
       return;
     }
-    const target = getTargetedTile();
-    setInteractionPrompt(resolveInteractionTargetAt(target.row, target.col));
-  }, [activeZone, buildItem, mapObjects, gardenPlots, resolveInteractionTargetAt]);
+    const current = resolveCurrentInteractionTarget();
+    setInteractionPrompt(current.target);
+  }, [activeZone, buildItem, mapObjects, gardenPlots, resolveCurrentInteractionTarget]);
 
   const handleJoystickMove = (dx: number, dy: number) => {
     joyX.value = dx;
@@ -1050,8 +1063,8 @@ export default function RpgScreen() {
     });
   };
 
-  const showAttackFeedback = (row: number, col: number) => {
-    const target = resolveInteractionTargetAt(row, col);
+  const showAttackFeedback = (current: ResolvedInteractionTarget) => {
+    const target = current.target;
     if (target?.kind === 'object' && target.object) {
       pulseObject(target.object.id);
       showWorldToast({ text: `Struck ${target.label}`, item: target.item, tone: 'muted' });
@@ -1353,15 +1366,16 @@ export default function RpgScreen() {
     setSpriteSource(ATTACK_SPRITE);
     setSpriteFrameCount(8);
 
-    const target = getTargetedTile();
-    showAttackFeedback(target.row, target.col);
+    const current = resolveCurrentInteractionTarget();
+    setInteractionPrompt(current.target);
+    showAttackFeedback(current);
     try {
       const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
         'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
       );
       if (stats) {
         const atk = Math.floor((stats.str + stats.foc + stats.agi + stats.wis + stats.res) / 5);
-        console.log(`[Combat] Hit tile [${target.row}, ${target.col}] with ATK: ${atk}`);
+        console.log(`[Combat] Hit tile [${current.row}, ${current.col}] with ATK: ${atk}`);
       }
     } catch {}
 
@@ -1380,8 +1394,9 @@ export default function RpgScreen() {
       return;
     }
 
-    const target = getTargetedTile();
-    const resolvedTarget = resolveInteractionTargetAt(target.row, target.col);
+    const current = resolveCurrentInteractionTarget();
+    setInteractionPrompt(current.target);
+    const resolvedTarget = current.target;
     if (activeZone === 'sanctuary') {
       if (resolvedTarget?.kind === 'object' && resolvedTarget.object) {
         interactWithObject(resolvedTarget.object);

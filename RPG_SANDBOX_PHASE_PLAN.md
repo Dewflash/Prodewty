@@ -119,6 +119,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 47 | Empty Interact feedback | Verified | Empty Interact presses show throttled visible feedback instead of console-only logs |
 | 48 | Build placement outcome feedback | Verified | Object placement, movement, and missing inventory cases show visible feedback |
 | 49 | Attack feedback comfort pass | Verified | Attack presses show object/plot/portal/empty feedback and build mode truly disables Attack |
+| 50 | Shared action target protocol | Verified | Prompt, Interact, and Attack consume one resolved facing-target packet |
 
 ## Required Audit Loop For Every Phase
 
@@ -2577,5 +2578,51 @@ Expansion notes saved:
 - If mobile testing shows toast spam during repeated attacks, add a tiny attack-feedback cooldown separate from the attack animation lockout.
 
 Phase 49 status:
+
+- Verified.
+
+### Phase 50 Audit
+
+Intended behavior:
+
+- The current facing tile and resolved target are represented as one `ResolvedInteractionTarget` packet.
+- Prompt refresh, Interact, and Attack use the same current-target helper instead of parallel target resolution.
+- Pressing Attack or Interact syncs the visible prompt to the same target packet the action consumes.
+- Existing object, crop, portal, empty Interact, and Attack feedback behavior remains unchanged.
+- The RPG validator enforces the shared action target protocol.
+
+Negative guarantees:
+
+- This phase must not change movement, collision, placement, shop, backpack, archive, farming math, loot drops, attack stats, or persistence.
+- This phase must not move target resolution into the Reanimated frame loop or add SQLite work to frame callbacks.
+- This phase must not add new permanent action buttons.
+- This phase must not resolve a second divergent Interact target inside the button handler.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Face a placed object; confirm the prompt names it, Interact inspects/forages it, and Attack strikes the same object.
+- Face a crop; confirm prompt, Interact, and Attack agree on the crop tile.
+- Face a portal; confirm Interact transitions zones while Attack only gives portal feedback.
+- Face empty ground; confirm Interact and Attack show their empty feedback paths.
+- Enter build mode; confirm prompt reticle hides and Interact still confirms placement.
+
+Expansion notes saved:
+
+- If controller or keyboard input is added, route those inputs through `resolveCurrentInteractionTarget`.
+- Future enemies should become another `InteractionTargetKind` rather than a separate combat-only targeting model.
+
+Phase 50 status:
 
 - Verified.

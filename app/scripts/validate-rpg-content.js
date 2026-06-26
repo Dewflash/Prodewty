@@ -751,11 +751,11 @@ function validateBuildPlacementFeedback() {
 }
 
 function validateAttackFeedbackProtocol() {
-  if (!rpgScreen.includes('const showAttackFeedback = (row: number, col: number)')) {
-    fail('Attack feedback must be centralized by targeted tile');
+  if (!rpgScreen.includes('const showAttackFeedback = (current: ResolvedInteractionTarget)')) {
+    fail('Attack feedback must consume the shared resolved target packet');
   }
-  if (!rpgScreen.includes('const target = resolveInteractionTargetAt(row, col);')) {
-    fail('Attack feedback must reuse the same target resolver as Interact');
+  if (!rpgScreen.includes('const target = current.target;')) {
+    fail('Attack feedback must use the resolved target rather than resolving separately');
   }
   if (!rpgScreen.includes('pulseObject(target.object.id);')) {
     fail('Attack feedback must pulse struck objects');
@@ -769,7 +769,7 @@ function validateAttackFeedbackProtocol() {
   if (!rpgScreen.includes("showWorldToast({ text: 'Swing', tone: 'muted' });")) {
     fail('Empty Attack presses must still show visible swing feedback');
   }
-  if (!rpgScreen.includes('showAttackFeedback(target.row, target.col);')) {
+  if (!rpgScreen.includes('showAttackFeedback(current);')) {
     fail('Attack button must call visible attack feedback');
   }
   if (!rpgScreen.includes('disabled={!!buildItem}')) {
@@ -780,6 +780,30 @@ function validateAttackFeedbackProtocol() {
   }
   if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
     fail('Attack feedback phase must not add HP damage rules');
+  }
+}
+
+function validateResolvedActionTargetProtocol() {
+  if (!rpgScreen.includes('type ResolvedInteractionTarget = {')) {
+    fail('RPG screen must type the shared resolved action target packet');
+  }
+  if (!rpgScreen.includes('const getTargetedTile = useCallback(() =>')) {
+    fail('Targeted tile calculation must be a stable shared helper');
+  }
+  if (!rpgScreen.includes('const resolveCurrentInteractionTarget = useCallback((): ResolvedInteractionTarget =>')) {
+    fail('RPG screen must centralize current tile + target resolution');
+  }
+  if (!rpgScreen.includes('target: resolveInteractionTargetAt(tile.row, tile.col)')) {
+    fail('Shared action target packet must use the canonical target resolver');
+  }
+  if (!rpgScreen.includes('const current = resolveCurrentInteractionTarget();')) {
+    fail('Action handlers must resolve the current action target through the shared helper');
+  }
+  if (!rpgScreen.includes('setInteractionPrompt(current.target);')) {
+    fail('Action handlers must sync prompt state to the current resolved target');
+  }
+  if (rpgScreen.includes('const resolvedTarget = resolveInteractionTargetAt(target.row, target.col);')) {
+    fail('Interact handler must not independently re-resolve a separate target packet');
   }
 }
 
@@ -857,6 +881,7 @@ validateActionButtonProtocol();
 validateEmptyInteractionFeedback();
 validateBuildPlacementFeedback();
 validateAttackFeedbackProtocol();
+validateResolvedActionTargetProtocol();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {
