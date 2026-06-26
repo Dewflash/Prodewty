@@ -976,6 +976,10 @@ export default function RpgScreen() {
     return 'Object is resting';
   };
 
+  const isLeverObject = (item: ShopCatalogItem) => (
+    item.tags?.includes('lever') || item.assetId === 'object.temple.Floor_lever'
+  );
+
   const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
     const detail = (() => {
@@ -1004,6 +1008,21 @@ export default function RpgScreen() {
     const interactionResult = markSanctuaryObjectInteraction(object.id, object.type, 'inspect');
     if (interactionResult.ok && interactionResult.isFirst) {
       recordRpgDiscovery(object.type, 'inspect');
+    }
+
+    if (isLeverObject(item)) {
+      const toggle = markSanctuaryObjectInteraction(object.id, object.type, 'toggle_lever');
+      if (!toggle.ok) {
+        showWorldToast({ text: 'Lever jammed', item, tone: 'warn' });
+        return;
+      }
+      const isOn = toggle.count % 2 === 1;
+      showWorldToast({
+        text: isOn ? 'Lever switched on' : 'Lever switched off',
+        item,
+        tone: 'muted',
+      });
+      return;
     }
 
     if (item.interactLoot) {

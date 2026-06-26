@@ -1,7 +1,7 @@
 import { db } from './schema';
 import { sqlNow } from '../utils/date';
 
-export type SanctuaryObjectInteractionKind = 'inspect';
+export type SanctuaryObjectInteractionKind = 'inspect' | 'toggle_lever';
 
 export type SanctuaryObjectInteractionResult =
   | { ok: true; isFirst: boolean; count: number }

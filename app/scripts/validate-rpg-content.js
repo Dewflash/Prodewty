@@ -591,6 +591,27 @@ function validateSanctuaryRewardClaims() {
   }
 }
 
+function validateLeverToggleFeedback() {
+  if (!sanctuaryInteractions.includes("export type SanctuaryObjectInteractionKind = 'inspect' | 'toggle_lever';")) {
+    fail('Object interaction memory must support toggle_lever interactions');
+  }
+  if (!rpgScreen.includes('const isLeverObject = (item: ShopCatalogItem)')) {
+    fail('RPG screen must centralize lever object detection');
+  }
+  if (!rpgScreen.includes("markSanctuaryObjectInteraction(object.id, object.type, 'toggle_lever')")) {
+    fail('Lever interactions must persist toggle count through object interaction memory');
+  }
+  if (!rpgScreen.includes('toggle.count % 2 === 1')) {
+    fail('Lever toggle state must derive from persisted toggle count parity');
+  }
+  if (!rpgScreen.includes('Lever switched on') || !rpgScreen.includes('Lever switched off')) {
+    fail('Lever interactions must show on/off feedback');
+  }
+  if (rpgScreen.includes('UPDATE sanctuary_objects SET type')) {
+    fail('Lever toggle feedback must not mutate object type or placement state');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -624,6 +645,7 @@ validateShopScalabilityControls();
 validateWorldArtRenderer();
 validateSanctuaryInteractionMemory();
 validateSanctuaryRewardClaims();
+validateLeverToggleFeedback();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

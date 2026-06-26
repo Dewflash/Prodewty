@@ -94,6 +94,7 @@ These rules must remain true after every phase.
 | 37 | Object inspect feedback V1 | Verified | Interact now gives visible feedback for non-forage placed props |
 | 38 | Object interaction memory V1 | Verified | Persist first/repeat object inspect state for future chest, lever, and trap rules |
 | 39 | Safe chest rewards V1 | Verified | Temple chests grant once-per-type rewards through a reward-claim ledger |
+| 40 | Lever toggle feedback V1 | Verified | Temple levers persist on/off toggle feedback without puzzle side effects |
 
 ## Required Audit Loop For Every Phase
 
@@ -2066,5 +2067,55 @@ Expansion notes saved:
 - Add chest opening animation states after the renderer can freeze an animation on a terminal frame.
 
 Phase 39 status:
+
+- Verified.
+
+### Phase 40 Audit
+
+Intended behavior:
+
+- `Interact` on a temple floor lever now toggles it on/off using persisted object interaction memory.
+- Lever state derives from `toggle_lever` interaction count parity.
+- Toggle feedback alternates between `Lever switched on` and `Lever switched off`.
+- Lever toggles still also record normal inspect discovery through the shared object interaction path.
+- The RPG validator enforces the new interaction kind, lever detection, persisted toggle call, parity state, and toast feedback.
+
+Negative guarantees:
+
+- Lever toggles must not move gates, disable traps, open chests, grant loot, damage the avatar, mutate object placement, or add puzzle links.
+- Lever toggles must not add a new normal-mode button; all behavior remains behind `Interact`.
+- Lever toggles must not alter object type, collision footprints, placement state, inventory, or reward claims.
+- Stashing a lever must still clean its interaction memory through the existing stash cleanup path.
+
+Files changed:
+
+- `app/src/db/sanctuaryInteractions.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --cached --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-lever-toggle-export`
+- Passed: source inspection confirmed lever toggles only write interaction memory and do not mutate placement, reward, trap, or gate state.
+
+Manual test checklist:
+
+- Place a Temple Floor Lever and interact once; confirm `Lever switched on`.
+- Interact with the same lever again; confirm `Lever switched off`.
+- Stash and re-place that lever; confirm toggle memory resets for the new placed object.
+- Confirm lattice gates and traps are not affected by lever toggles.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Add object relation tables before lever/gate/trap links.
+- Add visual lever on/off frames if the asset sheet has verified alternate states and renderer support for stateful frames.
+- Add puzzle-side effects only after safe-path, gate-blocking, and trap-disable rules are designed.
+
+Phase 40 status:
 
 - Verified.
