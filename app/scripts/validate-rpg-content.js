@@ -1298,6 +1298,27 @@ function validateArchiveFarmGuideV1() {
   }
 }
 
+function validateObjectInteractionReactionsV1() {
+  [
+    'type ObjectReaction = {',
+    'const [objectReaction, setObjectReaction] = useState<ObjectReaction | null>(null);',
+    'const objectReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);',
+    'const showObjectReaction = (',
+    'setObjectReaction({',
+    'objectReactionTimer.current = setTimeout(() => setObjectReaction(null), 900);',
+    'styles.objectReaction',
+    'styles.objectReactionSuccess',
+    'styles.objectReactionWarn',
+    'showObjectReaction(object, `+${drop.quantity}`, dropDef, \'success\');',
+    "showObjectReaction(object, 'rest', item, 'muted');",
+    "showObjectReaction(object, '...', item, 'muted');",
+    "showObjectReaction(object, isOn ? 'ON' : 'OFF', item, affected.length ? 'success' : 'muted');",
+    "showObjectReaction(object, isDisabled ? 'safe' : 'armed', item, isDisabled ? 'success' : 'muted');",
+  ].forEach(snippet => {
+    if (!rpgScreen.includes(snippet)) fail(`Object reaction feedback missing: ${snippet}`);
+  });
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1329,6 +1350,7 @@ validateAnimalMetadata(animalAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateArchiveFarmGuideV1();
+validateObjectInteractionReactionsV1();
 validateBackpackScalabilityControls();
 validateBackpackCharacterInventorySplit();
 validateShopScalabilityControls();

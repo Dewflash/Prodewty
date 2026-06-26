@@ -158,6 +158,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 83 | Seasons and weather farm loop V2 | Verified | Season/weather HUD chip plus season-specific transactional harvest bonus drops |
 | 84 | Asset correctness and placeholder honesty V3 | Verified | Mechanism compact markers no longer hide art; animal products use distinct labeled placeholders |
 | 85 | Archive farm guide V1 | Verified | Archive now explains crop stages, watering/rain acceleration, season harvest bonuses, animal products, and current tool equip surface |
+| 86 | Object interaction reactions V1 | Verified | Interacting with animals, forage objects, clutter, chests, gates, traps, and levers now shows a small in-world reaction badge |
 
 ## Future Development Roadmap
 
@@ -3832,5 +3833,66 @@ Expansion notes saved:
 - Later add season affinity and crop restrictions to these facts when those systems become real mechanics.
 
 Phase 85 status:
+
+- Verified.
+
+### Phase 86 Audit
+
+Intended behavior:
+
+- Make `Interact` feel more immediate by showing a small in-world badge above the object that reacted.
+- Animal collection should show product quantity on success, a rest marker on failed product roll, and a waiting marker during cooldown.
+- Forage objects and clearable clutter should show reward/empty/cooldown feedback at the object, not only in the global toast.
+- Levers, traps, gates, chests, and repeatable loot objects should show compact state/reward reactions without adding new normal-world controls.
+
+Negative guarantees:
+
+- This phase must not change item drop rates, cooldown duration, inventory transactions, object deletion, collision, relation state, or `Interact`/`Attack` button protocol.
+- This phase must not add persistent reaction state; reactions are temporary UI only.
+- This phase must not stage unrelated settings or loose asset folders.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The existing object pulse was useful but too subtle, especially for tiny animals and mechanisms.
+- The global toast says what happened, but a world-anchored badge connects the feedback to the exact object and keeps the interaction feeling game-like.
+- Using item icons for successful rewards makes the reaction self-explanatory while still preserving the normal top HUD controls.
+
+Implementation attack findings:
+
+- `ObjectReaction` stores temporary world coordinates and display metadata, then clears through its own timer.
+- `showObjectReaction` derives the object footprint from catalog metadata so the badge centers over the object's blocked base.
+- Existing transaction and reward paths are unchanged; reactions are emitted after those paths determine success/failure.
+- Validator now checks the state, timer cleanup, renderer, styles, and representative animal/mechanism reaction calls.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Interact with Chick/Piglet/Sheep/Calf and confirm a small badge appears above the animal on product success, rest, or cooldown.
+- Interact with trees/crystals/bushes and confirm reward/empty/cooldown badges appear above the object.
+- Clear weeds/twigs/rocks and confirm the reward badge appears where the clutter was.
+- Interact with lever, trap, gate, and chest objects and confirm a compact state/reward badge appears without extra controls.
+
+Expansion notes saved:
+
+- Later replace static badges with short pixel particles or sprite-specific animation hooks once final assets are steadier.
+- Later add crop plot reaction badges for watering/harvest if the garden plot UI needs the same spatial feedback treatment.
+
+Phase 86 status:
 
 - Verified.

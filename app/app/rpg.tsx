@@ -116,6 +116,15 @@ type WorldToast = {
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
 };
+type ObjectReaction = {
+  id: number;
+  row: number;
+  col: number;
+  colWidth: number;
+  label: string;
+  item?: RpgItemDefinition | null;
+  tone: 'success' | 'muted' | 'warn';
+};
 type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';
 const TOOLS: { id: ToolId; itemId: string; label: string; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
@@ -310,6 +319,7 @@ export default function RpgScreen() {
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
   const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
+  const [objectReaction, setObjectReaction] = useState<ObjectReaction | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
   const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
@@ -317,6 +327,7 @@ export default function RpgScreen() {
   const [equippedTool, setEquippedTool] = useState<ToolId | null>(null);
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const objectReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forageCooldowns = useRef<Record<number, number>>({});
   const defeatedEnemyUids = useRef<Set<string>>(new Set());
   const emptyInteractCooldownUntil = useRef(0);
@@ -1153,6 +1164,7 @@ export default function RpgScreen() {
   useEffect(() => () => {
     if (worldToastTimer.current) clearTimeout(worldToastTimer.current);
     if (interactionTimer.current) clearTimeout(interactionTimer.current);
+    if (objectReactionTimer.current) clearTimeout(objectReactionTimer.current);
   }, []);
 
   useEffect(() => {
@@ -1507,6 +1519,26 @@ export default function RpgScreen() {
     interactionTimer.current = setTimeout(() => setInteractingObjectId(null), 220);
   };
 
+  const showObjectReaction = (
+    object: MapObject,
+    label: string,
+    item: RpgItemDefinition | null | undefined,
+    tone: ObjectReaction['tone'] = 'muted',
+  ) => {
+    const objectItem = getPlaceableItem(object.type);
+    if (objectReactionTimer.current) clearTimeout(objectReactionTimer.current);
+    setObjectReaction({
+      id: Date.now(),
+      row: object.row,
+      col: object.col,
+      colWidth: objectItem?.colWidth ?? 1,
+      label,
+      item,
+      tone,
+    });
+    objectReactionTimer.current = setTimeout(() => setObjectReaction(null), 900);
+  };
+
   const addSandboxInventoryItem = (itemId: string, quantity: number, source: RpgDiscoverySource = 'inventory') => {
     db.runSync(
       `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
@@ -1591,6 +1623,7 @@ export default function RpgScreen() {
   const collectAnimalProduct = (object: MapObject, item: ShopCatalogItem) => {
     const now = Date.now();
     if ((forageCooldowns.current[object.id] ?? 0) > now) {
+      showObjectReaction(object, '...', item, 'muted');
       showWorldToast({ text: 'Animal needs a little time', item, tone: 'muted' });
       return;
     }
@@ -1598,12 +1631,14 @@ export default function RpgScreen() {
     forageCooldowns.current[object.id] = now + ANIMAL_PRODUCT_COOLDOWN_MS;
     const drop = rollForageDrop(item.forageDrops ?? []);
     if (!drop) {
+      showObjectReaction(object, 'rest', item, 'muted');
       showWorldToast({ text: `${item.name} is resting`, item, tone: 'muted' });
       return;
     }
 
     const dropDef = getRpgItem(drop.itemId);
     addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
+    showObjectReaction(object, `+${drop.quantity}`, dropDef, 'success');
     showWorldToast({
       text: getAnimalProductText(item, dropDef, drop.quantity),
       item: dropDef,
@@ -1771,6 +1806,7 @@ export default function RpgScreen() {
       item: drops[0] ? getRpgItem(drops[0].itemId) : item,
       tone: 'success',
     });
+    showObjectReaction(object, drops.length ? rewardText : 'clear', drops[0] ? getRpgItem(drops[0].itemId) : item, 'success');
   };
 
   const interactWithObject = (object: MapObject) => {
@@ -1820,6 +1856,7 @@ export default function RpgScreen() {
         item,
         tone: affected.length ? 'success' : 'muted',
       });
+      showObjectReaction(object, isOn ? 'ON' : 'OFF', item, affected.length ? 'success' : 'muted');
       return;
     }
 
@@ -1836,11 +1873,13 @@ export default function RpgScreen() {
         item,
         tone: isDisabled ? 'success' : 'muted',
       });
+      showObjectReaction(object, isDisabled ? 'safe' : 'armed', item, isDisabled ? 'success' : 'muted');
       return;
     }
 
     if (isGateObject(item)) {
       if (getSanctuaryObjectInteractionCount(object.id, 'open_gate') % 2 === 1) {
+        showObjectReaction(object, 'open', item, 'success');
         showWorldToast({ text: 'Gate is open', item, tone: 'success' });
         return;
       }
@@ -1854,6 +1893,7 @@ export default function RpgScreen() {
         item,
         tone: 'muted',
       });
+      showObjectReaction(object, 'locked', item, 'muted');
       return;
     }
 
@@ -1874,6 +1914,7 @@ export default function RpgScreen() {
         item,
         tone: 'success',
       });
+      showObjectReaction(object, `+${item.interactLoot.coins}`, item, 'success');
       return;
     }
 
@@ -1895,12 +1936,14 @@ export default function RpgScreen() {
           item: firstDrop ? getRpgItem(firstDrop.itemId) : item,
           tone: 'success',
         });
+        showObjectReaction(object, result.drops[0] ? `+${result.drops[0].quantity}` : `+${result.coins}`, firstDrop ? getRpgItem(firstDrop.itemId) : item, 'success');
       } else {
         showWorldToast({
           text: result.reason === 'already_claimed' ? 'Chest is empty' : 'Chest jammed',
           item,
           tone: result.reason === 'already_claimed' ? 'muted' : 'warn',
         });
+        showObjectReaction(object, result.reason === 'already_claimed' ? 'empty' : 'jam', item, result.reason === 'already_claimed' ? 'muted' : 'warn');
       }
       return;
     }
@@ -1916,6 +1959,7 @@ export default function RpgScreen() {
 
     const now = Date.now();
     if ((forageCooldowns.current[object.id] ?? 0) > now) {
+      showObjectReaction(object, '...', item, 'muted');
       showWorldToast({ text: getForageCooldownText(item.tags), tone: 'muted' });
       return;
     }
@@ -1923,12 +1967,14 @@ export default function RpgScreen() {
 
     const drop = rollForageDrop(item.forageDrops);
     if (!drop) {
+      showObjectReaction(object, 'none', item, 'muted');
       showWorldToast({ text: getForageEmptyText(item), item, tone: 'muted' });
       return;
     }
 
     const dropDef = getRpgItem(drop.itemId);
     addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
+    showObjectReaction(object, `+${drop.quantity}`, dropDef, 'success');
     showWorldToast({
       text: getForageSuccessText(item, dropDef, drop.quantity),
       item: dropDef,
@@ -2292,6 +2338,29 @@ export default function RpgScreen() {
               onMoveRequest={handleObjectLongPress}
             />
           ))}
+
+          {activeZone === 'sanctuary' && objectReaction && (
+            <View
+              key={objectReaction.id}
+              pointerEvents="none"
+              style={[
+                styles.objectReaction,
+                objectReaction.tone === 'success' && styles.objectReactionSuccess,
+                objectReaction.tone === 'warn' && styles.objectReactionWarn,
+                {
+                  left: (objectReaction.col + objectReaction.colWidth / 2) * TILE_SIZE - 36,
+                  top: objectReaction.row * TILE_SIZE - 28,
+                },
+              ]}
+            >
+              {objectReaction.item ? (
+                <RpgItemIcon item={objectReaction.item} size={18} />
+              ) : (
+                <Feather name={objectReaction.tone === 'warn' ? 'alert-circle' : 'star'} size={14} color="#fff2bb" />
+              )}
+              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.objectReactionText}>{objectReaction.label}</Text>
+            </View>
+          )}
 
           {activeZone === 'sanctuary' && gardenPlots.map(plot => {
             const growth = getPlotGrowthInfo(plot);
@@ -3298,6 +3367,37 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 12,
     marginLeft: 8,
+  },
+  objectReaction: {
+    position: 'absolute',
+    zIndex: 108,
+    width: 72,
+    minHeight: 28,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(22,18,14,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.42)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  objectReactionSuccess: {
+    borderColor: 'rgba(53,255,112,0.58)',
+    backgroundColor: 'rgba(15,42,24,0.78)',
+  },
+  objectReactionWarn: {
+    borderColor: 'rgba(255,114,114,0.58)',
+    backgroundColor: 'rgba(58,25,24,0.78)',
+  },
+  objectReactionText: {
+    flexShrink: 1,
+    minWidth: 0,
+    marginLeft: 4,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
   },
   interactionPrompt: {
     position: 'absolute',
