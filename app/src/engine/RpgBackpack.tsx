@@ -7,9 +7,11 @@ import {
   getCropForSeed,
   getPlaceableItem,
   getRpgItem,
+  RPG_SOURCE_PACK_FILTERS,
   RPG_UI_FRAMES,
   type RpgDrop,
   type RpgItemDefinition,
+  type RpgSourcePackId,
 } from './RpgObjectCatalog';
 import { RpgItemIcon, RpgSpriteFrameView } from './RpgItemIcon';
 
@@ -24,7 +26,6 @@ type InventorySlot = InventoryRow & {
 
 type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
 type BackpackSort = 'kind' | 'name' | 'quantity';
-type BackpackSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
 
 type Props = {
   isOpen: boolean;
@@ -41,13 +42,6 @@ const FILTERS: { id: BackpackFilter; label: string }[] = [
   { id: 'object', label: 'Objects' },
   { id: 'seed', label: 'Seeds' },
   { id: 'resource', label: 'Resources' },
-];
-const BACKPACK_SOURCE_FILTERS: { id: BackpackSource; label: string; sourceLabel?: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
-  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
-  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
-  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
 ];
 const SORTS: { id: BackpackSort; label: string }[] = [
   { id: 'kind', label: 'Kind' },
@@ -84,9 +78,9 @@ function backpackSlotMatchesQuery(slot: InventorySlot, query: string) {
   ].some(value => value?.toLowerCase().includes(normalized));
 }
 
-function backpackSlotMatchesSource(slot: InventorySlot, source: BackpackSource) {
+function backpackSlotMatchesSource(slot: InventorySlot, source: RpgSourcePackId) {
   if (source === 'all') return true;
-  const sourceFilter = BACKPACK_SOURCE_FILTERS.find(item => item.id === source);
+  const sourceFilter = RPG_SOURCE_PACK_FILTERS.find(item => item.id === source);
   return !!sourceFilter?.sourceLabel && slot.item?.sourceLabel === sourceFilter.sourceLabel;
 }
 
@@ -109,7 +103,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<BackpackFilter>('all');
-  const [source, setSource] = useState<BackpackSource>('all');
+  const [source, setSource] = useState<RpgSourcePackId>('all');
   const [sort, setSort] = useState<BackpackSort>('kind');
   const [query, setQuery] = useState('');
 
@@ -245,7 +239,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
         </View>
 
         <View style={styles.sourceBar}>
-          {BACKPACK_SOURCE_FILTERS.map(item => {
+          {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
             return (
               <Pressable

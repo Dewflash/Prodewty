@@ -308,6 +308,10 @@ function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
   }
+  if (!catalog.includes("export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) {
+    fail('Catalog must expose shared source pack ids');
+  }
+  if (!catalog.includes('export const RPG_SOURCE_PACK_FILTERS')) fail('Catalog must expose shared source pack filters');
   if (!catalog.includes('rarity?: RpgItemRarity;')) fail('Catalog items must expose rarity metadata');
   if (!catalog.includes('sourceLabel?: string;')) fail('Catalog items must expose sourceLabel metadata');
   if (!catalog.includes('function forestObjectRarity')) fail('Missing forest object rarity derivation');
@@ -321,8 +325,8 @@ function validateContentMetadata() {
 
 function validateArchiveScalabilityControls() {
   if (!archive.includes("type ArchiveSort = 'name' | 'rarity' | 'status';")) fail('Archive must expose stable sort modes');
-  if (!archive.includes("type ArchiveSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Archive must expose source pack filters');
-  if (!archive.includes('ARCHIVE_SOURCE_FILTERS')) fail('Archive must define source pack filter controls');
+  if (!archive.includes('RPG_SOURCE_PACK_FILTERS')) fail('Archive must use shared source pack filters');
+  if (archive.includes('ARCHIVE_SOURCE_FILTERS')) fail('Archive must not duplicate source pack filter definitions');
   if (!archive.includes('archiveSourceMatches')) fail('Archive source filters must use catalog source labels');
   if (!archive.includes('TextInput')) fail('Archive must include search input for large catalogs');
   if (!archive.includes('archiveEntryMatchesQuery')) fail('Archive search must use catalog-derived entry data');
@@ -331,8 +335,8 @@ function validateArchiveScalabilityControls() {
 
 function validateBackpackScalabilityControls() {
   if (!backpack.includes("type BackpackSort = 'kind' | 'name' | 'quantity';")) fail('Backpack must expose stable sort modes');
-  if (!backpack.includes("type BackpackSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Backpack must expose source pack filters');
-  if (!backpack.includes('BACKPACK_SOURCE_FILTERS')) fail('Backpack must define source pack filter controls');
+  if (!backpack.includes('RPG_SOURCE_PACK_FILTERS')) fail('Backpack must use shared source pack filters');
+  if (backpack.includes('BACKPACK_SOURCE_FILTERS')) fail('Backpack must not duplicate source pack filter definitions');
   if (!backpack.includes('backpackSlotMatchesSource')) fail('Backpack source filters must use catalog source labels');
   if (!backpack.includes('TextInput')) fail('Backpack must include search input for large inventories');
   if (!backpack.includes('backpackSlotMatchesQuery')) fail('Backpack search must use catalog-derived item data');
@@ -340,8 +344,8 @@ function validateBackpackScalabilityControls() {
 }
 
 function validateShopScalabilityControls() {
-  if (!shop.includes("type ShopSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Shop must expose source pack filters');
-  if (!shop.includes('SHOP_SOURCE_FILTERS')) fail('Shop must define source pack filter controls');
+  if (!shop.includes('RPG_SOURCE_PACK_FILTERS')) fail('Shop must use shared source pack filters');
+  if (shop.includes('SHOP_SOURCE_FILTERS')) fail('Shop must not duplicate source pack filter definitions');
   if (!shop.includes('matchesShopSource')) fail('Shop source filters must use catalog source labels');
   if (!shop.includes('TextInput')) fail('Shop must include search input for large catalogs');
   if (!shop.includes('shopEntryMatchesQuery')) fail('Shop search must use catalog-derived item data');

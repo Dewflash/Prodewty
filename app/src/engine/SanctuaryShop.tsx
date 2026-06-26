@@ -3,7 +3,13 @@ import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } fro
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
-import { SHOP_CATALOG, type RpgItemRarity, type ShopCatalogItem } from './RpgObjectCatalog';
+import {
+  RPG_SOURCE_PACK_FILTERS,
+  SHOP_CATALOG,
+  type RpgItemRarity,
+  type RpgSourcePackId,
+  type ShopCatalogItem,
+} from './RpgObjectCatalog';
 import { RpgItemIcon } from './RpgItemIcon';
 
 type OwnedRow = {
@@ -13,7 +19,6 @@ type OwnedRow = {
 
 type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave';
 type ShopSort = 'name' | 'rarity' | 'price';
-type ShopSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
 
 interface Props {
   isOpen: boolean;
@@ -43,14 +48,6 @@ const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'rarity', label: 'Rarity' },
   { id: 'price', label: 'Price' },
 ];
-const SHOP_SOURCE_FILTERS: { id: ShopSource; label: string; sourceLabel?: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
-  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
-  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
-  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
-];
-
 function matchesShopFilter(tags: string[] | undefined, filter: ShopFilter) {
   if (filter === 'all') return true;
   if (filter === 'structure') {
@@ -59,9 +56,9 @@ function matchesShopFilter(tags: string[] | undefined, filter: ShopFilter) {
   return !!tags?.includes(filter);
 }
 
-function matchesShopSource(item: ShopCatalogItem, source: ShopSource) {
+function matchesShopSource(item: ShopCatalogItem, source: RpgSourcePackId) {
   if (source === 'all') return true;
-  const sourceFilter = SHOP_SOURCE_FILTERS.find(filter => filter.id === source);
+  const sourceFilter = RPG_SOURCE_PACK_FILTERS.find(filter => filter.id === source);
   return !!sourceFilter?.sourceLabel && item.sourceLabel === sourceFilter.sourceLabel;
 }
 
@@ -100,7 +97,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<ShopFilter>('all');
   const [sort, setSort] = useState<ShopSort>('name');
-  const [source, setSource] = useState<ShopSource>('all');
+  const [source, setSource] = useState<RpgSourcePackId>('all');
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<ShopPurchaseResult | null>(null);
 
@@ -223,7 +220,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         </View>
 
         <View style={styles.sourceBar}>
-          {SHOP_SOURCE_FILTERS.map(item => {
+          {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
             return (
               <Pressable

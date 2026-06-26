@@ -6,10 +6,12 @@ import { db } from '../db/schema';
 import { getRpgDiscoveries, type RpgDiscoveryRow } from '../db/rpgDiscovery';
 import {
   getRpgArchiveEntries,
+  RPG_SOURCE_PACK_FILTERS,
   SHOP_CATALOG,
   type RpgArchiveCategory,
   type RpgArchiveEntry,
   type RpgItemRarity,
+  type RpgSourcePackId,
 } from './RpgObjectCatalog';
 import { getRpgAsset, RPG_ARCHIVE_FRAMES, type RpgAssetDefinition } from './RpgAssetRegistry';
 import { RpgSpriteFrameView } from './RpgItemIcon';
@@ -22,7 +24,6 @@ type CountRow = {
 type ArchiveFilter = 'all' | RpgArchiveCategory;
 type ArchiveScope = 'all' | 'discovered' | 'known' | 'locked';
 type ArchiveSort = 'name' | 'rarity' | 'status';
-type ArchiveSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
 
 type ArchiveEntryState = RpgArchiveEntry & {
   quantity: number;
@@ -45,13 +46,6 @@ const FILTERS: { id: ArchiveFilter; label: string }[] = [
   { id: 'object', label: 'Objects' },
   { id: 'seed', label: 'Seeds' },
   { id: 'resource', label: 'Resources' },
-];
-const ARCHIVE_SOURCE_FILTERS: { id: ArchiveSource; label: string; sourceLabel?: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
-  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
-  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
-  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
 ];
 const SCOPE_FILTERS: { id: ArchiveScope; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -106,9 +100,9 @@ function archiveScopeMatches(entry: ArchiveEntryState, scope: ArchiveScope) {
   return !entry.discovered && !entry.known;
 }
 
-function archiveSourceMatches(entry: ArchiveEntryState, source: ArchiveSource) {
+function archiveSourceMatches(entry: ArchiveEntryState, source: RpgSourcePackId) {
   if (source === 'all') return true;
-  const sourceFilter = ARCHIVE_SOURCE_FILTERS.find(item => item.id === source);
+  const sourceFilter = RPG_SOURCE_PACK_FILTERS.find(item => item.id === source);
   return !!sourceFilter?.sourceLabel && entry.sourceLabel === sourceFilter.sourceLabel;
 }
 
@@ -186,7 +180,7 @@ function ArchiveItemArt({ asset, discovered, known }: {
 export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
   const { width, height } = useWindowDimensions();
   const [filter, setFilter] = useState<ArchiveFilter>('all');
-  const [source, setSource] = useState<ArchiveSource>('all');
+  const [source, setSource] = useState<RpgSourcePackId>('all');
   const [scope, setScope] = useState<ArchiveScope>('all');
   const [sort, setSort] = useState<ArchiveSort>('name');
   const [query, setQuery] = useState('');
@@ -302,7 +296,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         </View>
 
         <View style={styles.sourceBar}>
-          {ARCHIVE_SOURCE_FILTERS.map(item => {
+          {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
             return (
               <Pressable

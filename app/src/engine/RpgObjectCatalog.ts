@@ -22,6 +22,21 @@ export type RpgDrop = {
 };
 
 export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';
+export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
+
+export type RpgSourcePackFilter = {
+  id: RpgSourcePackId;
+  label: string;
+  sourceLabel?: string;
+};
+
+export const RPG_SOURCE_PACK_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
+  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
+  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
+  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
+] satisfies readonly RpgSourcePackFilter[];
 
 export type RpgInventoryItem = {
   name: string;

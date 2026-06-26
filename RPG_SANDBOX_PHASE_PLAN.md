@@ -85,6 +85,7 @@ These rules must remain true after every phase.
 | 28 | Cave content pack V1 | Verified | 32 curated tracked cave objects mapped into registry/catalog/archive/shop |
 | 29 | Source-pack filters | Verified | Archive and shop source filters split Forest/Crystal/Bush/Cave packs from gameplay tags |
 | 30 | Backpack source-pack filters | Verified | Backpack inventory source filters share Forest/Crystal/Bush/Cave catalog labels |
+| 31 | Shared source-pack metadata | Verified | Source-pack filter definitions are centralized in the gameplay catalog |
 
 ## Required Audit Loop For Every Phase
 
@@ -1092,6 +1093,37 @@ Manual test checklist:
 - Tap each source filter and confirm owned stacks narrow correctly.
 - Combine source filters with Objects/Seeds/Resources, search, and sorting.
 - Confirm Place/Plant buttons still target the selected stack after filters change.
+
+## Phase 31: Shared Source-Pack Metadata
+
+Goal: remove duplicated source-pack filter definitions so future content packs are added once and inherited by archive, shop, and backpack.
+
+Deliverables:
+
+- Add shared source-pack id/filter exports to `RpgObjectCatalog.ts`.
+- Update archive, shop, and backpack to consume the shared filters.
+- Keep each screen's matching logic local while using the same source-label source of truth.
+- Extend `validate:rpg` to reject duplicated source filter lists in UI components.
+
+Acceptance gates:
+
+- Forest, Crystal, Bush, and Cave source filter labels live in one exported catalog constant.
+- Archive, shop, and backpack use `RPG_SOURCE_PACK_FILTERS`.
+- No local `ARCHIVE_SOURCE_FILTERS`, `SHOP_SOURCE_FILTERS`, or `BACKPACK_SOURCE_FILTERS` definitions remain.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgArchive.tsx app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-shared-source-filters-export`
+
+Manual test checklist:
+
+- Open archive, shop, and backpack and confirm source filter rows still show All/Forest/Crystal/Bush/Cave.
+- Tap each filter in all three surfaces and confirm result counts update.
+- Combine source filters with existing category/tag filters and search.
 
 ## Manual Regression Script
 
