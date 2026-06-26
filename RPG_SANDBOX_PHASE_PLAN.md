@@ -31,6 +31,8 @@ These rules must remain true after every phase.
 - Build mode owns placement, move, cancel, and stash context.
 - Contextual controls only appear in their matching state.
 - `RpgObjectCatalog.ts` is the single gameplay item source of truth for object metadata, item kind, icon mapping, shop inclusion, footprints, and drop tables.
+- `RpgAssetRegistry.ts` is the single runtime asset source of truth for verified sprite frames, object sources, UI panels, and archive/book assets.
+- Player-facing archive entries must derive from gameplay catalog entries and asset registry IDs, not a separate hand-written archive catalog.
 - Movement collision and placement collision use the same object footprint metadata.
 - Avatar footprint is treated as blocked during placement.
 - Objects define collision footprint separately from visual footprint.
@@ -63,6 +65,15 @@ These rules must remain true after every phase.
 | 8 | Growth and harvest V1 | Verified | Bootstrapper, harvest flow, `npx tsc --noEmit`, Expo export |
 | 9 | Productivity energy hook | Verified | Water Drops resource, activity rewards, atomic crop acceleration |
 | 10 | Streak weather | Verified | Streak rain overlay, crop watering effect, `npx tsc --noEmit`, Expo export |
+| 11 | Runtime asset registry | In progress | `RpgAssetRegistry.ts`, catalog asset IDs |
+| 12 | Player archive book V1 | Draft complete | `RpgArchive.tsx`, `rpg_discoveries` v58 migration, durable discovery hooks |
+| 13 | Forest content mapping V1 | In progress | 40 forest objects mapped into registry/catalog/archive/shop pages |
+| 14 | Farming art reset | In progress | Existing crop plots use verified seed/leaves placeholders; wrong plant frames removed |
+| 15 | Archive usability filters | Draft complete | Archive category/scope filters, discovery summary counts, empty state |
+| 16 | RPG content validation harness | Draft complete | `npm run validate:rpg` checks catalog, registry, drops, seeds, and asset files |
+| 17 | Forest rarity and source metadata | Draft complete | Catalog rarity/source labels surfaced in shop/archive and enforced by validator |
+| 18 | Shop catalog sorting | Verified | Shop sort controls for name, rarity, and price over the forest catalog |
+| 19 | Shop/backpack interaction repair | Verified | Larger tappable shop/backpack surfaces, inline buy feedback, farm-sheet seed/crop art |
 
 ## Required Audit Loop For Every Phase
 
@@ -414,6 +425,293 @@ Expansion notes saved for after draft implementation:
 - Add weather-linked rare drops.
 - Add soundscape and particle quality settings.
 
+## Phase 11: Runtime Asset Registry
+
+Goal: turn the developer-facing asset atlas into a runtime content registry that gameplay UI can consume safely.
+
+Deliverables:
+
+- Add `RpgAssetRegistry.ts`.
+- Move verified UI frames, book frames, and object sprite sources into named registry entries.
+- Add `assetId` and `iconAssetId` references to gameplay catalog items.
+- Keep gameplay rules in `RpgObjectCatalog.ts`; keep asset source/frame data in `RpgAssetRegistry.ts`.
+
+Acceptance gates:
+
+- Existing backpack, shop, world object rendering, drops, and farming still compile.
+- Adding a new object or resource has an explicit asset registry entry.
+- The archive can resolve item art from registry IDs.
+- No uncurated full asset pack is promoted into gameplay just because it exists on disk.
+
+Expansion notes saved:
+
+- Add a deterministic registry/contact-sheet generator.
+- Add asset verification states beyond boolean, such as candidate, production, deprecated.
+- Add sprite-sheet frame metadata for crop stages and page-turn animation.
+
+## Phase 12: Player Archive Book V1
+
+Goal: make the asset/content map visible to players through a book-style archive.
+
+Deliverables:
+
+- Add an RPG archive modal using the magic book asset pack.
+- Add a HUD archive button using the closed-book frame.
+- Show cataloged objects, seeds, and resources.
+- Show discovered, known, and locked states from persistent discovery, inventory, and placed sanctuary objects.
+- Persist first-discovered timestamps and latest discovery source.
+- Keep archive display derived from `RpgObjectCatalog.ts` and `RpgAssetRegistry.ts`.
+
+Acceptance gates:
+
+- Archive opens and closes without disrupting movement, shop, backpack, or build mode.
+- Shop, backpack, and archive close each other instead of stacking.
+- Archive refreshes when inventory changes.
+- Discovered entries stay discovered after the player spends, plants, harvests, places, or stashes the item.
+- Unknown entries show unlock guidance instead of fake ownership.
+- The archive does not add normal-mode action buttons; `Interact` and `Attack` remain the only action buttons.
+
+Expansion notes saved:
+
+- Add page-turn animation after archive data is stable.
+- Add crop-stage pages and object lore.
+- Add filters for placeables, drops, crops, crafting materials, and rare discoveries.
+- Add an archive sort mode for discovery time/source.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: focused SQLite migration/upsert simulation for `rpg_discoveries`.
+- Passed: `git diff --check -- app/app/rpg.tsx app/src/db/garden.ts app/src/db/rpgDiscovery.ts app/src/db/schema.ts app/src/engine/RpgArchive.tsx RPG_SANDBOX_PHASE_PLAN.md`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-discovery-export-2`
+
+## Phase 13: Forest Content Mapping V1
+
+Goal: start replacing the tiny starter catalog with real curated content coverage, beginning with the full forest object pack.
+
+Deliverables:
+
+- Map every `PNG/Assets/*.png` item from `craftpix-net-505052-free-forest-objects-top-down-pixel-art`.
+- Store item ID, asset ID, display name, source, dimensions, and tags in `RpgAssetRegistry.ts`.
+- Generate object catalog entries from that registry metadata.
+- Derive footprint, visual size, price, description, and forage behavior from curated metadata helpers.
+- Add shop paging and filters so the existing six visual slots can sell the full mapped forest set.
+- Lower archive item rows on the book page after phone review.
+
+Acceptance gates:
+
+- All 40 forest objects appear in the player archive.
+- Existing starter shop items still render and purchase correctly.
+- Existing placed objects still resolve by their original item IDs.
+- Movement/placement collision still reads footprint metadata from catalog entries.
+- New objects are reachable through shop pages without overcrowding the six-slot panel.
+- Archive entries sit comfortably on the book page instead of too high.
+
+Expansion notes saved:
+
+- Add better shop rarity/price balance after device review.
+- Add item-specific unlock sources, rarity, and biome filters.
+- Add mushroom/resource drops and tree-specific seed art.
+- Persist discovery timestamps and discovery source.
+- Map the next pack only after this forest mapping passes device review.
+
+## Phase 14: Farming Art Reset
+
+Goal: remove visually wrong crop-stage art and keep garden plots on verified placeholder semantics until proper crop frames are curated.
+
+Deliverables:
+
+- Reset crop frames in `RpgAssetRegistry.ts` to verified `seed` and `leaves` UI frames.
+- Keep the farm plant sheet as a candidate sheet, not a runtime dependency.
+- Render garden plots with clear placeholder stage semantics.
+- Preserve existing growth, watering, rain, harvest, and inventory behavior.
+
+Acceptance gates:
+
+- Planted plots do not show wrong species/icons.
+- Mature plots are visually distinct from seed/growing plots.
+- Plot rendering still uses 1x1 world cells and scales with the map.
+- Missing crop art falls back to the verified seed icon path.
+- TypeScript and Expo export pass without relying on unverified farm plant frames.
+
+Expansion notes saved:
+
+- Re-curate `Plants.png` with phone-sized contact-sheet review before runtime use.
+- Curate crop-specific produce icons from `Supplies.png`.
+- Add real seed-bag icons instead of the generic sprout marker.
+- Add larger multi-frame crop sprites only after plot sizing rules exist.
+- Add persistent crop discovery pages to the archive.
+
+## Phase 15: Archive Usability Filters
+
+Goal: make the growing archive usable once the forest pack and discovery persistence create many entries.
+
+Deliverables:
+
+- Add archive scope filters for all, seen, known, and locked entries.
+- Keep the existing object/seed/resource category filters.
+- Show discovery summary counts so players can understand archive progress.
+- Add a clear empty state when a filter combination has no entries.
+- Keep archive filters read-only; no item-use, buy, or build actions move into the archive.
+
+Acceptance gates:
+
+- Seen scope shows discovered items regardless of current inventory count.
+- Known scope shows shop-known but undiscovered items.
+- Locked scope shows entries that are neither known nor discovered.
+- Filter changes reset pagination safely and never select an entry outside the filtered result set.
+- Archive still opens without adding normal-mode action buttons.
+
+Expansion notes saved:
+
+- Add sort by discovered time/source once the archive detail view has enough room.
+- Add rarity/source chips after item-specific unlock metadata exists.
+- Add page-turn animation after filter behavior passes phone review.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- app/src/engine/RpgArchive.tsx RPG_SANDBOX_PHASE_PLAN.md`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-archive-filters-export`
+
+## Phase 16: RPG Content Validation Harness
+
+Goal: make content expansion safer by adding a repeatable check for RPG catalog and asset-registry drift.
+
+Deliverables:
+
+- Add a repo-local validator script that can run without launching the app.
+- Add `npm run validate:rpg`.
+- Validate forest object count, unique item IDs, unique asset IDs, source file existence, positive dimensions, and required tags.
+- Validate catalog `assetId` and `iconAssetId` references against the asset registry.
+- Validate forage/harvest drop item IDs against the item catalog.
+- Validate seed maps and crop catalog seed references.
+
+Acceptance gates:
+
+- Validator fails on missing forest asset files.
+- Validator fails on missing asset registry IDs.
+- Validator fails on broken drop or seed item references.
+- Validator passes on the current mapped forest catalog.
+- TypeScript and Expo export still pass.
+
+Expansion notes saved:
+
+- Move from source-text validation to generated JSON manifests once the asset pipeline stabilizes.
+- Add footprint and price-balance thresholds after phone review confirms object sizes.
+- Add CI wiring once the branch is ready for PR.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg` with 40 forest assets and 47 catalog items.
+- Passed: `git diff --check -- app/package.json app/scripts/validate-rpg-content.js RPG_SANDBOX_PHASE_PLAN.md`
+- Passed: `npx tsc --noEmit`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-content-validation-export`
+
+## Phase 17: Forest Rarity And Source Metadata
+
+Goal: make the expanding forest catalog feel organized and inspectable instead of a flat list of interchangeable assets.
+
+Deliverables:
+
+- Add `RpgItemRarity` metadata to RPG catalog items.
+- Derive rarity for generated forest objects from size and semantic tags.
+- Add `sourceLabel` metadata for objects, seeds, and resources.
+- Surface rarity/source metadata in shop cards and selected shop details.
+- Surface rarity/source metadata in archive details.
+- Extend `npm run validate:rpg` so new content cannot skip the metadata layer.
+
+Acceptance gates:
+
+- Every generated forest object has a rarity and source label.
+- Archive entries preserve item rarity and source label from the catalog.
+- Shop remains purchase-only and does not expose placement/inventory actions.
+- Archive remains read-only and does not expose placement/buy actions.
+- Validator, TypeScript, and Expo export pass.
+
+Expansion notes saved:
+
+- Use rarity for future shop sorting after price balance is reviewed on device.
+- Add rarity frames or border sprites once UI assets are curated.
+- Add source-specific archive filters after the next asset pack is mapped.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryShop.tsx app/src/engine/RpgArchive.tsx app/scripts/validate-rpg-content.js RPG_SANDBOX_PHASE_PLAN.md`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-rarity-metadata-export`
+
+## Phase 18: Shop Catalog Sorting
+
+Goal: make the large forest shop browsable without forcing players to page through a fixed alphabetical dump.
+
+Deliverables:
+
+- Add shop sort controls for name, rarity, and price.
+- Keep existing shop filters for all, trees, mushrooms, and relics.
+- Reset pagination when filter or sort changes.
+- Preserve selected-item behavior and purchase-only responsibility.
+
+Acceptance gates:
+
+- Name sort is deterministic and alphabetical.
+- Rarity sort shows higher rarity first, then alphabetically.
+- Price sort shows cheaper items first, then alphabetically.
+- Sort changes do not expose placement/inventory/archive actions in the shop.
+- Validator, TypeScript, and Expo export pass.
+
+Expansion notes saved:
+
+- Add ascending/descending toggles only after phone review confirms the extra control is worth the space.
+- Add rarity/source combined filters after more asset packs are mapped.
+- Add economy balance review before treating price order as final.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- app/src/engine/SanctuaryShop.tsx RPG_SANDBOX_PHASE_PLAN.md`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-shop-sorting-export`
+
+## Phase 19: Shop/Backpack Interaction Repair
+
+Goal: fix device-reported shop/backpack usability failures without changing the core RPG loop.
+
+Deliverables:
+
+- Make shop item cards large, fully tappable selection targets.
+- Move buying to one clear selected-item action inside the shop detail area.
+- Show purchase success/failure inside the shop modal instead of only behind it in the world toast.
+- Refresh owned counts immediately after a successful buy.
+- Increase backpack slot/action touch targets and show the verified backpack icon in the panel header.
+- Replace bad generic seed/crop placeholder frames with curated farm-sheet seed, leaf, and plant-stage frames.
+
+Acceptance gates:
+
+- Shop cards should visibly show item art, name, rarity, and price.
+- Tapping any shop card selects it; tapping the Buy action attempts that selected item.
+- Insufficient coins and successful purchase feedback are visible while the shop remains open.
+- Bought items update owned counts and still appear in backpack through the existing inventory revision path.
+- Seed inventory icons and planted crop stage icons no longer use the wrong UI atlas cells.
+- Validator, TypeScript, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- app/app/rpg.tsx app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgAssetRegistry.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-shop-backpack-fix-export`
+
+Manual test checklist:
+
+- Open shop and confirm all six visible cards show recognizable art.
+- Tap several cards and confirm selected detail changes.
+- Buy an affordable item and confirm inline success text plus owned count increment.
+- Try buying an unaffordable item and confirm inline shortfall text.
+- Open backpack and confirm larger slots, backpack header icon, and visible object/seed/resource art.
+- Plant a seed and confirm the in-world crop icon is a plant-stage sprite rather than the wrong worm-like asset.
+
 ## Manual Regression Script
 
 Run this script after code phases that touch RPG runtime behavior.
@@ -563,7 +861,7 @@ Negative guarantees:
 
 - Shop must not mutate inventory when the user lacks coins.
 - Shop must not remain open during build/edit placement.
-- Shop must not assume the catalog can grow beyond the current six-slot panel without an explicit pagination phase.
+- Shop must keep large catalogs behind explicit paging/filtering and real touch controls.
 
 Files changed:
 
@@ -578,11 +876,11 @@ Verification evidence:
 - Passed: `npx tsc --noEmit`
 - Passed: `git diff --check -- app/app/rpg.tsx app/src/engine/SanctuaryShop.tsx app/src/engine/RpgObjectCatalog.ts RPG_ASSET_ATLAS.md RPG_SANDBOX_PHASE_PLAN.md`
 - Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase3-export`
-- Passed: source inspection confirmed `SanctuaryShop` receives `coins` and `refreshKey`, uses `RPG_UI_FRAMES.shopPanel`, and has no place/use controls.
+- Passed: source inspection confirmed `SanctuaryShop` receives `coins` and `refreshKey`, renders real paged touch controls, and has no place/use controls.
 
 Expansion notes saved:
 
-- Add shop pagination or category tabs before `SHOP_CATALOG` exceeds the six visible slots in the current panel.
+- Add rarity/sort controls once the paged catalog grows beyond the current forest pack.
 - Add buy confirmation for expensive items.
 - Add daily rotating stock.
 - Add locked items based on level/streak.

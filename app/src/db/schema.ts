@@ -1452,6 +1452,41 @@ function runMigrations() {
     normalizeGardenPlotsTable();
     db.execSync('PRAGMA user_version = 57');
   }
+
+  if (version < 58) {
+    createRpgDiscoveriesTable();
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT item_id, 'inventory'
+      FROM user_inventory
+      WHERE COALESCE(quantity, 0) > 0
+    `);
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT type, 'place'
+      FROM sanctuary_objects
+      WHERE type IS NOT NULL
+    `);
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT seed_item_id, 'plant'
+      FROM garden_plots
+      WHERE seed_item_id IS NOT NULL
+    `);
+    db.execSync('PRAGMA user_version = 58');
+  }
+}
+
+function createRpgDiscoveriesTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS rpg_discoveries (
+      item_id TEXT PRIMARY KEY,
+      first_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      last_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      source TEXT NOT NULL DEFAULT 'bootstrap',
+      seen_count INTEGER NOT NULL DEFAULT 1
+    );
+  `);
 }
 
 function normalizeUserInventoryTable() {
@@ -1633,7 +1668,7 @@ export function performFullReset(archiveHistory: boolean = false, retainCustomiz
     'game_logs', 'dungeon_runs',
     'habit_completions', 'habits',
     'dungeon_unlocks',
-    'garden_plots', 'user_inventory',
+    'garden_plots', 'user_inventory', 'rpg_discoveries',
   ];
   for (const t of wipeTables) {
     try { db.execSync(`DELETE FROM ${t}`); } catch {}

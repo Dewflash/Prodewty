@@ -14,6 +14,7 @@ import { fonts } from '../src/theme/typography';
 import { Joystick } from '../src/engine/Joystick';
 import { SpriteAnimator } from '../src/engine/SpriteAnimator';
 import { RpgBackpack } from '../src/engine/RpgBackpack';
+import { RpgArchive } from '../src/engine/RpgArchive';
 import { RpgItemIcon, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
 import { SanctuaryShop } from '../src/engine/SanctuaryShop';
@@ -26,6 +27,7 @@ import {
   type RpgItemDefinition,
   type ShopCatalogItem,
 } from '../src/engine/RpgObjectCatalog';
+import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
 import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
 import { db } from '../src/db/schema';
 import {
@@ -37,6 +39,7 @@ import {
   type HarvestDrop,
   type GrowthStage,
 } from '../src/db/garden';
+import { recordRpgDiscovery, type RpgDiscoverySource } from '../src/db/rpgDiscovery';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
 import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
 
@@ -150,6 +153,7 @@ export default function RpgScreen() {
   const [coins, setCoins] = useState(0);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
@@ -264,6 +268,7 @@ export default function RpgScreen() {
     setPlacementReport(null);
     setIsShopOpen(false);
     setIsBackpackOpen(false);
+    setIsArchiveOpen(false);
     buildActive.value = 0;
     buildColWidth.value = 0;
     buildColHeight.value = 0;
@@ -318,6 +323,7 @@ export default function RpgScreen() {
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId, mode));
     setIsShopOpen(false);
     setIsBackpackOpen(false);
+    setIsArchiveOpen(false);
   };
 
   const beginPlantMode = (seedItemId: string) => {
@@ -346,6 +352,7 @@ export default function RpgScreen() {
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, seedItemId, null, 'plant'));
     setIsShopOpen(false);
     setIsBackpackOpen(false);
+    setIsArchiveOpen(false);
   };
 
   const clearBuildMode = () => {
@@ -629,6 +636,7 @@ export default function RpgScreen() {
           });
           return;
         }
+        recordRpgDiscovery(buildItem.itemId, 'plant');
         bumpInventoryRevision();
         refreshGardenPlots();
         clearBuildMode();
@@ -654,6 +662,7 @@ export default function RpgScreen() {
           buildItem.itemId, row, col,
         );
         db.execSync('COMMIT');
+        recordRpgDiscovery(buildItem.itemId, 'place');
       }
       bumpInventoryRevision();
       clearBuildMode();
@@ -905,13 +914,14 @@ export default function RpgScreen() {
     interactionTimer.current = setTimeout(() => setInteractingObjectId(null), 220);
   };
 
-  const addSandboxInventoryItem = (itemId: string, quantity: number) => {
+  const addSandboxInventoryItem = (itemId: string, quantity: number, source: RpgDiscoverySource = 'inventory') => {
     db.runSync(
       `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
        ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
       itemId,
       quantity,
     );
+    recordRpgDiscovery(itemId, source);
     bumpInventoryRevision();
   };
 
@@ -960,7 +970,7 @@ export default function RpgScreen() {
     }
 
     const dropDef = getRpgItem(drop.itemId);
-    addSandboxInventoryItem(drop.itemId, drop.quantity);
+    addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
     showWorldToast({
       text: `+${drop.quantity} ${dropDef?.name ?? drop.itemId}`,
       item: dropDef,
@@ -1144,6 +1154,7 @@ export default function RpgScreen() {
 
           {activeZone === 'sanctuary' && gardenPlots.map(plot => {
             const growth = getPlotGrowthInfo(plot);
+            const cropFrame = growth.crop?.stageFrames?.[growth.stage] ?? null;
             return (
               <View
                 key={plot.id}
@@ -1159,9 +1170,13 @@ export default function RpgScreen() {
                   },
                 ]}
               >
-                <RpgItemIcon item={getRpgItem(plot.seed_item_id)} size={growth.stage >= 2 ? 25 : 22} fallbackLabel={plot.seed_item_id} />
+                {cropFrame ? (
+                  <RpgSpriteFrameView frame={cropFrame} size={growth.stage >= 2 ? 34 : 28} />
+                ) : (
+                  <RpgItemIcon item={getRpgItem(plot.seed_item_id)} size={growth.stage >= 2 ? 25 : 22} fallbackLabel={plot.seed_item_id} />
+                )}
                 <Text style={[styles.gardenStageText, growth.stage >= 2 && styles.gardenStageMatureText]}>
-                  {growth.stage >= 2 ? '!' : growth.stage === 1 ? 'II' : 'I'}
+                  {growth.stage >= 2 ? '!' : growth.stage === 1 ? '+' : ''}
                 </Text>
               </View>
             );
@@ -1258,6 +1273,7 @@ export default function RpgScreen() {
                 style={styles.iconHudBtn}
                 onPress={() => {
                   setIsShopOpen(false);
+                  setIsArchiveOpen(false);
                   setIsBackpackOpen(true);
                 }}
               >
@@ -1265,10 +1281,23 @@ export default function RpgScreen() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Open archive"
+                style={styles.iconHudBtn}
+                onPress={() => {
+                  setIsShopOpen(false);
+                  setIsBackpackOpen(false);
+                  setIsArchiveOpen(true);
+                }}
+              >
+                <RpgSpriteFrameView frame={RPG_ARCHIVE_FRAMES.closedBook} size={24} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Open shop"
                 style={styles.shopBtn}
                 onPress={() => {
                   setIsBackpackOpen(false);
+                  setIsArchiveOpen(false);
                   setIsShopOpen(true);
                 }}
               >
@@ -1342,7 +1371,16 @@ export default function RpgScreen() {
         onPurchaseRequest={(itemId, price) => {
           try {
             const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
-            if (!state || state.coins < price) return;
+            const item = getRpgItem(itemId);
+            if (!state || state.coins < price) {
+              const shortfall = Math.max(0, price - (state?.coins ?? 0));
+              showWorldToast({
+                text: `Need ${shortfall} more coins`,
+                item,
+                tone: 'warn',
+              });
+              return { ok: false, message: `Need ${shortfall} more coins` };
+            }
             db.execSync('BEGIN TRANSACTION');
             db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
             db.runSync(
@@ -1351,11 +1389,20 @@ export default function RpgScreen() {
               itemId,
             );
             db.execSync('COMMIT');
+            recordRpgDiscovery(itemId, 'buy');
             refreshCoins();
             bumpInventoryRevision();
+            showWorldToast({
+              text: `Bought ${item?.name ?? itemId}`,
+              item,
+              tone: 'success',
+            });
+            return { ok: true, message: `Bought ${item?.name ?? itemId}` };
           } catch (e) {
             try { db.execSync('ROLLBACK'); } catch {}
             console.warn('Failed to purchase item', e);
+            showWorldToast({ text: 'Buy failed', item: getRpgItem(itemId), tone: 'warn' });
+            return { ok: false, message: 'Buy failed. Try again.' };
           }
         }}
       />
@@ -1366,6 +1413,11 @@ export default function RpgScreen() {
         onClose={() => setIsBackpackOpen(false)}
         onPlaceItem={handleBackpackPlaceItem}
         onPlantSeed={handleBackpackPlantSeed}
+      />
+      <RpgArchive
+        isOpen={isArchiveOpen}
+        refreshKey={inventoryRevision}
+        onClose={() => setIsArchiveOpen(false)}
       />
     </View>
   );

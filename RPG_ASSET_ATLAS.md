@@ -31,6 +31,8 @@ These frames are safe for current production use.
 | `shopPanel` | `Shop.png` | x 384, y 0 | 128x128 | Shop overlay panel |
 | `leaves` | `Icons.png` | row 5, col 4 | 16x16 | `rpg_leaves` |
 | `seed` | `Icons.png` | row 15, col 3 | 16x16 | Tree seed placeholder/sapling marker |
+| `archiveClosedBook` | `Open_book.png` | row 0, col 0 | 272x272 | Archive HUD button |
+| `archiveOpenBook` | `Open_book.png` | row 2, col 3 | 272x272 | Archive overlay panel |
 
 Notes:
 
@@ -71,6 +73,8 @@ Do not use yet:
 
 Production mapping currently lives in `app/src/engine/RpgObjectCatalog.ts`.
 
+Runtime asset mapping now lives in `app/src/engine/RpgAssetRegistry.ts`.
+
 Known frame entries:
 
 ```ts
@@ -79,6 +83,8 @@ RPG_UI_FRAMES.inventoryPanel
 RPG_UI_FRAMES.shopPanel
 RPG_UI_FRAMES.leaves
 RPG_UI_FRAMES.seed
+RPG_ARCHIVE_FRAMES.closedBook
+RPG_ARCHIVE_FRAMES.openBook
 ```
 
 Current item mappings:
@@ -93,12 +99,42 @@ Current item mappings:
 | `Mega_tree1_seed` | seed | Uses verified draft `seed` |
 | tree/gazebo objects | object | Uses full object sprite source, not icon frame |
 
+## Forest Object Pack Mapping
+
+`RpgAssetRegistry.ts` now maps all 40 files from:
+
+`app/assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/`
+
+Mapped categories:
+
+- Trees: white, curved, luminous, light-ball, blue-green, mega, swirling, willow variants.
+- Mushrooms: beige-green, white-red, and chanterelle variants.
+- Structures/idols: living gazebos and tree idols.
+- Forest guardians: ent variants.
+
+Runtime behavior:
+
+- All 40 objects are archive-visible.
+- All 40 objects are valid catalog object entries with explicit footprint and visual-size metadata.
+- The shop uses the existing six-slot panel as a paged/filterable catalog for all 40 mapped forest objects.
+- Tree-tagged objects can use forage hooks; only tree objects with seed catalog entries can currently drop specific seeds.
+
+## Farming Runtime Art
+
+`RpgAssetRegistry.ts` exposes `RPG_CROP_STAGE_FRAMES` for the existing tree-seed crops, but the current runtime frames intentionally reuse verified semantic UI icons until real crop frames are curated.
+
+Runtime behavior:
+
+- Existing garden plots render the verified seed marker for early stages and verified leaves for mature crops.
+- The plot renderer falls back to the seed icon if a crop has no verified stage frames.
+- `Plants.png` is not imported by runtime crop rendering because its previously chosen frames were visually wrong on device.
+- `Supplies.png` remains a candidate sheet for produce/harvest icons and is not yet used at runtime.
+
 ## Open Asset Issues
 
-- Backpack slot and detail overlays need runtime phone review after the corrected full panel frame.
-- Shop slot alignment needs runtime phone review after the verified `Shop.png` panel conversion.
+- Backpack and shop now use real React Native touch grids instead of sprite-panel hitbox alignment; phone review should focus on touch comfort and visual sizing.
 - Seeds use a sprout marker, not a true seed-bag icon.
-- Crop stage art is not selected yet.
+- Crop stage art is deliberately unresolved; produce icons are still unselected.
 - Water Drops icon is selected as a candidate but not implemented.
 - Some untracked asset sheets remain in the worktree and should only be staged when a phase needs them.
 

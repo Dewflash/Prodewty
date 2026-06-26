@@ -1,5 +1,6 @@
 import { db } from './schema';
 import { sqlNow } from '../utils/date';
+import { recordRpgDiscovery } from './rpgDiscovery';
 
 export type GrowthStage = 0 | 1 | 2;
 
@@ -137,6 +138,7 @@ export function harvestGardenPlot(id: number, coins: number, drops: HarvestDrop[
          ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
         drop.itemId, drop.quantity,
       );
+      recordRpgDiscovery(drop.itemId, 'harvest');
     });
 
     db.runSync('DELETE FROM garden_plots WHERE id = ?', id);
@@ -221,6 +223,7 @@ export function addInventoryItem(itemId: string, amount: number = 1): void {
      ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
     itemId, amount,
   );
+  recordRpgDiscovery(itemId, 'inventory');
 }
 
 export function useInventoryItem(itemId: string, amount: number = 1): boolean {
