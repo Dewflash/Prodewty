@@ -1,10 +1,11 @@
-import { RPG_WATER_DROPS_ITEM_ID } from './RpgItemIds';
+import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID } from './RpgItemIds';
 import {
+  RPG_CRYSTAL_OBJECT_ASSETS,
   RPG_CROP_STAGE_FRAMES,
   RPG_FOREST_OBJECT_ASSETS,
   RPG_OBJECT_SOURCES,
   RPG_UI_FRAMES,
-  type RpgForestObjectAsset,
+  type RpgObjectAsset,
   type RpgSpriteFrame,
 } from './RpgAssetRegistry';
 
@@ -83,6 +84,9 @@ const TREE_FORAGE_DROPS = (seedItemId: string): RpgDrop[] => [
 const LEAF_FORAGE_DROPS: RpgDrop[] = [
   { itemId: 'rpg_leaves', chance: 0.78, min: 1, max: 2 },
 ];
+const CRYSTAL_FORAGE_DROPS: RpgDrop[] = [
+  { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, chance: 0.68, min: 1, max: 2 },
+];
 const TREE_SEEDS_BY_OBJECT: Record<string, string> = {
   White_tree1: 'White_tree1_seed',
   Curved_tree1: 'Curved_tree1_seed',
@@ -122,7 +126,7 @@ export const RPG_CROP_CATALOG = {
   Mega_tree1_seed: treeSeedCrop('Mega_tree1_seed', 'Mega Tree Sapling', 55, RPG_CROP_STAGE_FRAMES.megaTree),
 } satisfies Record<string, RpgCropDefinition>;
 
-function forestObjectDescription(asset: RpgForestObjectAsset) {
+function forestObjectDescription(asset: RpgObjectAsset) {
   if (asset.tags.includes('mushroom')) return `${asset.name} from the forest object archive. Mostly decorative for now.`;
   if (asset.tags.includes('idol')) return `${asset.name} for future shrine, relic, and sanctuary progression systems.`;
   if (asset.tags.includes('ent')) return `${asset.name} for future animated forest guardian encounters.`;
@@ -131,7 +135,7 @@ function forestObjectDescription(asset: RpgForestObjectAsset) {
   return `${asset.name} from the forest object archive.`;
 }
 
-function forestObjectPrice(asset: RpgForestObjectAsset) {
+function forestObjectPrice(asset: RpgObjectAsset) {
   if (asset.tags.includes('large')) return 900;
   if (asset.tags.includes('idol')) return 650;
   if (asset.tags.includes('ent')) return 700;
@@ -141,14 +145,14 @@ function forestObjectPrice(asset: RpgForestObjectAsset) {
   return 100;
 }
 
-function forestObjectRarity(asset: RpgForestObjectAsset): RpgItemRarity {
+function forestObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
   if (asset.itemId === 'Mega_tree1' || asset.itemId === 'Tree_idol_dragon') return 'epic';
   if (asset.tags.includes('large') || asset.tags.includes('idol') || asset.tags.includes('ent')) return 'rare';
   if (asset.tags.includes('structure') || asset.pixelWidth >= 128) return 'uncommon';
   return 'common';
 }
 
-function forestObjectFootprint(asset: RpgForestObjectAsset) {
+function forestObjectFootprint(asset: RpgObjectAsset) {
   if (asset.pixelWidth >= 256 || asset.tags.includes('large')) {
     return { colWidth: 2, colHeight: 2, visWidth: 4, visHeight: 4 };
   }
@@ -167,7 +171,7 @@ function forestObjectFootprint(asset: RpgForestObjectAsset) {
   return { colWidth: 1, colHeight: 1, visWidth: 3, visHeight: 3 };
 }
 
-function makeForestObjectItem(asset: RpgForestObjectAsset): RpgPlaceableItem {
+function makeForestObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
   const footprint = forestObjectFootprint(asset);
   const seedItemId = TREE_SEEDS_BY_OBJECT[asset.itemId];
   return {
@@ -193,6 +197,49 @@ const RPG_FOREST_OBJECT_CATALOG = Object.fromEntries(
   RPG_FOREST_OBJECT_ASSETS.map(asset => [asset.itemId, makeForestObjectItem(asset)]),
 ) as Record<string, RpgPlaceableItem>;
 
+function crystalObjectDescription(asset: RpgObjectAsset) {
+  return `${asset.name} from the crystal archive. Interact with it in the sanctuary for a chance at Crystal Shards.`;
+}
+
+function crystalObjectPrice(asset: RpgObjectAsset) {
+  if (asset.tags.includes('large')) return 180;
+  if (asset.tags.includes('small')) return 80;
+  if (asset.tags.includes('tiny')) return 45;
+  return 120;
+}
+
+function crystalObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
+  if (asset.tags.includes('black') || asset.tags.includes('violet')) return 'rare';
+  if (asset.tags.includes('dark') || asset.tags.includes('yellow-green')) return 'uncommon';
+  if (asset.tags.includes('large')) return 'uncommon';
+  return 'common';
+}
+
+function crystalObjectFootprint(asset: RpgObjectAsset) {
+  if (asset.pixelWidth >= 64) return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };
+  return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+}
+
+function makeCrystalObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
+  return {
+    name: asset.name,
+    kind: 'object',
+    assetId: asset.assetId,
+    price: crystalObjectPrice(asset),
+    ...crystalObjectFootprint(asset),
+    source: RPG_OBJECT_SOURCES[asset.itemId],
+    tags: asset.tags,
+    rarity: crystalObjectRarity(asset),
+    sourceLabel: 'Crystal Archive',
+    description: crystalObjectDescription(asset),
+    forageDrops: CRYSTAL_FORAGE_DROPS,
+  };
+}
+
+const RPG_CRYSTAL_OBJECT_CATALOG = Object.fromEntries(
+  RPG_CRYSTAL_OBJECT_ASSETS.map(asset => [asset.itemId, makeCrystalObjectItem(asset)]),
+) as Record<string, RpgPlaceableItem>;
+
 export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
@@ -213,6 +260,17 @@ export const RPG_ITEM_CATALOG = {
     rarity: 'uncommon',
     sourceLabel: 'Productivity',
     description: 'Productivity energy used to help crops grow faster.',
+  },
+  [RPG_CRYSTAL_SHARDS_ITEM_ID]: {
+    name: 'Crystal Shards',
+    kind: 'resource',
+    assetId: 'resource.crystalShards',
+    iconAssetId: 'resource.crystalShards',
+    source: RPG_OBJECT_SOURCES.Blue_crystal4,
+    rarity: 'uncommon',
+    sourceLabel: 'Crystal Drops',
+    tags: ['crystal', 'crafting'],
+    description: 'Sharp crafting fragments gathered from sanctuary crystals.',
   },
   White_tree1_seed: {
     name: 'White Tree Seed',
@@ -270,10 +328,12 @@ export const RPG_ITEM_CATALOG = {
     crop: RPG_CROP_CATALOG.Mega_tree1_seed,
   },
   ...RPG_FOREST_OBJECT_CATALOG,
+  ...RPG_CRYSTAL_OBJECT_CATALOG,
 } satisfies Record<string, RpgItemDefinition>;
 
 export const SHOP_CATALOG = {
   ...RPG_FOREST_OBJECT_CATALOG,
+  ...RPG_CRYSTAL_OBJECT_CATALOG,
 } satisfies Record<string, RpgPlaceableItem>;
 
 export type ShopCatalogItem = RpgPlaceableItem;

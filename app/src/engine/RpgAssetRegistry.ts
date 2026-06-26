@@ -21,7 +21,7 @@ export type RpgAssetDefinition = {
   note?: string;
 };
 
-export type RpgForestObjectAsset = {
+export type RpgObjectAsset = {
   itemId: string;
   assetId: string;
   name: string;
@@ -30,6 +30,8 @@ export type RpgForestObjectAsset = {
   pixelHeight: number;
   tags: string[];
 };
+
+export type RpgForestObjectAsset = RpgObjectAsset;
 
 const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
 const RPG_UI_INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
@@ -80,6 +82,49 @@ export const RPG_FOREST_OBJECT_ASSETS = [
   { itemId: 'Willow2', assetId: 'object.Willow2', name: 'Wide Willow', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
   { itemId: 'Willow3', assetId: 'object.Willow3', name: 'Young Willow', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
 ] satisfies readonly RpgForestObjectAsset[];
+
+export const RPG_CRYSTAL_OBJECT_ASSETS = [
+  { itemId: 'Black_crystal1', assetId: 'object.crystal.Black_crystal1', name: 'Black Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Black_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'black', 'cave', 'large'] },
+  { itemId: 'Black_crystal2', assetId: 'object.crystal.Black_crystal2', name: 'Black Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Black_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'black', 'cave', 'large'] },
+  { itemId: 'Black_crystal3', assetId: 'object.crystal.Black_crystal3', name: 'Black Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Black_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'black', 'cave', 'small'] },
+  { itemId: 'Black_crystal4', assetId: 'object.crystal.Black_crystal4', name: 'Black Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Black_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'black', 'cave', 'tiny'] },
+  { itemId: 'Blue_crystal1', assetId: 'object.crystal.Blue_crystal1', name: 'Blue Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'blue', 'cave', 'large'] },
+  { itemId: 'Blue_crystal2', assetId: 'object.crystal.Blue_crystal2', name: 'Blue Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'blue', 'cave', 'large'] },
+  { itemId: 'Blue_crystal3', assetId: 'object.crystal.Blue_crystal3', name: 'Blue Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'blue', 'cave', 'small'] },
+  { itemId: 'Blue_crystal4', assetId: 'object.crystal.Blue_crystal4', name: 'Blue Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'blue', 'cave', 'tiny'] },
+  { itemId: 'Dark_red_crystal1', assetId: 'object.crystal.Dark_red_crystal1', name: 'Dark-Red Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Dark_red_ crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'red', 'dark', 'cave', 'large'] },
+  { itemId: 'Dark_red_crystal2', assetId: 'object.crystal.Dark_red_crystal2', name: 'Dark-Red Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Dark_red_ crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'red', 'dark', 'cave', 'large'] },
+  { itemId: 'Dark_red_crystal3', assetId: 'object.crystal.Dark_red_crystal3', name: 'Dark-Red Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Dark_red_ crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'red', 'dark', 'cave', 'small'] },
+  { itemId: 'Dark_red_crystal4', assetId: 'object.crystal.Dark_red_crystal4', name: 'Dark-Red Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Dark_red_ crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'red', 'dark', 'cave', 'tiny'] },
+  { itemId: 'Green_crystal1', assetId: 'object.crystal.Green_crystal1', name: 'Green Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Green_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'green', 'cave', 'large'] },
+  { itemId: 'Green_crystal2', assetId: 'object.crystal.Green_crystal2', name: 'Green Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Green_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'green', 'cave', 'large'] },
+  { itemId: 'Green_crystal3', assetId: 'object.crystal.Green_crystal3', name: 'Green Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Green_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'green', 'cave', 'small'] },
+  { itemId: 'Green_crystal4', assetId: 'object.crystal.Green_crystal4', name: 'Green Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Green_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'green', 'cave', 'tiny'] },
+  { itemId: 'Pink_crystal1', assetId: 'object.crystal.Pink_crystal1', name: 'Pink Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Pink_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'pink', 'cave', 'large'] },
+  { itemId: 'Pink_crystal2', assetId: 'object.crystal.Pink_crystal2', name: 'Pink Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Pink_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'pink', 'cave', 'large'] },
+  { itemId: 'Pink_crystal3', assetId: 'object.crystal.Pink_crystal3', name: 'Pink Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Pink_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'pink', 'cave', 'small'] },
+  { itemId: 'Pink_crystal4', assetId: 'object.crystal.Pink_crystal4', name: 'Pink Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Pink_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'pink', 'cave', 'tiny'] },
+  { itemId: 'Red_crystal1', assetId: 'object.crystal.Red_crystal1', name: 'Red Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Red_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'red', 'cave', 'large'] },
+  { itemId: 'Red_crystal2', assetId: 'object.crystal.Red_crystal2', name: 'Red Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Red_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'red', 'cave', 'large'] },
+  { itemId: 'Red_crystal3', assetId: 'object.crystal.Red_crystal3', name: 'Red Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Red_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'red', 'cave', 'small'] },
+  { itemId: 'Red_crystal4', assetId: 'object.crystal.Red_crystal4', name: 'Red Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Red_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'red', 'cave', 'tiny'] },
+  { itemId: 'Violet_crystal1', assetId: 'object.crystal.Violet_crystal1', name: 'Violet Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Violet_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'violet', 'cave', 'large'] },
+  { itemId: 'Violet_crystal2', assetId: 'object.crystal.Violet_crystal2', name: 'Violet Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Violet_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'violet', 'cave', 'large'] },
+  { itemId: 'Violet_crystal3', assetId: 'object.crystal.Violet_crystal3', name: 'Violet Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Violet_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'violet', 'cave', 'small'] },
+  { itemId: 'Violet_crystal4', assetId: 'object.crystal.Violet_crystal4', name: 'Violet Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Violet_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'violet', 'cave', 'tiny'] },
+  { itemId: 'White_crystal1', assetId: 'object.crystal.White_crystal1', name: 'White Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/White_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'white', 'cave', 'large'] },
+  { itemId: 'White_crystal2', assetId: 'object.crystal.White_crystal2', name: 'White Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/White_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'white', 'cave', 'large'] },
+  { itemId: 'White_crystal3', assetId: 'object.crystal.White_crystal3', name: 'White Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/White_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'white', 'cave', 'small'] },
+  { itemId: 'White_crystal4', assetId: 'object.crystal.White_crystal4', name: 'White Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/White_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'white', 'cave', 'tiny'] },
+  { itemId: 'Yellow_green_crystal1', assetId: 'object.crystal.Yellow_green_crystal1', name: 'Yellow-Green Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow-green_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'yellow-green', 'cave', 'large'] },
+  { itemId: 'Yellow_green_crystal2', assetId: 'object.crystal.Yellow_green_crystal2', name: 'Yellow-Green Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow-green_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'yellow-green', 'cave', 'large'] },
+  { itemId: 'Yellow_green_crystal3', assetId: 'object.crystal.Yellow_green_crystal3', name: 'Yellow-Green Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow-green_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'yellow-green', 'cave', 'small'] },
+  { itemId: 'Yellow_green_crystal4', assetId: 'object.crystal.Yellow_green_crystal4', name: 'Yellow-Green Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow-green_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'yellow-green', 'cave', 'tiny'] },
+  { itemId: 'Yellow_crystal1', assetId: 'object.crystal.Yellow_crystal1', name: 'Yellow Crystal Cluster', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'yellow', 'cave', 'large'] },
+  { itemId: 'Yellow_crystal2', assetId: 'object.crystal.Yellow_crystal2', name: 'Yellow Crystal Spire', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['crystal', 'yellow', 'cave', 'large'] },
+  { itemId: 'Yellow_crystal3', assetId: 'object.crystal.Yellow_crystal3', name: 'Yellow Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'yellow', 'cave', 'small'] },
+  { itemId: 'Yellow_crystal4', assetId: 'object.crystal.Yellow_crystal4', name: 'Yellow Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'yellow', 'cave', 'tiny'] },
+] satisfies readonly RpgObjectAsset[];
 
 export function rpgSpriteFrame(
   source: any,
@@ -178,11 +223,11 @@ export const RPG_CROP_STAGE_FRAMES = {
 } satisfies Record<string, Record<0 | 1 | 2, RpgSpriteFrame>>;
 
 export const RPG_OBJECT_SOURCES = Object.fromEntries(
-  RPG_FOREST_OBJECT_ASSETS.map(asset => [asset.itemId, asset.source]),
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS].map(asset => [asset.itemId, asset.source]),
 ) as Record<string, any>;
 
-const RPG_FOREST_OBJECT_REGISTRY = Object.fromEntries(
-  RPG_FOREST_OBJECT_ASSETS.map(asset => [asset.assetId, {
+const RPG_OBJECT_REGISTRY = Object.fromEntries(
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS].map(asset => [asset.assetId, {
     id: asset.assetId,
     name: asset.name,
     category: 'object',
@@ -294,6 +339,14 @@ export const RPG_ASSET_REGISTRY = {
     frame: RPG_UI_FRAMES.waterDrop,
     tags: ['energy', 'farming'],
   },
+  'resource.crystalShards': {
+    id: 'resource.crystalShards',
+    name: 'Crystal Shards',
+    category: 'resource',
+    verified: true,
+    source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Blue_crystal4.png'),
+    tags: ['drop', 'crystal', 'crafting'],
+  },
   'seed.treeGeneric': {
     id: 'seed.treeGeneric',
     name: 'Tree Seed Marker',
@@ -303,7 +356,7 @@ export const RPG_ASSET_REGISTRY = {
     tags: ['seed', 'placeholder'],
     note: 'Visible farm supply seed packet used until tree-specific seed art is curated.',
   },
-  ...RPG_FOREST_OBJECT_REGISTRY,
+  ...RPG_OBJECT_REGISTRY,
 } satisfies Record<string, RpgAssetDefinition>;
 
 export function getRpgAsset(assetId: string | null | undefined): RpgAssetDefinition | null {

@@ -11,7 +11,7 @@ type OwnedRow = {
   quantity: number;
 };
 
-type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure';
+type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal';
 type ShopSort = 'name' | 'rarity' | 'price';
 
 interface Props {
@@ -32,6 +32,7 @@ const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'tree', label: 'Trees' },
   { id: 'mushroom', label: 'Mushrooms' },
   { id: 'structure', label: 'Relics' },
+  { id: 'crystal', label: 'Crystals' },
 ];
 const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'name', label: 'Name' },

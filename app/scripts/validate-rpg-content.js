@@ -63,9 +63,30 @@ function parseForestAssets() {
   return assets;
 }
 
-function parseRegistryIds(forestAssets) {
+function parseCrystalAssets() {
+  const block = extractBlock(assetRegistry, 'export const RPG_CRYSTAL_OBJECT_ASSETS = [', '] satisfies readonly RpgObjectAsset[];');
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*source:\s*require\('([^']+)'\),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const assets = [];
+  let match;
+  while ((match = regex.exec(block))) {
+    const tags = [...match[7].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    assets.push({
+      itemId: match[1],
+      assetId: match[2],
+      name: match[3],
+      sourcePath: match[4],
+      pixelWidth: Number(match[5]),
+      pixelHeight: Number(match[6]),
+      tags,
+    });
+  }
+  if (assets.length !== 40) fail(`Expected 40 crystal assets, found ${assets.length}`);
+  return assets;
+}
+
+function parseRegistryIds(objectAssets) {
   const explicitIds = [...assetRegistry.matchAll(/\n\s+'([^']+)':\s*\{/g)].map(match => match[1]);
-  return new Set([...explicitIds, ...forestAssets.map(asset => asset.assetId)]);
+  return new Set([...explicitIds, ...objectAssets.map(asset => asset.assetId)]);
 }
 
 function parseWaterDropItemId() {
@@ -77,11 +98,22 @@ function parseWaterDropItemId() {
   return match[1];
 }
 
-function parseCatalogItemIds(forestAssets) {
+function parseCrystalShardItemId() {
+  const match = itemIds.match(/RPG_CRYSTAL_SHARDS_ITEM_ID\s*=\s*'([^']+)'/);
+  if (!match) {
+    fail('Missing RPG_CRYSTAL_SHARDS_ITEM_ID export');
+    return 'rpg_crystal_shards';
+  }
+  return match[1];
+}
+
+function parseCatalogItemIds(objectAssets) {
   const block = extractBlock(catalog, 'export const RPG_ITEM_CATALOG = {', '} satisfies Record<string, RpgItemDefinition>;');
-  const ids = new Set(forestAssets.map(asset => asset.itemId));
+  const ids = new Set(objectAssets.map(asset => asset.itemId));
   const waterDropId = parseWaterDropItemId();
+  const crystalShardId = parseCrystalShardItemId();
   if (block.includes('[RPG_WATER_DROPS_ITEM_ID]')) ids.add(waterDropId);
+  if (block.includes('[RPG_CRYSTAL_SHARDS_ITEM_ID]')) ids.add(crystalShardId);
 
   for (const match of block.matchAll(/\n\s*([A-Za-z0-9_]+):\s*\{/g)) {
     ids.add(match[1]);
@@ -103,6 +135,20 @@ function validateForestAssets(forestAssets) {
     if (asset.pixelWidth <= 0 || asset.pixelHeight <= 0) fail(`Invalid dimensions for ${asset.itemId}`);
     if (asset.tags.length === 0) fail(`Missing tags for ${asset.itemId}`);
     if (!asset.tags.includes('forest')) fail(`Forest asset missing forest tag: ${asset.itemId}`);
+  });
+}
+
+function validateCrystalAssets(crystalAssets) {
+  unique(crystalAssets.map(asset => asset.itemId), 'crystal itemId');
+  unique(crystalAssets.map(asset => asset.assetId), 'crystal assetId');
+
+  crystalAssets.forEach(asset => {
+    const resolvedPath = path.resolve(engineDir, asset.sourcePath);
+    if (!fs.existsSync(resolvedPath)) fail(`Missing crystal asset file for ${asset.itemId}: ${asset.sourcePath}`);
+    if (!asset.assetId.startsWith('object.crystal.')) fail(`Crystal assetId must start with object.crystal.: ${asset.assetId}`);
+    if (asset.pixelWidth <= 0 || asset.pixelHeight <= 0) fail(`Invalid dimensions for ${asset.itemId}`);
+    if (!asset.tags.includes('crystal')) fail(`Crystal asset missing crystal tag: ${asset.itemId}`);
+    if (!asset.tags.includes('cave')) fail(`Crystal asset missing cave tag: ${asset.itemId}`);
   });
 }
 
@@ -147,6 +193,14 @@ function validatePlaceableMetadata(forestAssets) {
   if (mushrooms.length === 0) fail('Expected mushroom-tagged forest assets');
 }
 
+function validateCrystalMetadata(crystalAssets, catalogItemIds) {
+  const crystals = crystalAssets.filter(asset => asset.tags.includes('crystal'));
+  if (crystals.length !== 40) fail(`Expected 40 crystal-tagged assets, found ${crystals.length}`);
+  if (!catalog.includes("sourceLabel: 'Crystal Archive'")) fail('Crystal objects must expose source label metadata');
+  if (!catalog.includes('CRYSTAL_FORAGE_DROPS')) fail('Crystal objects must expose forage drops');
+  if (!catalogItemIds.has(parseCrystalShardItemId())) fail('Catalog item ids must include Crystal Shards resource');
+}
+
 function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
@@ -170,14 +224,18 @@ function validateArchiveScalabilityControls() {
 }
 
 const forestAssets = parseForestAssets();
-const registryIds = parseRegistryIds(forestAssets);
-const catalogItemIds = parseCatalogItemIds(forestAssets);
+const crystalAssets = parseCrystalAssets();
+const objectAssets = [...forestAssets, ...crystalAssets];
+const registryIds = parseRegistryIds(objectAssets);
+const catalogItemIds = parseCatalogItemIds(objectAssets);
 
 validateForestAssets(forestAssets);
+validateCrystalAssets(crystalAssets);
 validateAssetReferences(registryIds);
 validateDropReferences(catalogItemIds);
 validateSeedReferences(forestAssets, catalogItemIds);
 validatePlaceableMetadata(forestAssets);
+validateCrystalMetadata(crystalAssets, catalogItemIds);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 
@@ -187,4 +245,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${catalogItemIds.size} catalog items).`);
+console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${catalogItemIds.size} catalog items).`);

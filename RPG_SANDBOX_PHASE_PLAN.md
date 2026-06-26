@@ -75,7 +75,8 @@ These rules must remain true after every phase.
 | 18 | Shop catalog sorting | Verified | Shop sort controls for name, rarity, and price over the forest catalog |
 | 19 | Shop/backpack interaction repair | Verified | Larger tappable shop/backpack surfaces, inline buy feedback, farm-sheet seed/crop art |
 | 20 | Catalog detail facts | Verified | Archive/backpack facts derive price, footprint, forage, harvest, and growth data from catalog metadata |
-| 21 | Archive search and sorting | Draft complete | Search across catalog metadata plus sort by name, rarity, and discovery status |
+| 21 | Archive search and sorting | Verified | Search across catalog metadata plus sort by name, rarity, and discovery status |
+| 22 | Crystal content pack V1 | Verified | 40 tracked crystal objects, crystal shop filter, Crystal Shards resource, crystal forage drops |
 
 ## Required Audit Loop For Every Phase
 
@@ -785,6 +786,43 @@ Manual test checklist:
 - Clear search and confirm the full filtered list returns.
 - Sort by rarity and confirm rare/epic items move ahead of common items.
 - Sort by status and confirm discovered/known/locked grouping.
+
+## Phase 22: Crystal Content Pack V1
+
+Goal: expand the RPG catalog beyond forest objects using a tracked standalone asset pack that is safe for world rendering.
+
+Deliverables:
+
+- Map all 40 tracked crystal object PNGs into `RpgAssetRegistry.ts`.
+- Add crystal objects to the gameplay catalog, shop catalog, archive, backpack placement path, and validation harness.
+- Add `Crystal Shards` as a resource with a verified crystal asset.
+- Add crystal object forage drops so placed crystals can be interacted with.
+- Add a `Crystals` shop filter.
+- Keep crystal placement on the existing object footprint and collision model.
+
+Acceptance gates:
+
+- Crystal objects use standalone PNG sources, not spritesheet frames that world rendering cannot display.
+- Crystal object ids and asset ids are unique.
+- Crystal assets are validated for file existence and crystal/cave tags.
+- Crystal Shards are a catalog resource and every crystal drop references a known item id.
+- The shop can filter crystals without changing shop purchase-only behavior.
+- Validator, TypeScript, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- app/src/engine/RpgItemIds.ts app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryShop.tsx app/scripts/validate-rpg-content.js`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-crystal-pack-export`
+
+Manual test checklist:
+
+- Open shop and filter to `Crystals`; confirm crystal cards show art and can be bought.
+- Open backpack and place a bought crystal in sanctuary.
+- Walk into the crystal footprint and confirm movement is blocked.
+- Face the crystal and press `Interact`; confirm either a shard drop or no-drop feedback.
+- Search archive for `crystal` and confirm all crystal entries appear.
 
 ## Manual Regression Script
 
