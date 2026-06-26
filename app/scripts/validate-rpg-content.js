@@ -675,20 +675,26 @@ function validateInteractionTargetPrompt() {
   if (!rpgScreen.includes('styles.interactionPrompt')) {
     fail('RPG screen must render a visible interaction prompt');
   }
+  if (!rpgScreen.includes('const SHOW_NORMAL_TARGET_DEBUG = false;')) {
+    fail('Normal target debug visuals must stay disabled for gameplay');
+  }
   if (!rpgScreen.includes('interactionPrompt?.cells.map')) {
-    fail('RPG screen must render world-space reticle cells from the target model');
+    fail('RPG screen must preserve world-space reticle cells for debug use');
   }
   if (!rpgScreen.includes('styles.interactionTargetCell')) {
-    fail('RPG screen must style target reticle cells');
+    fail('RPG screen must preserve target reticle styles for debug use');
   }
-  if (!rpgScreen.includes('{!buildItem && interactionPrompt?.cells.map')) {
-    fail('Target reticle must hide while build mode is active');
+  if (!rpgScreen.includes('{SHOW_NORMAL_TARGET_DEBUG && !buildItem && interactionPrompt?.cells.map')) {
+    fail('Normal target reticle must be hidden unless the debug flag is enabled');
   }
-  if (!rpgScreen.includes("isTargeted={interactionPrompt?.kind === 'object'")) {
-    fail('Targeted placed object must receive highlight state');
+  if (!rpgScreen.includes("isTargeted={SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'object'")) {
+    fail('Placed object target outline must be hidden unless the debug flag is enabled');
+  }
+  if (!rpgScreen.includes("SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'plot'")) {
+    fail('Garden plot target outline must be hidden unless the debug flag is enabled');
   }
   if (!sanctuaryObject.includes('isTargeted?: boolean')) {
-    fail('SanctuaryObject must accept targeted highlight state');
+    fail('SanctuaryObject must preserve targeted highlight state for debug use');
   }
   const frameStart = rpgScreen.indexOf('useFrameCallback((frameInfo)');
   const frameEnd = rpgScreen.indexOf('const cameraX = useDerivedValue', frameStart);

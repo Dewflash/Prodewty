@@ -123,6 +123,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 51 | Action control clarity | Verified | Core RPG buttons expose clear roles, labels, selected states, hints, and disabled state |
 | 52 | Resource node feedback V2 | Verified | Leaves use verified art and tree/bush/crystal forage feedback is source-aware |
 | 53 | Lever mechanism V1 | Verified | Levers auto-link nearby gates/traps and toggle passability plus visual inactive state |
+| 54 | Disable normal target debug visuals | Verified | Normal gameplay hides object outlines and target grid boxes while preserving debug reticle code |
 
 ## Required Audit Loop For Every Phase
 
@@ -2775,5 +2776,50 @@ Expansion notes saved:
 - Later make traps damage or slow the avatar only after the movement/collision contract is proven.
 
 Phase 53 status:
+
+- Verified.
+
+### Phase 54 Audit
+
+Intended behavior:
+
+- Normal gameplay no longer renders object outline highlights when the avatar faces an item.
+- Normal gameplay no longer renders the large target footprint/grid box around faced objects or crops.
+- The interaction prompt/name pop-up remains visible and continues to describe the current target.
+- Build/edit placement keeps its placement footprint cells visible.
+- The reticle/highlight code and styles remain in place behind `SHOW_NORMAL_TARGET_DEBUG = false` for future debug use.
+- The RPG validator enforces that normal target debug visuals stay disabled.
+
+Negative guarantees:
+
+- This phase must not delete the target model, prompt, action target resolver, placement grid, build/edit placement feedback, collision, object mechanics, interaction behavior, inventory, shop, archive, or persistence.
+- This phase must not remove debug code entirely; it only disables normal-mode rendering.
+- This phase must not make Interact/Attack ambiguous; the target name prompt remains the player-facing cue.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Walk near/facing an object; confirm only the name/detail prompt appears, with no object outline and no grid box.
+- Face a crop; confirm no crop outline/grid box in normal mode.
+- Start placing or moving an item; confirm placement footprint cells still appear.
+- Interact and Attack should still use the same current target as the prompt.
+
+Expansion notes saved:
+
+- If a future debug menu exists, it can flip `SHOW_NORMAL_TARGET_DEBUG` rather than reintroducing visual code.
+- If player feedback feels too hidden later, prefer a softer prompt treatment over world-space grid overlays.
+
+Phase 54 status:
 
 - Verified.

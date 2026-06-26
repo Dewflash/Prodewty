@@ -78,6 +78,7 @@ const RAIN_DROPS = Array.from({ length: 28 }, (_, index) => ({
   height: 16 + (index % 4) * 5,
   opacity: 0.28 + (index % 5) * 0.08,
 }));
+const SHOW_NORMAL_TARGET_DEBUG = false;
 
 type Zone = 'sanctuary' | 'dungeon';
 type MapObject = { id: number; type: string; row: number; col: number };
@@ -1591,7 +1592,7 @@ export default function RpgScreen() {
               avatarX={avatarX}
               avatarY={avatarY}
               isInteracting={interactingObjectId === obj.id}
-              isTargeted={interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
+              isTargeted={SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
               mechanicState={getObjectMechanicState(obj)}
               onMoveRequest={handleObjectLongPress}
             />
@@ -1608,7 +1609,7 @@ export default function RpgScreen() {
                   styles.gardenPlot,
                   growth.stage === 1 && styles.gardenPlotGrowing,
                   growth.stage >= 2 && styles.gardenPlotMature,
-                  interactionPrompt?.kind === 'plot' && interactionPrompt.plot?.id === plot.id && styles.gardenPlotTargeted,
+                  SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'plot' && interactionPrompt.plot?.id === plot.id && styles.gardenPlotTargeted,
                   {
                     left: plot.col * TILE_SIZE,
                     top: plot.row * TILE_SIZE,
@@ -1662,7 +1663,7 @@ export default function RpgScreen() {
             </>
           )}
 
-          {!buildItem && interactionPrompt?.cells.map((cell, index) => (
+          {SHOW_NORMAL_TARGET_DEBUG && !buildItem && interactionPrompt?.cells.map((cell, index) => (
             <View
               key={`target-${interactionPrompt.kind}-${cell.row}:${cell.col}:${index}`}
               pointerEvents="none"
