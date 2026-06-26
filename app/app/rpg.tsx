@@ -2098,9 +2098,13 @@ export default function RpgScreen() {
     }
 
     const seasonalBonus = { ...seasonInfo.bonus };
+    const cropAffinityDrop = growth.crop.preferredSeasons.includes(currentSeason)
+      ? { itemId: growth.crop.harvest.drops[0]?.itemId ?? 'rpg_leaves', quantity: 1 }
+      : null;
     const drops = [
       ...rollHarvestDrops(growth.crop.harvest.drops),
       seasonalBonus,
+      ...(cropAffinityDrop ? [cropAffinityDrop] : []),
     ];
     const result = harvestGardenPlot(plot.id, growth.crop.harvest.coins, drops);
     if (!result.ok) {
@@ -2121,9 +2125,11 @@ export default function RpgScreen() {
     const firstDropItem = firstDrop ? getRpgItem(firstDrop.itemId) : null;
     const dropText = firstDrop ? `, +${firstDrop.quantity} ${firstDropItem?.name ?? firstDrop.itemId}` : '';
     const seasonalItem = getRpgItem(seasonalBonus.itemId);
-    showPlotReaction(plot, `+${result.coins}`, firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');
+    const affinityItem = cropAffinityDrop ? getRpgItem(cropAffinityDrop.itemId) : null;
+    const affinityText = cropAffinityDrop && affinityItem ? `, in-season +${cropAffinityDrop.quantity} ${affinityItem.name}` : '';
+    showPlotReaction(plot, cropAffinityDrop ? 'season+' : `+${result.coins}`, affinityItem ?? firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');
     showWorldToast({
-      text: `Harvested +${result.coins} coins${dropText}, ${seasonInfo.label} +${seasonalBonus.quantity} ${seasonalItem?.name ?? seasonalBonus.itemId}`,
+      text: `Harvested +${result.coins} coins${dropText}, ${seasonInfo.label} +${seasonalBonus.quantity} ${seasonalItem?.name ?? seasonalBonus.itemId}${affinityText}`,
       item: firstDropItem ?? getRpgItem(plot.seed_item_id),
       tone: 'success',
     });

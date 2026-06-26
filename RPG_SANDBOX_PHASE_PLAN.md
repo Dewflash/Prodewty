@@ -160,6 +160,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 85 | Archive farm guide V1 | Verified | Archive now explains crop stages, watering/rain acceleration, season harvest bonuses, animal products, and current tool equip surface |
 | 86 | Object interaction reactions V1 | Verified | Interacting with animals, forage objects, clutter, chests, gates, traps, and levers now shows a small in-world reaction badge |
 | 87 | Crop plot reactions V1 | Verified | Watering, rain growth, not-ready, ready, and harvest states now show small in-world crop badges |
+| 88 | Crop season affinity V1 | Verified | Crops now declare preferred seasons; in-season harvests add extra transactional yield and Archive guide facts |
 
 ## Future Development Roadmap
 
@@ -3956,5 +3957,68 @@ Expansion notes saved:
 - Later show season-affinity badges if seasons become crop-specific mechanics.
 
 Phase 87 status:
+
+- Verified.
+
+### Phase 88 Audit
+
+Intended behavior:
+
+- Make seasons affect crop gameplay beyond a generic weather harvest bonus.
+- Every current tree crop should declare preferred seasons in the crop catalog.
+- Archive seed facts should show best seasons and explain that preferred seasons add extra yield.
+- Harvesting a crop in one of its preferred seasons should add an extra yield drop through the same `harvestGardenPlot` transaction.
+- Out-of-season crops remain plantable and harvestable; affinity is a bonus, not a hard restriction.
+
+Negative guarantees:
+
+- This phase must not change crop planting rules, growth timing, base harvest coins, base drop chances, Water Drops behavior, or rain growth behavior.
+- This phase must not add migrations or persisted season state.
+- This phase must not stage unrelated settings or loose asset folders.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- Hard season restrictions would be punishing with the current tiny crop set, so a soft in-season bonus is the better first pass.
+- Crop affinity belongs in `RPG_CROP_CATALOG`, not in the screen, so Archive facts and harvest behavior share one source of truth.
+- The in-season bonus must be appended before `harvestGardenPlot` so inventory and plot deletion stay atomic.
+
+Implementation attack findings:
+
+- `RpgCropSeasonId` mirrors the current season ids and every crop definition declares `preferredSeasons`.
+- Archive seed facts now include `Best seasons` and explain preferred-season extra yield.
+- `inspectOrHarvestPlot` creates `cropAffinityDrop` only when the active season matches the crop's preferred seasons.
+- The affinity drop is included in the same transactional drop array as base and season/weather drops.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/engine/RpgObjectCatalog.ts app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Archive seed entries and confirm each shows best seasons.
+- Harvest a mature crop during one of its preferred seasons and confirm the toast includes `in-season`.
+- Confirm the in-world crop badge still appears on harvest.
+- Harvest a crop outside its preferred season and confirm it still harvests normally without the affinity bonus.
+
+Expansion notes saved:
+
+- Later add crop-specific seasonal growth speed or quality tiers once the crop set is broader.
+- Later add UI calendar/forecast controls if real-month seasons feel too slow for testing.
+
+Phase 88 status:
 
 - Verified.

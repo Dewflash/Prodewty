@@ -103,11 +103,13 @@ export type RpgPlaceableItem = RpgInventoryItem & {
 export type RpgItemDefinition = RpgInventoryItem | RpgPlaceableItem;
 
 export type RpgGrowthStage = 0 | 1 | 2;
+export type RpgCropSeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 
 export type RpgCropDefinition = {
   cropId: string;
   name: string;
   seedItemId: string;
+  preferredSeasons: RpgCropSeasonId[];
   stageMinutes: Record<RpgGrowthStage, number>;
   harvest: {
     coins: number;
@@ -156,11 +158,13 @@ function treeSeedCrop(
   name: string,
   coins: number,
   stageFrames: Record<RpgGrowthStage, RpgSpriteFrame>,
+  preferredSeasons: RpgCropSeasonId[],
 ): RpgCropDefinition {
   return {
     cropId: `${seedItemId}_crop`,
     name,
     seedItemId,
+    preferredSeasons,
     stageFrames,
     stageMinutes: {
       0: 0,
@@ -175,11 +179,11 @@ function treeSeedCrop(
 }
 
 export const RPG_CROP_CATALOG = {
-  White_tree1_seed: treeSeedCrop('White_tree1_seed', 'White Tree Sapling', 18, RPG_CROP_STAGE_FRAMES.whiteTree),
-  Curved_tree1_seed: treeSeedCrop('Curved_tree1_seed', 'Curved Tree Sapling', 22, RPG_CROP_STAGE_FRAMES.curvedTree),
-  Luminous_tree1_seed: treeSeedCrop('Luminous_tree1_seed', 'Luminous Tree Sapling', 34, RPG_CROP_STAGE_FRAMES.luminousTree),
-  'Blue-green_balls_tree1_seed': treeSeedCrop('Blue-green_balls_tree1_seed', 'Blue-Green Tree Sapling', 26, RPG_CROP_STAGE_FRAMES.blueGreenTree),
-  Mega_tree1_seed: treeSeedCrop('Mega_tree1_seed', 'Mega Tree Sapling', 55, RPG_CROP_STAGE_FRAMES.megaTree),
+  White_tree1_seed: treeSeedCrop('White_tree1_seed', 'White Tree Sapling', 18, RPG_CROP_STAGE_FRAMES.whiteTree, ['spring', 'winter']),
+  Curved_tree1_seed: treeSeedCrop('Curved_tree1_seed', 'Curved Tree Sapling', 22, RPG_CROP_STAGE_FRAMES.curvedTree, ['autumn', 'spring']),
+  Luminous_tree1_seed: treeSeedCrop('Luminous_tree1_seed', 'Luminous Tree Sapling', 34, RPG_CROP_STAGE_FRAMES.luminousTree, ['summer', 'winter']),
+  'Blue-green_balls_tree1_seed': treeSeedCrop('Blue-green_balls_tree1_seed', 'Blue-Green Tree Sapling', 26, RPG_CROP_STAGE_FRAMES.blueGreenTree, ['spring', 'summer']),
+  Mega_tree1_seed: treeSeedCrop('Mega_tree1_seed', 'Mega Tree Sapling', 55, RPG_CROP_STAGE_FRAMES.megaTree, ['autumn', 'winter']),
 } satisfies Record<string, RpgCropDefinition>;
 
 function forestObjectDescription(asset: RpgObjectAsset) {
@@ -897,9 +901,10 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
   if (item.kind === 'seed' && item.crop) {
     facts.push(`Crop: ${item.crop.name}`);
     facts.push(`Stages: sprout now, growing ${formatMinutes(item.crop.stageMinutes[1])}, mature ${formatMinutes(item.crop.stageMinutes[2])}`);
+    facts.push(`Best seasons: ${formatSeasonList(item.crop.preferredSeasons)}`);
     facts.push('Water: Watering Can or streak rain can advance growth');
     facts.push(`Harvest: ${item.crop.harvest.coins} coins`);
-    facts.push('Season: harvest includes the current season bonus');
+    facts.push('Season: harvest includes a weather bonus; preferred seasons add extra yield');
     if (item.crop.harvest.drops.length) {
       facts.push(`Yield: ${item.crop.harvest.drops.map(drop => formatDrop(drop, catalog)).join(', ')}`);
     }
@@ -931,6 +936,10 @@ function formatDrop(drop: RpgDrop, catalog: Record<string, RpgItemDefinition>) {
 
 function formatMinutes(minutes: number) {
   return minutes === 1 ? '1 min' : `${minutes} min`;
+}
+
+function formatSeasonList(seasons: RpgCropSeasonId[]) {
+  return seasons.map(season => season.slice(0, 1).toUpperCase() + season.slice(1)).join(', ');
 }
 
 function formatLoot(loot: RpgInteractionLoot, catalog: Record<string, RpgItemDefinition>) {

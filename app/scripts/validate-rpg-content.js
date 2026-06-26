@@ -1097,6 +1097,15 @@ function validateSeasonWeatherFarmLoopV2() {
   if (!rpgScreen.includes('const seasonalBonus = { ...seasonInfo.bonus };')) {
     fail('Harvest must include the active seasonal bonus without mutating season config');
   }
+  if (!rpgScreen.includes('const cropAffinityDrop = growth.crop.preferredSeasons.includes(currentSeason)')) {
+    fail('Harvest must check crop preferred seasons for affinity yield');
+  }
+  if (!rpgScreen.includes('...(cropAffinityDrop ? [cropAffinityDrop] : []),')) {
+    fail('Crop affinity bonus must be included in transactional harvest drops');
+  }
+  if (!rpgScreen.includes('in-season +${cropAffinityDrop.quantity}')) {
+    fail('Harvest toast must explain in-season crop affinity rewards');
+  }
   if (!rpgScreen.includes('...rollHarvestDrops(growth.crop.harvest.drops),\n      seasonalBonus,')) {
     fail('Seasonal bonus must be included before harvestGardenPlot so it is transactional');
   }
@@ -1281,8 +1290,9 @@ function validateArchiveFarmGuideV1() {
   [
     "facts.push(`Crop: ${item.crop.name}`)",
     "facts.push(`Stages: sprout now, growing ${formatMinutes(item.crop.stageMinutes[1])}, mature ${formatMinutes(item.crop.stageMinutes[2])}`)",
+    "facts.push(`Best seasons: ${formatSeasonList(item.crop.preferredSeasons)}`)",
     "facts.push('Water: Watering Can or streak rain can advance growth')",
-    "facts.push('Season: harvest includes the current season bonus')",
+    "facts.push('Season: harvest includes a weather bonus; preferred seasons add extra yield')",
     "facts.push('Cooldown: 30 sec after a successful collection')",
     "facts.push('Action: stand near it and press Interact')",
     "facts.push('Use: animal product resource for selling or future crafting')",
@@ -1293,6 +1303,20 @@ function validateArchiveFarmGuideV1() {
   if (!catalog.includes('function formatMinutes(minutes: number)')) {
     fail('Archive farm guide must format crop stage timing');
   }
+  if (!catalog.includes("export type RpgCropSeasonId = 'spring' | 'summer' | 'autumn' | 'winter';")) {
+    fail('Crop catalog must expose explicit crop season affinity ids');
+  }
+  if (!catalog.includes('preferredSeasons: RpgCropSeasonId[];')) {
+    fail('Crop definitions must declare preferred season metadata');
+  }
+  if (!catalog.includes('function formatSeasonList(seasons: RpgCropSeasonId[])')) {
+    fail('Archive farm guide must format preferred crop seasons');
+  }
+  ['White_tree1_seed', 'Curved_tree1_seed', 'Luminous_tree1_seed', 'Blue-green_balls_tree1_seed', 'Mega_tree1_seed'].forEach(seedId => {
+    if (!catalog.includes(`${seedId}`) || !catalog.includes('preferredSeasons')) {
+      fail(`Seed crop must declare preferred seasons: ${seedId}`);
+    }
+  });
   if (!archive.includes('selected.facts.slice(0, 6)')) {
     fail('Archive detail panel must show enough facts for farm guide entries');
   }
@@ -1313,7 +1337,7 @@ function validateObjectInteractionReactionsV1() {
     'showObjectReaction(object, `+${drop.quantity}`, dropDef, \'success\');',
     "showPlotReaction(plot, result.stage >= 2 ? 'mature' : '+growth', getRpgItem(RPG_WATER_DROPS_ITEM_ID), 'success');",
     "showPlotReaction(plot, `${growth.remainingMinutes}m`, getRpgItem(plot.seed_item_id), 'muted');",
-    "showPlotReaction(plot, `+${result.coins}`, firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');",
+    "showPlotReaction(plot, cropAffinityDrop ? 'season+' : `+${result.coins}`, affinityItem ?? firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');",
     "showObjectReaction(object, 'rest', item, 'muted');",
     "showObjectReaction(object, '...', item, 'muted');",
     "showObjectReaction(object, isOn ? 'ON' : 'OFF', item, affected.length ? 'success' : 'muted');",
