@@ -115,6 +115,27 @@ function parseBushAssets() {
   return assets;
 }
 
+function parseCaveAssets() {
+  const block = extractBlock(assetRegistry, 'export const RPG_CAVE_OBJECT_ASSETS = [', '] satisfies readonly RpgCaveObjectAsset[];');
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*source:\s*require\('([^']+)'\),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const assets = [];
+  let match;
+  while ((match = regex.exec(block))) {
+    const tags = [...match[7].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    assets.push({
+      itemId: match[1],
+      assetId: match[2],
+      name: match[3],
+      sourcePath: match[4],
+      pixelWidth: Number(match[5]),
+      pixelHeight: Number(match[6]),
+      tags,
+    });
+  }
+  if (assets.length !== 32) fail(`Expected 32 cave assets, found ${assets.length}`);
+  return assets;
+}
+
 function parseRegistryIds(objectAssets) {
   const explicitIds = [...assetRegistry.matchAll(/\n\s+'([^']+)':\s*\{/g)].map(match => match[1]);
   return new Set([...explicitIds, ...objectAssets.map(asset => asset.assetId)]);
@@ -197,6 +218,20 @@ function validateBushAssets(bushAssets) {
   });
 }
 
+function validateCaveAssets(caveAssets) {
+  unique(caveAssets.map(asset => asset.itemId), 'cave itemId');
+  unique(caveAssets.map(asset => asset.assetId), 'cave assetId');
+
+  caveAssets.forEach(asset => {
+    const resolvedPath = path.resolve(engineDir, asset.sourcePath);
+    if (!fs.existsSync(resolvedPath)) fail(`Missing cave asset file for ${asset.itemId}: ${asset.sourcePath}`);
+    if (!asset.assetId.startsWith('object.cave.')) fail(`Cave assetId must start with object.cave.: ${asset.assetId}`);
+    if (![32, 64, 128, 256].includes(asset.pixelWidth)) fail(`Unexpected cave width for ${asset.itemId}: ${asset.pixelWidth}`);
+    if (![32, 64, 128, 256].includes(asset.pixelHeight)) fail(`Unexpected cave height for ${asset.itemId}: ${asset.pixelHeight}`);
+    if (!asset.tags.includes('cave')) fail(`Cave asset missing cave tag: ${asset.itemId}`);
+  });
+}
+
 function validateAssetReferences(registryIds) {
   const refs = [...catalog.matchAll(/(?:assetId|iconAssetId):\s*'([^']+)'/g)].map(match => match[1]);
   refs.forEach(ref => {
@@ -257,6 +292,18 @@ function validateBushMetadata(bushAssets) {
   if (!shop.includes("{ id: 'cactus', label: 'Cacti' }")) fail('Shop must expose a cactus filter');
 }
 
+function validateCaveMetadata(caveAssets) {
+  const structures = caveAssets.filter(asset => asset.tags.includes('structure'));
+  const relics = caveAssets.filter(asset => asset.tags.includes('relic'));
+  const mushrooms = caveAssets.filter(asset => asset.tags.includes('mushroom'));
+  if (structures.length === 0) fail('Expected structure-tagged cave assets');
+  if (relics.length === 0) fail('Expected relic-tagged cave assets');
+  if (mushrooms.length === 0) fail('Expected mushroom-tagged cave assets');
+  if (!catalog.includes("sourceLabel: 'Cave Archive'")) fail('Cave objects must expose source label metadata');
+  if (!catalog.includes('RPG_CAVE_OBJECT_CATALOG')) fail('Catalog must expose cave object catalog');
+  if (!shop.includes("{ id: 'cave', label: 'Cave' }")) fail('Shop must expose a cave filter');
+}
+
 function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
@@ -303,19 +350,22 @@ function validateWorldArtRenderer() {
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
-const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets];
+const caveAssets = parseCaveAssets();
+const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets];
 const registryIds = parseRegistryIds(objectAssets);
 const catalogItemIds = parseCatalogItemIds(objectAssets);
 
 validateForestAssets(forestAssets);
 validateCrystalAssets(crystalAssets);
 validateBushAssets(bushAssets);
+validateCaveAssets(caveAssets);
 validateAssetReferences(registryIds);
 validateDropReferences(catalogItemIds);
 validateSeedReferences(forestAssets, catalogItemIds);
 validatePlaceableMetadata(forestAssets);
 validateCrystalMetadata(crystalAssets, catalogItemIds);
 validateBushMetadata(bushAssets);
+validateCaveMetadata(caveAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
@@ -328,4 +378,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${catalogItemIds.size} catalog items).`);
+console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${caveAssets.length} cave assets, ${catalogItemIds.size} catalog items).`);

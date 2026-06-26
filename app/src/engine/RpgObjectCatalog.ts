@@ -1,6 +1,7 @@
 import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID } from './RpgItemIds';
 import {
   RPG_BUSH_OBJECT_ASSETS,
+  RPG_CAVE_OBJECT_ASSETS,
   RPG_CRYSTAL_OBJECT_ASSETS,
   RPG_CROP_STAGE_FRAMES,
   RPG_FOREST_OBJECT_ASSETS,
@@ -286,6 +287,61 @@ const RPG_BUSH_OBJECT_CATALOG = Object.fromEntries(
   RPG_BUSH_OBJECT_ASSETS.map(asset => [asset.itemId, makeBushObjectItem(asset)]),
 ) as Record<string, RpgPlaceableItem>;
 
+function caveObjectDescription(asset: RpgObjectAsset) {
+  if (asset.tags.includes('structure')) return `${asset.name} from the cave archive. A heavier landmark for future dungeon and sanctuary ruins.`;
+  if (asset.tags.includes('relic')) return `${asset.name} from the cave archive. A relic-class object for future shrine and crafting hooks.`;
+  if (asset.tags.includes('skeleton') || asset.tags.includes('bone')) return `${asset.name} from the cave archive. Bone scenery for future dungeon progression.`;
+  if (asset.tags.includes('mushroom')) return `${asset.name} from the cave archive. A decorative underground mushroom.`;
+  if (asset.tags.includes('rock')) return `${asset.name} from the cave archive. Dense cave landscaping with a walk-blocking base.`;
+  return `${asset.name} from the cave archive.`;
+}
+
+function caveObjectPrice(asset: RpgObjectAsset) {
+  if (asset.tags.includes('large')) return 520;
+  if (asset.tags.includes('structure')) return 420;
+  if (asset.tags.includes('relic')) return 360;
+  if (asset.pixelWidth >= 128) return 180;
+  if (asset.pixelWidth >= 64) return 90;
+  return 45;
+}
+
+function caveObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
+  if (asset.tags.includes('large')) return 'epic';
+  if (asset.tags.includes('relic') || asset.tags.includes('structure')) return 'rare';
+  if (asset.pixelWidth >= 128) return 'uncommon';
+  return 'common';
+}
+
+function caveObjectFootprint(asset: RpgObjectAsset) {
+  if (asset.pixelWidth >= 256 || asset.tags.includes('large')) {
+    return { colWidth: 2, colHeight: 2, visWidth: 4, visHeight: 4 };
+  }
+  if (asset.tags.includes('structure') || asset.tags.includes('relic')) {
+    return { colWidth: 2, colHeight: 2, visWidth: 3, visHeight: 3 };
+  }
+  if (asset.pixelWidth >= 128) return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };
+  return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+}
+
+function makeCaveObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
+  return {
+    name: asset.name,
+    kind: 'object',
+    assetId: asset.assetId,
+    price: caveObjectPrice(asset),
+    ...caveObjectFootprint(asset),
+    source: RPG_OBJECT_SOURCES[asset.itemId],
+    tags: asset.tags,
+    rarity: caveObjectRarity(asset),
+    sourceLabel: 'Cave Archive',
+    description: caveObjectDescription(asset),
+  };
+}
+
+const RPG_CAVE_OBJECT_CATALOG = Object.fromEntries(
+  RPG_CAVE_OBJECT_ASSETS.map(asset => [asset.itemId, makeCaveObjectItem(asset)]),
+) as Record<string, RpgPlaceableItem>;
+
 export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
@@ -376,12 +432,14 @@ export const RPG_ITEM_CATALOG = {
   ...RPG_FOREST_OBJECT_CATALOG,
   ...RPG_CRYSTAL_OBJECT_CATALOG,
   ...RPG_BUSH_OBJECT_CATALOG,
+  ...RPG_CAVE_OBJECT_CATALOG,
 } satisfies Record<string, RpgItemDefinition>;
 
 export const SHOP_CATALOG = {
   ...RPG_FOREST_OBJECT_CATALOG,
   ...RPG_CRYSTAL_OBJECT_CATALOG,
   ...RPG_BUSH_OBJECT_CATALOG,
+  ...RPG_CAVE_OBJECT_CATALOG,
 } satisfies Record<string, RpgPlaceableItem>;
 
 export type ShopCatalogItem = RpgPlaceableItem;

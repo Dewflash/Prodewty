@@ -82,6 +82,7 @@ These rules must remain true after every phase.
 | 25 | Bush content pack V1 | Verified | 40 tracked bush/cactus/fern/stump objects mapped into registry/catalog/archive/shop |
 | 26 | Frame-capable world art renderer | Verified | Placed objects and build ghosts can render catalog sprite frames or standalone PNGs |
 | 27 | Shop search and empty states | Verified | Search across catalog metadata, result counts, and safe empty shop states |
+| 28 | Cave content pack V1 | Verified | 32 curated tracked cave objects mapped into registry/catalog/archive/shop |
 
 ## Required Audit Loop For Every Phase
 
@@ -992,6 +993,39 @@ Manual test checklist:
 - Search a nonsense query and confirm the no-match state appears and buy is disabled.
 - Clear search and confirm the selected shop page recovers.
 - Buy an item after filtering and confirm owned count/coins still update.
+
+## Phase 28: Cave Content Pack V1
+
+Goal: add a curated cave object pack without flooding the catalog with duplicate dark/light variants.
+
+Deliverables:
+
+- Map 32 tracked standalone cave objects into `RpgAssetRegistry.ts`.
+- Add Cave Archive catalog metadata, price, rarity, footprint, and shop inclusion.
+- Add a `Cave` shop filter.
+- Extend `validate:rpg` to require the cave pack, cave metadata, file existence, and shop filter.
+
+Acceptance gates:
+
+- `validate:rpg` reports 40 forest assets, 40 crystal assets, 40 bush assets, 32 cave assets, and 160 catalog items.
+- Cave objects appear in archive search and shop search/filter.
+- Cave structures/relics use larger collision footprints where appropriate; rocks/mushrooms remain compact.
+- No duplicate dark/light variants are added for the same object family in V1.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryShop.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-cave-pack-export`
+
+Manual test checklist:
+
+- Open shop, tap `Cave`, and confirm cave objects are visible.
+- Search `Cave Archive`, `totem`, `skeleton`, and `mushroom`.
+- Buy and place a cave rock, cave mushroom, and larger cave structure.
+- Confirm large cave structures block multiple tiles and compact cave props remain 1x1.
 
 ## Manual Regression Script
 

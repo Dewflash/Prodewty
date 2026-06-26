@@ -33,6 +33,7 @@ export type RpgObjectAsset = {
 
 export type RpgForestObjectAsset = RpgObjectAsset;
 export type RpgBushObjectAsset = RpgObjectAsset;
+export type RpgCaveObjectAsset = RpgObjectAsset;
 
 const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
 const RPG_UI_INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
@@ -170,6 +171,41 @@ export const RPG_BUSH_OBJECT_ASSETS = [
   { itemId: 'Snow_bush3', assetId: 'object.bush.Snow_bush3', name: 'Tiny Snow Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Snow_bush3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'snow', 'plant', 'tiny', 'forage'] },
 ] satisfies readonly RpgBushObjectAsset[];
 
+export const RPG_CAVE_OBJECT_ASSETS = [
+  { itemId: 'Cave_beige_rock1', assetId: 'object.cave.Cave_beige_rock1', name: 'Large Beige Cave Rock', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Beige_rpck_light_shadow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'rock', 'large'] },
+  { itemId: 'Cave_beige_rock2', assetId: 'object.cave.Cave_beige_rock2', name: 'Beige Cave Rock', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Beige_rpck_light_shadow2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'rock'] },
+  { itemId: 'Cave_beige_rock3', assetId: 'object.cave.Cave_beige_rock3', name: 'Jagged Beige Cave Rock', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Beige_rpck_light_shadow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'rock'] },
+  { itemId: 'Cave_building1', assetId: 'object.cave.Cave_building1', name: 'Cave Stone Hut', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Building1_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'structure', 'ruin'] },
+  { itemId: 'Cave_building2', assetId: 'object.cave.Cave_building2', name: 'Cave Stone Storehouse', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Building2_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'structure', 'ruin'] },
+  { itemId: 'Cave_dark_totem1', assetId: 'object.cave.Cave_dark_totem1', name: 'Great Dark Totem', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/256/Dark_totem_dark_shadow1.png'), pixelWidth: 256, pixelHeight: 256, tags: ['cave', 'totem', 'relic', 'large'] },
+  { itemId: 'Cave_dark_totem2', assetId: 'object.cave.Cave_dark_totem2', name: 'Dark Totem Pillar', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Dark_totem_dark_shadow2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'totem', 'relic'] },
+  { itemId: 'Cave_dark_totem3', assetId: 'object.cave.Cave_dark_totem3', name: 'Dark Totem Stone', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Dark_totem_dark_shadow3.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'totem', 'relic'] },
+  { itemId: 'Cave_dark_totem4', assetId: 'object.cave.Cave_dark_totem4', name: 'Dark Totem Eye', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Dark_totem_dark_shadow4.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'totem', 'relic'] },
+  { itemId: 'Cave_dark_totem5', assetId: 'object.cave.Cave_dark_totem5', name: 'Small Dark Totem', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Dark_totem_dark_shadow5.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'totem', 'relic', 'small'] },
+  { itemId: 'Cave_demon_skull', assetId: 'object.cave.Cave_demon_skull', name: 'Demon Skull', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Demon_scull_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'skull', 'relic'] },
+  { itemId: 'Cave_dinosaur_skeleton_full', assetId: 'object.cave.Cave_dinosaur_skeleton_full', name: 'Dinosaur Skeleton', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/256/Dinosaur_skeleton_full_light_shadow.png'), pixelWidth: 256, pixelHeight: 256, tags: ['cave', 'skeleton', 'bone', 'large'] },
+  { itemId: 'Cave_dinosaur_skeleton_part1', assetId: 'object.cave.Cave_dinosaur_skeleton_part1', name: 'Dinosaur Rib Bones', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Dinosaur_skeleton_part1_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'skeleton', 'bone'] },
+  { itemId: 'Cave_dinosaur_skeleton_part2', assetId: 'object.cave.Cave_dinosaur_skeleton_part2', name: 'Dinosaur Tail Bones', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Dinosaur_skeleton_part2_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'skeleton', 'bone'] },
+  { itemId: 'Cave_dinosaur_skeleton_head', assetId: 'object.cave.Cave_dinosaur_skeleton_head', name: 'Dinosaur Skull Bones', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Dinosaur_skeleton__head_dark_shadow.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'skeleton', 'bone'] },
+  { itemId: 'Cave_dinosaur_skeleton_limb', assetId: 'object.cave.Cave_dinosaur_skeleton_limb', name: 'Dinosaur Limb Bones', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Dinosaur_skeleton__light_dark_shadow.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'skeleton', 'bone'] },
+  { itemId: 'Cave_gate1', assetId: 'object.cave.Cave_gate1', name: 'Ancient Cave Gate', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/Gates_light_shadow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'gate', 'structure'] },
+  { itemId: 'Cave_gate2', assetId: 'object.cave.Cave_gate2', name: 'Broken Cave Gate', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Gates_light_shadow2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'gate', 'structure', 'small'] },
+  { itemId: 'Cave_gate3', assetId: 'object.cave.Cave_gate3', name: 'Small Cave Gate', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Gates_light_shadow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'gate', 'structure', 'small'] },
+  { itemId: 'Cave_bonefire', assetId: 'object.cave.Cave_bonefire', name: 'Bonefire', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/Bonefire_light_shadow.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'fire', 'bone', 'relic'] },
+  { itemId: 'Cave_caveman_statue1', assetId: 'object.cave.Cave_caveman_statue1', name: 'Caveman Statue', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/caveman_statue_light_shadow1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'statue', 'relic'] },
+  { itemId: 'Cave_caveman_statue2', assetId: 'object.cave.Cave_caveman_statue2', name: 'Caveman Idol Statue', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/caveman_statue_light_shadow2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'statue', 'relic'] },
+  { itemId: 'Cave_magic_circle1', assetId: 'object.cave.Cave_magic_circle1', name: 'Magic Cave Circle', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/magic_circle_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'magic', 'circle', 'relic'] },
+  { itemId: 'Cave_magic_circle2', assetId: 'object.cave.Cave_magic_circle2', name: 'Rune Cave Circle', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/magic_circle2_light_shadow.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'magic', 'circle', 'relic'] },
+  { itemId: 'Cave_cocoon_web', assetId: 'object.cave.Cave_cocoon_web', name: 'Cocoon Web', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/cocoon_web.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'web', 'cocoon'] },
+  { itemId: 'Cave_mushroom1_1', assetId: 'object.cave.Cave_mushroom1_1', name: 'Cave Cap Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/mushroom1_light_shadow1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'mushroom'] },
+  { itemId: 'Cave_mushroom1_2', assetId: 'object.cave.Cave_mushroom1_2', name: 'Small Cave Cap Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/mushroom1_light_shadow2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'mushroom', 'small'] },
+  { itemId: 'Cave_mushroom1_3', assetId: 'object.cave.Cave_mushroom1_3', name: 'Tiny Cave Cap Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/32/mushroom1_light_shadow3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['cave', 'mushroom', 'tiny'] },
+  { itemId: 'Cave_mushroom2_1', assetId: 'object.cave.Cave_mushroom2_1', name: 'Tall Cave Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/mushroom2_light_shadow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'mushroom'] },
+  { itemId: 'Cave_mushroom2_2', assetId: 'object.cave.Cave_mushroom2_2', name: 'Small Tall Cave Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/mushroom2_light_shadow2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'mushroom', 'small'] },
+  { itemId: 'Cave_mushroom2_3', assetId: 'object.cave.Cave_mushroom2_3', name: 'Young Tall Cave Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/64/mushroom2_light_shadow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cave', 'mushroom', 'small'] },
+  { itemId: 'Cave_mushroom3_1', assetId: 'object.cave.Cave_mushroom3_1', name: 'Clustered Cave Mushroom', source: require('../../assets/game/craftpix-net-266622-free-top-down-pixel-art-cave-objects/PNG/Objects_separately/128/mushroom3_light_shadow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['cave', 'mushroom'] },
+] satisfies readonly RpgCaveObjectAsset[];
+
 export function rpgSpriteFrame(
   source: any,
   x: number,
@@ -267,11 +303,11 @@ export const RPG_CROP_STAGE_FRAMES = {
 } satisfies Record<string, Record<0 | 1 | 2, RpgSpriteFrame>>;
 
 export const RPG_OBJECT_SOURCES = Object.fromEntries(
-  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS].map(asset => [asset.itemId, asset.source]),
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS, ...RPG_CAVE_OBJECT_ASSETS].map(asset => [asset.itemId, asset.source]),
 ) as Record<string, any>;
 
 const RPG_OBJECT_REGISTRY = Object.fromEntries(
-  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS].map(asset => [asset.assetId, {
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS, ...RPG_CAVE_OBJECT_ASSETS].map(asset => [asset.assetId, {
     id: asset.assetId,
     name: asset.name,
     category: 'object',
