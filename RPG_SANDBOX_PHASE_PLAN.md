@@ -42,6 +42,21 @@ These rules must remain true after every phase.
 - Multi-step inventory/object writes that change economy state must be transactional where partial failure would corrupt counts or placement.
 - Every phase must run the self-audit loop before being considered complete.
 
+## Stardew-Like Comfort Protocol
+
+The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, decorating, walking, collecting, and contextual object interactions. Use Stardew Valley as a comfort benchmark for genre feel, while keeping Prodewty's mechanics, economy, assets, and code original.
+
+- One authoritative tile world: movement, placement, farming, object interaction, and collision must agree on the same row/col and footprint model.
+- Foot-based presence: avatar and object sorting, collision, and interaction range are anchored to feet/bottom cells, not sprite centers.
+- Context-first input: normal mode stays simple with `Interact` and `Attack`; build, stash, move, buy, plant, and harvest controls appear only in the matching state.
+- Immediate feedback: taps, placement validity, harvests, locked gates, traps, chests, and failed actions must show a visible response without waiting for a long async chain.
+- Local-first performance: per-frame movement, camera, zoom, previews, and animations must not perform SQLite writes, catalog scans, asset discovery, or expensive allocations.
+- Bounded camera feel: zoom and panning must keep the avatar, objects, and map in one shared world transform and must clamp to the authored map bounds.
+- Readable placement: build previews must show clear green/red footprint cells, respect avatar occupancy, and never require walking around to place a backpack item.
+- Transactional economy: inventory, coins, placed objects, crops, reward claims, and relation cleanup must commit together when the player-facing action is atomic.
+- Scalable content: every new asset pack flows through the registry, catalog, archive, shop, backpack, and validator rather than one-off screen logic.
+- Conservative animation budget: idle world animations are allowed, but they should use shared sprite-frame renderers and avoid rerendering the whole map every tick.
+
 ## Status Key
 
 - `Not started`: no scoped work has begun.
@@ -97,6 +112,7 @@ These rules must remain true after every phase.
 | 40 | Lever toggle feedback V1 | Verified | Temple levers persist on/off toggle feedback without puzzle side effects |
 | 41 | Trap disable feedback V1 | Verified | Temple traps persist disarm/re-arm feedback without damage or collision side effects |
 | 42 | Object relation foundation V1 | Verified | Persist source-target object links for future lever, gate, and trap mechanics |
+| 43 | Gate rattle feedback V1 | Verified | Gate interactions persist locked feedback without opening or collision side effects |
 
 ## Required Audit Loop For Every Phase
 
@@ -2220,5 +2236,54 @@ Expansion notes saved:
 - Consider target lookup helpers once reverse relation gameplay becomes real.
 
 Phase 42 status:
+
+- Verified.
+
+### Phase 43 Audit
+
+Intended behavior:
+
+- `Interact` on gate-tagged props records a persisted `rattle_gate` interaction count.
+- Gate feedback alternates between `Gate rattles` and `Gate stays locked`.
+- The same path covers temple and cave gates because both are catalog-tagged as `gate`.
+- The RPG validator enforces the new interaction kind, gate detection, persisted rattle call, locked feedback, and no open/collision side effects.
+
+Negative guarantees:
+
+- Gate rattling must not open gates, close gates, mutate collision, mutate object placement, mutate relation rows, damage/heal the avatar, grant loot, or link to levers.
+- Gate feedback must not add any normal-mode buttons beyond `Interact` and `Attack`.
+- Gate feedback must not interfere with chest rewards, trap disarming feedback, lever toggles, forage drops, crop growth, or inventory.
+- Stashing a gate must still clean interaction memory and object relation rows through existing stash cleanup.
+
+Files changed:
+
+- `app/src/db/sanctuaryInteractions.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-gate-rattle-export`
+- Passed: source inspection confirmed gate feedback only writes interaction memory and does not mutate collision, placement, relation rows, health, inventory, rewards, or lever/trap behavior.
+
+Manual test checklist:
+
+- Place a Temple Lattice Gate and interact once; confirm `Gate rattles`.
+- Interact with the same gate again; confirm `Gate stays locked`.
+- Place any cave gate and confirm the same feedback loop.
+- Confirm walking collision remains based on the gate footprint after both interactions.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Gate opening requires relation rows, safe-path validation, stateful gate visuals, and movement-collision state rules.
+- Add actual open/closed frame variants only after verifying the lattice sheet frame coordinates.
+- Relation-driven lever gates should use placed object ids, not item ids, to avoid accidental global gate toggles.
+
+Phase 43 status:
 
 - Verified.

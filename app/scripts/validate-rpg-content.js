@@ -633,6 +633,24 @@ function validateTrapDisableFeedback() {
   if (rpgScreen.includes('disable_trap_collision')) fail('Trap feedback must not mutate movement collision state');
 }
 
+function validateGateRattleFeedback() {
+  if (!sanctuaryInteractions.includes("'rattle_gate'")) {
+    fail('Object interaction memory must support rattle_gate interactions');
+  }
+  if (!rpgScreen.includes('const isGateObject = (item: ShopCatalogItem)')) {
+    fail('RPG screen must centralize gate object detection');
+  }
+  if (!rpgScreen.includes("markSanctuaryObjectInteraction(object.id, object.type, 'rattle_gate')")) {
+    fail('Gate interactions must persist rattle count through object interaction memory');
+  }
+  if (!rpgScreen.includes('Gate rattles') || !rpgScreen.includes('Gate stays locked')) {
+    fail('Gate interactions must show locked gate feedback');
+  }
+  if (rpgScreen.includes('open_gate_collision') || rpgScreen.includes('gateOpen')) {
+    fail('Gate rattle feedback phase must not mutate gate open/collision state');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -701,6 +719,7 @@ validateSanctuaryInteractionMemory();
 validateSanctuaryRewardClaims();
 validateLeverToggleFeedback();
 validateTrapDisableFeedback();
+validateGateRattleFeedback();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {

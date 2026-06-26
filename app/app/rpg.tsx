@@ -988,6 +988,10 @@ export default function RpgScreen() {
     item.tags?.includes('trap') || item.tags?.includes('hazard')
   );
 
+  const isGateObject = (item: ShopCatalogItem) => (
+    item.tags?.includes('gate')
+  );
+
   const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
     const detail = (() => {
@@ -1042,6 +1046,20 @@ export default function RpgScreen() {
       const isDisabled = toggle.count % 2 === 1;
       showWorldToast({
         text: isDisabled ? 'Trap disarmed' : 'Trap re-armed',
+        item,
+        tone: 'muted',
+      });
+      return;
+    }
+
+    if (isGateObject(item)) {
+      const rattle = markSanctuaryObjectInteraction(object.id, object.type, 'rattle_gate');
+      if (!rattle.ok) {
+        showWorldToast({ text: 'Gate does not budge', item, tone: 'warn' });
+        return;
+      }
+      showWorldToast({
+        text: rattle.count % 2 === 1 ? 'Gate rattles' : 'Gate stays locked',
         item,
         tone: 'muted',
       });
