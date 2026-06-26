@@ -9,11 +9,12 @@ import {
   RPG_TEMPLE_OBJECT_ASSETS,
   RPG_UI_FRAMES,
   type RpgObjectAsset,
+  type RpgSpriteAnimation,
   type RpgSpriteFrame,
 } from './RpgAssetRegistry';
 
 export { RPG_UI_FRAMES };
-export type { RpgSpriteFrame };
+export type { RpgSpriteAnimation, RpgSpriteFrame };
 
 export type RpgDrop = {
   itemId: string;
@@ -69,6 +70,7 @@ export type RpgInventoryItem = {
   iconAssetId?: string;
   source?: any;
   icon?: RpgSpriteFrame;
+  animation?: RpgSpriteAnimation;
   tags?: string[];
   description?: string;
   rarity?: RpgItemRarity;
@@ -383,6 +385,7 @@ const RPG_CAVE_OBJECT_CATALOG = Object.fromEntries(
 
 function templeObjectDescription(asset: RpgObjectAsset) {
   if (asset.tags.includes('structure')) return `${asset.name} from the temple archive. A ruin landmark for sanctuary layouts and future dungeon progression.`;
+  if (asset.tags.includes('fire')) return `${asset.name} from the temple archive. An animated flame prop for livelier sanctuary rooms.`;
   if (asset.tags.includes('statue') || asset.tags.includes('relic')) return `${asset.name} from the temple archive. A relic object for future shrine and lore hooks.`;
   if (asset.tags.includes('banner')) return `${asset.name} from the temple archive. A narrow wall decor object for themed rooms.`;
   if (asset.tags.includes('chest')) return `${asset.name} from the temple archive. A treasure object reserved for future reward systems.`;
@@ -429,6 +432,7 @@ function makeTempleObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
     price: templeObjectPrice(asset),
     ...templeObjectFootprint(asset),
     icon: asset.frame,
+    animation: asset.animation,
     tags: asset.tags,
     rarity: templeObjectRarity(asset),
     sourceLabel: 'Temple Archive',

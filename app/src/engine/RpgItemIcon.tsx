@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
-import type { RpgItemDefinition, RpgSpriteFrame } from './RpgObjectCatalog';
+import type { RpgItemDefinition, RpgSpriteAnimation, RpgSpriteFrame } from './RpgObjectCatalog';
 
 type SpriteFrameProps = {
   frame: RpgSpriteFrame;
@@ -32,6 +32,36 @@ export function RpgSpriteFrameView({ frame, scale, size }: SpriteFrameProps) {
   );
 }
 
+type SpriteAnimationProps = {
+  animation: RpgSpriteAnimation;
+  scale?: number;
+  size?: number;
+};
+
+export function RpgSpriteAnimationView({ animation, scale, size }: SpriteAnimationProps) {
+  const [frameIndex, setFrameIndex] = useState(0);
+
+  useEffect(() => {
+    setFrameIndex(0);
+
+    if (animation.frames.length <= 1) {
+      return undefined;
+    }
+
+    const intervalMs = 1000 / Math.max(1, animation.fps);
+    const timer = setInterval(() => {
+      setFrameIndex(index => (index + 1) % animation.frames.length);
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [animation]);
+
+  const frame = animation.frames[frameIndex] ?? animation.frames[0];
+  if (!frame) return null;
+
+  return <RpgSpriteFrameView frame={frame} scale={scale} size={size} />;
+}
+
 type ItemIconProps = {
   item?: RpgItemDefinition | null;
   size?: number;
@@ -39,6 +69,10 @@ type ItemIconProps = {
 };
 
 export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
+  if (item?.animation) {
+    return <RpgSpriteAnimationView animation={item.animation} size={size} />;
+  }
+
   if (item?.icon) {
     return <RpgSpriteFrameView frame={item.icon} size={size} />;
   }
@@ -64,6 +98,18 @@ type ItemWorldArtProps = {
 };
 
 export function RpgItemWorldArt({ item, width, height, fallbackLabel = '?', style }: ItemWorldArtProps) {
+  if (item?.animation) {
+    const firstFrame = item.animation.frames[0];
+    if (firstFrame) {
+      const frameScale = Math.min(width / firstFrame.width, height / firstFrame.height);
+      return (
+        <View style={[styles.worldArtFrame, { width, height }, style]}>
+          <RpgSpriteAnimationView animation={item.animation} scale={frameScale} />
+        </View>
+      );
+    }
+  }
+
   if (item?.icon) {
     const frameScale = Math.min(width / item.icon.width, height / item.icon.height);
     return (

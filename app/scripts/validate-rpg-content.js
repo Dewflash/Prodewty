@@ -138,31 +138,72 @@ function parseCaveAssets() {
 
 function parseTempleAssets() {
   const block = extractBlock(assetRegistry, 'export const RPG_TEMPLE_OBJECT_ASSETS = [', '] satisfies readonly RpgTempleObjectAsset[];');
-  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*frame:\s*rpgSpriteFrame\((RPG_TEMPLE_[A-Z_]+_SHEET),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*frame:\s*(?:rpgSpriteFrame\((RPG_TEMPLE_[A-Z_]+_SHEET),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)|(RPG_TEMPLE_ANIMATIONS\.[A-Za-z0-9_]+\.frames\[0\])),\s*(?:animation:\s*(RPG_TEMPLE_ANIMATIONS\.[A-Za-z0-9_]+),\s*)?pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
   const assets = [];
   let match;
   while ((match = regex.exec(block))) {
-    const tags = [...match[13].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    const animationFrame = match[11] ?? null;
+    const animation = match[12] ?? null;
+    const frame = animationFrame ? templeAnimationFrame(animationFrame) : {
+      x: Number(match[5]),
+      y: Number(match[6]),
+      width: Number(match[7]),
+      height: Number(match[8]),
+      sheetWidth: Number(match[9]),
+      sheetHeight: Number(match[10]),
+    };
+    const tags = [...match[15].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
     assets.push({
       itemId: match[1],
       assetId: match[2],
       name: match[3],
-      sheet: match[4],
-      frame: {
-        x: Number(match[5]),
-        y: Number(match[6]),
-        width: Number(match[7]),
-        height: Number(match[8]),
-        sheetWidth: Number(match[9]),
-        sheetHeight: Number(match[10]),
-      },
-      pixelWidth: Number(match[11]),
-      pixelHeight: Number(match[12]),
+      sheet: match[4] ?? templeAnimationSheet(animationFrame),
+      frame,
+      animation,
+      pixelWidth: Number(match[13]),
+      pixelHeight: Number(match[14]),
       tags,
     });
   }
-  if (assets.length !== 18) fail(`Expected 18 temple assets, found ${assets.length}`);
+  if (assets.length !== 20) fail(`Expected 20 temple assets, found ${assets.length}`);
   return assets;
+}
+
+function parseTempleAnimations() {
+  const block = extractBlock(assetRegistry, 'export const RPG_TEMPLE_ANIMATIONS = {', '} satisfies Record<string, RpgSpriteAnimation>;');
+  const regex = /([A-Za-z0-9_]+):\s*rpgSpriteAnimationGrid\((RPG_TEMPLE_[A-Z_]+_SHEET),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)/g;
+  const animations = {};
+  let match;
+  while ((match = regex.exec(block))) {
+    animations[`RPG_TEMPLE_ANIMATIONS.${match[1]}`] = {
+      sheet: match[2],
+      frameWidth: Number(match[3]),
+      frameHeight: Number(match[4]),
+      columns: Number(match[5]),
+      rows: Number(match[6]),
+      fps: Number(match[7]),
+    };
+  }
+  return animations;
+}
+
+function templeAnimationFrame(animationFrame) {
+  const animationId = animationFrame?.replace(/\.frames\[0\]$/, '');
+  const animation = templeAnimations[animationId];
+  if (!animation) return { x: 0, y: 0, width: 0, height: 0, sheetWidth: 0, sheetHeight: 0 };
+  return {
+    x: 0,
+    y: 0,
+    width: animation.frameWidth,
+    height: animation.frameHeight,
+    sheetWidth: animation.frameWidth * animation.columns,
+    sheetHeight: animation.frameHeight * animation.rows,
+  };
+}
+
+function templeAnimationSheet(animationFrame) {
+  const animationId = animationFrame?.replace(/\.frames\[0\]$/, '');
+  return templeAnimations[animationId]?.sheet ?? null;
 }
 
 function parseRegistryIds(objectAssets) {
@@ -268,6 +309,8 @@ function validateTempleAssets(templeAssets) {
   const sheetDimensions = {
     RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET: { width: 352, height: 656 },
     RPG_TEMPLE_INTERIOR_OBJECTS_SHEET: { width: 384, height: 256 },
+    RPG_TEMPLE_FIRE_ANIMATION_SHEET: { width: 128, height: 480 },
+    RPG_TEMPLE_CHEST_ANIMATION_SHEET: { width: 80, height: 192 },
   };
 
   templeAssets.forEach(asset => {
@@ -276,6 +319,8 @@ function validateTempleAssets(templeAssets) {
     if (!assetRegistry.includes(`const ${asset.sheet} = require(`)) fail(`Missing temple sheet source constant: ${asset.sheet}`);
     if (!asset.assetId.startsWith('object.temple.')) fail(`Temple assetId must start with object.temple.: ${asset.assetId}`);
     if (!asset.tags.includes('temple')) fail(`Temple asset missing temple tag: ${asset.itemId}`);
+    if (asset.tags.includes('animated') && !asset.animation) fail(`Animated temple asset missing animation metadata: ${asset.itemId}`);
+    if (asset.animation && !asset.tags.includes('animated')) fail(`Temple animation asset missing animated tag: ${asset.itemId}`);
     if (asset.pixelWidth !== asset.frame.width || asset.pixelHeight !== asset.frame.height) {
       fail(`Temple pixel dimensions must match frame dimensions for ${asset.itemId}`);
     }
@@ -288,6 +333,25 @@ function validateTempleAssets(templeAssets) {
     if (asset.frame.x + asset.frame.width > dimensions.width || asset.frame.y + asset.frame.height > dimensions.height) {
       fail(`Temple frame exceeds sheet bounds for ${asset.itemId}`);
     }
+  });
+}
+
+function validateTempleAnimations(animations) {
+  const expected = {
+    'RPG_TEMPLE_ANIMATIONS.fireBowl': { sheet: 'RPG_TEMPLE_FIRE_ANIMATION_SHEET', frameWidth: 32, frameHeight: 32, columns: 4, rows: 15 },
+    'RPG_TEMPLE_ANIMATIONS.chest': { sheet: 'RPG_TEMPLE_CHEST_ANIMATION_SHEET', frameWidth: 40, frameHeight: 32, columns: 2, rows: 6 },
+  };
+
+  Object.entries(expected).forEach(([id, expectedConfig]) => {
+    const animation = animations[id];
+    if (!animation) {
+      fail(`Missing temple animation: ${id}`);
+      return;
+    }
+    Object.entries(expectedConfig).forEach(([key, value]) => {
+      if (animation[key] !== value) fail(`Temple animation ${id} expected ${key}=${value}, found ${animation[key]}`);
+    });
+    if (animation.fps <= 0) fail(`Temple animation must have positive fps: ${id}`);
   });
 }
 
@@ -373,8 +437,10 @@ function validateTempleMetadata(templeAssets) {
   if (!catalog.includes("sourceLabel: 'Temple Archive'")) fail('Temple objects must expose source label metadata');
   if (!catalog.includes('RPG_TEMPLE_OBJECT_CATALOG')) fail('Catalog must expose temple object catalog');
   if (!catalog.includes("icon: asset.frame")) fail('Temple catalog must use verified sprite frames as icons');
+  if (!catalog.includes("animation: asset.animation")) fail('Temple catalog must pass animation metadata into items');
   if (!catalog.includes("{ id: 'temple', label: 'Temple', sourceLabel: 'Temple Archive' }")) fail('Shared source filters must expose a temple pack');
   if (!assetRegistry.includes('...RPG_TEMPLE_OBJECT_ASSETS')) fail('Runtime asset registry must include temple object assets');
+  if (!assetRegistry.includes('animation: asset.animation')) fail('Runtime asset registry must include object animation metadata');
   if (!assetRegistry.includes('asset.source !== undefined')) fail('Object source map must filter frame-only assets by explicit undefined checks');
   if (!assetRegistry.includes('Partial<Record<string, any>>')) fail('Object source map must be typed as partial for frame-only assets');
 }
@@ -433,6 +499,8 @@ function validateShopScalabilityControls() {
 }
 
 function validateWorldArtRenderer() {
+  if (!itemIcon.includes('export function RpgSpriteAnimationView')) fail('Shared item renderer must expose sprite animation view');
+  if (!itemIcon.includes('item?.animation')) fail('Shared item renderer must support catalog animation metadata');
   if (!itemIcon.includes('export function RpgItemWorldArt')) fail('Shared item art renderer must expose RpgItemWorldArt');
   if (!itemIcon.includes('item?.icon')) fail('Shared item art renderer must support sprite-frame icons');
   const worldArtStart = itemIcon.indexOf('export function RpgItemWorldArt');
@@ -449,6 +517,7 @@ const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
 const caveAssets = parseCaveAssets();
+const templeAnimations = parseTempleAnimations();
 const templeAssets = parseTempleAssets();
 const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets, ...templeAssets];
 const registryIds = parseRegistryIds(objectAssets);
@@ -458,6 +527,7 @@ validateForestAssets(forestAssets);
 validateCrystalAssets(crystalAssets);
 validateBushAssets(bushAssets);
 validateCaveAssets(caveAssets);
+validateTempleAnimations(templeAnimations);
 validateTempleAssets(templeAssets);
 unique(objectAssets.map(asset => asset.itemId), 'object itemId');
 unique(objectAssets.map(asset => asset.assetId), 'object assetId');

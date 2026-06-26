@@ -89,6 +89,7 @@ These rules must remain true after every phase.
 | 32 | Source-pack filter counts | Verified | Archive, shop, and backpack source filters show catalog/inventory counts |
 | 33 | Framed world art priority | Verified | World art renderer prefers curated sprite frames before whole-image sources |
 | 34 | Temple content pack V1 | Verified | 18 curated temple frame objects mapped into registry/catalog/archive/shop |
+| 35 | Animated temple props V1 | Verified | Shared sprite animation renderer plus fire/chest temple props |
 
 ## Required Audit Loop For Every Phase
 
@@ -1796,5 +1797,59 @@ Expansion notes saved:
 - Add atlas/contact-sheet tooling for the remaining temple sheets.
 
 Phase 34 status:
+
+- Verified.
+
+### Phase 35 Audit
+
+Intended behavior:
+
+- Runtime asset registry supports reusable sprite animations made from verified frame grids.
+- Item catalog entries can carry animation metadata alongside their static icon frame.
+- Shared item renderers animate catalog items in shop, backpack, archive, build ghost, and placed-world art.
+- Temple Archive gains two animated props: Temple Fire Bowl and Animated Temple Chest.
+- Content validation checks animation grids, frame bounds, renderer support, and catalog propagation.
+
+Negative guarantees:
+
+- Animated props must not require one-off UI code in shop, backpack, archive, or placed-object components.
+- Animated props must still have a static first frame for fallback and registry references.
+- Animation metadata must not bypass catalog footprints, source-pack filters, or archive facts.
+- Invalid animation dimensions or missing renderer support must fail `npm run validate:rpg`.
+- Phase 35 must not claim trap mechanics, enemy AI, loot chests, or animation performance tuning are complete.
+
+Files changed:
+
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgItemIcon.tsx app/src/engine/RpgArchive.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-temple-animation-export`
+- Passed: source inspection confirmed renderer, archive, registry, and catalog all consume shared animation metadata.
+
+Manual test checklist:
+
+- Open shop, filter to Temple, and confirm Temple Fire Bowl and Animated Temple Chest are visible and animated.
+- Buy each animated item and confirm backpack shows the animated item art.
+- Place each animated item and confirm the build ghost and placed object animate from the same catalog entry.
+- Open archive, filter to Temple, and confirm animated prop entries render with visible art and facts.
+- Confirm normal mode still exposes only `Interact` and `Attack` as action buttons.
+
+Expansion notes saved:
+
+- Add trap-specific animations only after trap interaction rules exist.
+- Add animation pausing or viewport culling if many animated props become a performance issue.
+- Add chest interaction/loot behavior only after economy balance is designed.
+- Add animation preview controls to a future asset atlas screen.
+
+Phase 35 status:
 
 - Verified.

@@ -8,6 +8,11 @@ export type RpgSpriteFrame = {
   sheetHeight: number;
 };
 
+export type RpgSpriteAnimation = {
+  frames: readonly RpgSpriteFrame[];
+  fps: number;
+};
+
 export type RpgAssetCategory = 'ui' | 'archive' | 'object' | 'resource' | 'seed' | 'crop';
 
 export type RpgAssetDefinition = {
@@ -16,6 +21,7 @@ export type RpgAssetDefinition = {
   category: RpgAssetCategory;
   verified: boolean;
   frame?: RpgSpriteFrame;
+  animation?: RpgSpriteAnimation;
   source?: any;
   tags?: string[];
   note?: string;
@@ -27,6 +33,7 @@ export type RpgObjectAsset = {
   name: string;
   source?: any;
   frame?: RpgSpriteFrame;
+  animation?: RpgSpriteAnimation;
   pixelWidth: number;
   pixelHeight: number;
   tags: string[];
@@ -45,6 +52,13 @@ const RPG_FARM_PLANTS_SHEET = require('../../assets/craftpix-net-200380-free-pix
 const RPG_FARM_SUPPLIES_SHEET = require('../../assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Supplies.png');
 const RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Exterior_objects.png');
 const RPG_TEMPLE_INTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Objects_interior.png');
+const RPG_TEMPLE_FIRE_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Fire_animation.png');
+const RPG_TEMPLE_CHEST_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Сhest.png');
+
+export const RPG_TEMPLE_ANIMATIONS = {
+  fireBowl: rpgSpriteAnimationGrid(RPG_TEMPLE_FIRE_ANIMATION_SHEET, 32, 32, 4, 15, 10),
+  chest: rpgSpriteAnimationGrid(RPG_TEMPLE_CHEST_ANIMATION_SHEET, 40, 32, 2, 6, 8),
+} satisfies Record<string, RpgSpriteAnimation>;
 
 export const RPG_FOREST_OBJECT_ASSETS = [
   { itemId: 'Beige_green_mushroom1', assetId: 'object.Beige_green_mushroom1', name: 'Beige-Green Mushroom Cluster', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['mushroom', 'forest', 'large'] },
@@ -223,6 +237,8 @@ export const RPG_TEMPLE_OBJECT_ASSETS = [
   { itemId: 'Temple_candle_cluster', assetId: 'object.temple.Candle_cluster', name: 'Temple Candle Cluster', frame: rpgSpriteFrame(RPG_TEMPLE_INTERIOR_OBJECTS_SHEET, 272, 144, 48, 16, 384, 256), pixelWidth: 48, pixelHeight: 16, tags: ['temple', 'candle', 'decor', 'small'] },
   { itemId: 'Temple_wooden_chest', assetId: 'object.temple.Wooden_chest', name: 'Temple Wooden Chest', frame: rpgSpriteFrame(RPG_TEMPLE_INTERIOR_OBJECTS_SHEET, 320, 176, 32, 32, 384, 256), pixelWidth: 32, pixelHeight: 32, tags: ['temple', 'chest', 'relic'] },
   { itemId: 'Temple_gold_pile', assetId: 'object.temple.Gold_pile', name: 'Temple Gold Pile', frame: rpgSpriteFrame(RPG_TEMPLE_INTERIOR_OBJECTS_SHEET, 128, 144, 48, 16, 384, 256), pixelWidth: 48, pixelHeight: 16, tags: ['temple', 'treasure', 'decor', 'small'] },
+  { itemId: 'Temple_fire_bowl', assetId: 'object.temple.Fire_bowl', name: 'Temple Fire Bowl', frame: RPG_TEMPLE_ANIMATIONS.fireBowl.frames[0], animation: RPG_TEMPLE_ANIMATIONS.fireBowl, pixelWidth: 32, pixelHeight: 32, tags: ['temple', 'fire', 'decor', 'small', 'animated'] },
+  { itemId: 'Temple_animated_chest', assetId: 'object.temple.Animated_chest', name: 'Animated Temple Chest', frame: RPG_TEMPLE_ANIMATIONS.chest.frames[0], animation: RPG_TEMPLE_ANIMATIONS.chest, pixelWidth: 40, pixelHeight: 32, tags: ['temple', 'chest', 'relic', 'animated'] },
   { itemId: 'Temple_overgrown_facade', assetId: 'object.temple.Overgrown_facade', name: 'Overgrown Temple Facade', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 0, 0, 160, 160, 352, 656), pixelWidth: 160, pixelHeight: 160, tags: ['temple', 'structure', 'ruin', 'overgrown', 'large'] },
   { itemId: 'Temple_stone_facade', assetId: 'object.temple.Stone_facade', name: 'Stone Temple Facade', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 176, 0, 160, 160, 352, 656), pixelWidth: 160, pixelHeight: 160, tags: ['temple', 'structure', 'ruin', 'large'] },
   { itemId: 'Temple_overgrown_wall', assetId: 'object.temple.Overgrown_wall', name: 'Overgrown Temple Wall', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 0, 160, 160, 64, 352, 656), pixelWidth: 160, pixelHeight: 64, tags: ['temple', 'wall', 'ruin', 'overgrown', 'structure'] },
@@ -249,6 +265,29 @@ export function rpgSpriteFrame(
     sheetWidth,
     sheetHeight,
   };
+}
+
+function rpgSpriteAnimationGrid(
+  source: any,
+  frameWidth: number,
+  frameHeight: number,
+  columns: number,
+  rows: number,
+  fps: number,
+): RpgSpriteAnimation {
+  const sheetWidth = frameWidth * columns;
+  const sheetHeight = frameHeight * rows;
+  const frames = Array.from({ length: columns * rows }, (_, index) => rpgSpriteFrame(
+    source,
+    (index % columns) * frameWidth,
+    Math.floor(index / columns) * frameHeight,
+    frameWidth,
+    frameHeight,
+    sheetWidth,
+    sheetHeight,
+  ));
+
+  return { frames, fps };
 }
 
 function rpgUiIcon(row: number, col: number): RpgSpriteFrame {
@@ -348,6 +387,7 @@ const RPG_OBJECT_REGISTRY = Object.fromEntries(
     category: 'object',
     verified: true,
     frame: asset.frame,
+    animation: asset.animation,
     source: asset.source,
     tags: asset.tags,
   } satisfies RpgAssetDefinition]),

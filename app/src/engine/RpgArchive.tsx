@@ -15,7 +15,7 @@ import {
   type RpgSourcePackId,
 } from './RpgObjectCatalog';
 import { getRpgAsset, RPG_ARCHIVE_FRAMES, type RpgAssetDefinition } from './RpgAssetRegistry';
-import { RpgSpriteFrameView } from './RpgItemIcon';
+import { RpgSpriteAnimationView, RpgSpriteFrameView } from './RpgItemIcon';
 
 type CountRow = {
   item_id: string;
@@ -158,6 +158,14 @@ function ArchiveItemArt({ asset, discovered, known }: {
   known: boolean;
 }) {
   const opacity = discovered ? 1 : known ? 0.52 : 0.26;
+
+  if (asset?.animation) {
+    return (
+      <View style={{ opacity }}>
+        <RpgSpriteAnimationView animation={asset.animation} size={24} />
+      </View>
+    );
+  }
 
   if (asset?.frame) {
     return (
