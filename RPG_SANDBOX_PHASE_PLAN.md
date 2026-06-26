@@ -77,6 +77,7 @@ These rules must remain true after every phase.
 | 20 | Catalog detail facts | Verified | Archive/backpack facts derive price, footprint, forage, harvest, and growth data from catalog metadata |
 | 21 | Archive search and sorting | Verified | Search across catalog metadata plus sort by name, rarity, and discovery status |
 | 22 | Crystal content pack V1 | Verified | 40 tracked crystal objects, crystal shop filter, Crystal Shards resource, crystal forage drops |
+| 23 | Forage feedback polish | Verified | Object cooldown copy is tag-aware for trees, crystals, and future forage objects |
 
 ## Required Audit Loop For Every Phase
 
@@ -823,6 +824,37 @@ Manual test checklist:
 - Walk into the crystal footprint and confirm movement is blocked.
 - Face the crystal and press `Interact`; confirm either a shard drop or no-drop feedback.
 - Search archive for `crystal` and confirm all crystal entries appear.
+
+## Phase 23: Forage Feedback Polish
+
+Goal: keep object interaction feedback correct as forage expands beyond trees.
+
+Deliverables:
+
+- Replace hardcoded tree cooldown copy with tag-aware forage cooldown text.
+- Preserve existing tree feedback.
+- Add crystal-specific cooldown feedback.
+- Keep the helper local to RPG interaction logic so catalog data remains the source of object tags.
+
+Acceptance gates:
+
+- Tree forage cooldown still says `Tree is resting`.
+- Crystal forage cooldown says `Crystal is recharging`.
+- Future forage objects get neutral `Object is resting` feedback.
+- No economy, drop rate, placement, or control behavior changes.
+- TypeScript, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-forage-feedback-export`
+
+Manual test checklist:
+
+- Interact with a tree twice quickly and confirm the tree cooldown text.
+- Interact with a crystal twice quickly and confirm the crystal cooldown text.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
 
 ## Manual Regression Script
 

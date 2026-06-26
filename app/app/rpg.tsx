@@ -948,6 +948,12 @@ export default function RpgScreen() {
     return results;
   };
 
+  const getForageCooldownText = (tags: string[] | undefined) => {
+    if (tags?.includes('crystal')) return 'Crystal is recharging';
+    if (tags?.includes('tree')) return 'Tree is resting';
+    return 'Object is resting';
+  };
+
   const forageObject = (object: MapObject) => {
     const item = getPlaceableItem(object.type);
     if (!item?.forageDrops?.length) {
@@ -957,7 +963,7 @@ export default function RpgScreen() {
 
     const now = Date.now();
     if ((forageCooldowns.current[object.id] ?? 0) > now) {
-      showWorldToast({ text: 'Tree is resting', tone: 'muted' });
+      showWorldToast({ text: getForageCooldownText(item.tags), tone: 'muted' });
       return;
     }
     forageCooldowns.current[object.id] = now + 1200;
