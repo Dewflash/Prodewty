@@ -707,6 +707,7 @@ export default function RpgScreen() {
     if (!buildItem) return;
     const row = buildRow.value;
     const col = buildCol.value;
+    const item = getRpgItem(buildItem.itemId);
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
     const report = analyzePlacement(row, col, buildItem.itemId, ignoreObjectId, buildItem.mode);
     setPlacementReport(report);
@@ -745,6 +746,7 @@ export default function RpgScreen() {
           'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
           row, col, buildItem.objectId,
         );
+        showWorldToast({ text: `Moved ${buildItem.label}`, item, tone: 'success' });
       } else {
         db.execSync('BEGIN TRANSACTION');
         const result = db.runSync(
@@ -753,6 +755,7 @@ export default function RpgScreen() {
         );
         if (result.changes <= 0) {
           db.execSync('ROLLBACK');
+          showWorldToast({ text: 'No item left', item, tone: 'warn' });
           return;
         }
         db.runSync(
@@ -761,6 +764,7 @@ export default function RpgScreen() {
         );
         db.execSync('COMMIT');
         recordRpgDiscovery(buildItem.itemId, 'place');
+        showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
       }
       bumpInventoryRevision();
       clearBuildMode();

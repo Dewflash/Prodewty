@@ -735,6 +735,21 @@ function validateEmptyInteractionFeedback() {
   }
 }
 
+function validateBuildPlacementFeedback() {
+  if (!rpgScreen.includes('const item = getRpgItem(buildItem.itemId);')) {
+    fail('Build placement must resolve item art for placement feedback');
+  }
+  if (!rpgScreen.includes("showWorldToast({ text: `Moved ${buildItem.label}`, item, tone: 'success' });")) {
+    fail('Moving an object must show success feedback');
+  }
+  if (!rpgScreen.includes("showWorldToast({ text: 'No item left', item, tone: 'warn' });")) {
+    fail('Missing inventory during placement must show visible feedback');
+  }
+  if (!rpgScreen.includes("showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });")) {
+    fail('Placing an object must show success feedback');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -807,6 +822,7 @@ validateGateRattleFeedback();
 validateInteractionTargetPrompt();
 validateActionButtonProtocol();
 validateEmptyInteractionFeedback();
+validateBuildPlacementFeedback();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {

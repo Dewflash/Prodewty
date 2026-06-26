@@ -117,6 +117,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 45 | Interaction target reticle V1 | Verified | Show the exact world-space target footprint for the current Interact target |
 | 46 | Stable action button labels | Verified | Keep bottom action controls labeled Interact and Attack across normal and build modes |
 | 47 | Empty Interact feedback | Verified | Empty Interact presses show throttled visible feedback instead of console-only logs |
+| 48 | Build placement outcome feedback | Verified | Object placement, movement, and missing inventory cases show visible feedback |
 
 ## Required Audit Loop For Every Phase
 
@@ -2481,5 +2482,52 @@ Expansion notes saved:
 - Keep empty feedback muted; it is a comfort cue, not an error.
 
 Phase 47 status:
+
+- Verified.
+
+### Phase 48 Audit
+
+Intended behavior:
+
+- Successfully placing an object from the backpack shows `Placed {item}` feedback with item art.
+- Successfully moving an existing object shows `Moved {item}` feedback with item art.
+- Attempting to place an inventory item whose quantity is gone shows `No item left`.
+- Seed planting keeps its existing crop-specific feedback path.
+- The RPG validator enforces feedback for object placement, object movement, and missing inventory placement.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, inventory arithmetic, item prices, crop planting, object relations, or build controls.
+- Placement feedback must not run before the relevant persistence action succeeds.
+- Missing inventory feedback must only appear after the transactional quantity decrement fails.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-build-feedback-export`
+- Passed: source inspection confirmed feedback appears after successful object move/place persistence and after failed transactional inventory decrement.
+
+Manual test checklist:
+
+- Place an object from the backpack; confirm `Placed {item}` feedback appears.
+- Long-press and move an existing object; confirm `Moved {item}` feedback appears.
+- Try to place an object after its quantity is exhausted; confirm `No item left`.
+- Plant a seed; confirm the crop-specific planted feedback still appears.
+- Confirm placement validity and red/green footprint cells are unchanged.
+
+Expansion notes saved:
+
+- Add sound/haptics for placement only after the visual feedback is stable.
+- Consider a subtle object pulse on successful placement/move later.
+
+Phase 48 status:
 
 - Verified.
