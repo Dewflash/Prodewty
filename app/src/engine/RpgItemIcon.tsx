@@ -68,7 +68,30 @@ type ItemIconProps = {
   fallbackLabel?: string;
 };
 
+function mechanismLabel(item: RpgItemDefinition | null | undefined) {
+  const tags = item?.tags ?? [];
+  if (tags.includes('lever')) return 'LEVER';
+  if (tags.includes('gate')) return 'GATE';
+  if (tags.some(tag => tag === 'trap' || tag === 'hazard')) return 'TRAP';
+  if (tags.includes('mechanism')) return 'MECH';
+  return null;
+}
+
 export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
+  const label = mechanismLabel(item);
+  const contentSize = label ? Math.max(18, Math.floor(size * 0.82)) : size;
+  const maybeWrapMechanism = (node: React.ReactNode) => {
+    if (!label) return node;
+    return (
+      <View style={[styles.mechanismIcon, { width: size, height: size }]}>
+        {node}
+        <View style={styles.mechanismBadge}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.mechanismBadgeText}>{label}</Text>
+        </View>
+      </View>
+    );
+  };
+
   if (item?.featherIcon) {
     return (
       <View style={[styles.fallback, { width: size, height: size }]}>
@@ -78,15 +101,15 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
   }
 
   if (item?.icon) {
-    return <RpgSpriteFrameView frame={item.icon} size={size} />;
+    return maybeWrapMechanism(<RpgSpriteFrameView frame={item.icon} size={contentSize} />);
   }
 
   if (item?.animation) {
-    return <RpgSpriteAnimationView animation={item.animation} size={size} />;
+    return maybeWrapMechanism(<RpgSpriteAnimationView animation={item.animation} size={contentSize} />);
   }
 
   if (item?.source) {
-    return <Image source={item.source} resizeMode="contain" style={{ width: size, height: size }} />;
+    return maybeWrapMechanism(<Image source={item.source} resizeMode="contain" style={{ width: contentSize, height: contentSize }} />);
   }
 
   return (
@@ -157,6 +180,29 @@ const styles = StyleSheet.create({
     color: '#eadca8',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  mechanismIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mechanismBadge: {
+    position: 'absolute',
+    left: 1,
+    right: 1,
+    bottom: 0,
+    minHeight: 12,
+    borderRadius: 4,
+    backgroundColor: 'rgba(18,22,18,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  mechanismBadgeText: {
+    color: '#b9f5b8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
   },
   worldArtFrame: {
     alignItems: 'center',

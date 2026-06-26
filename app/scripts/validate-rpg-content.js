@@ -1094,6 +1094,26 @@ function validateRpgCraftingV1() {
   }
 }
 
+function validateIconQaAndMechanismReadabilityV2() {
+  if (!catalog.includes("source: RPG_OBJECT_SOURCES.Broken_tree1")) {
+    fail('Wood resource must use the verified stump placeholder instead of the generic fallback icon');
+  }
+  if (!catalog.includes("if (asset.tags.includes('lever')) {\n    return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };")) {
+    fail('Lever visual footprint must be larger than its 1x1 collision footprint so it is visible on device');
+  }
+  if (!itemIcon.includes('function mechanismLabel(item: RpgItemDefinition | null | undefined)')) {
+    fail('Compact item icons must centralize mechanism labels');
+  }
+  ['LEVER', 'GATE', 'TRAP', 'MECH'].forEach(label => {
+    if (!itemIcon.includes(`return '${label}'`)) {
+      fail(`Mechanism icon labels must include ${label}`);
+    }
+  });
+  if (!itemIcon.includes('styles.mechanismBadge')) {
+    fail('Mechanism item icons must render a readable badge in compact UI');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1144,6 +1164,7 @@ validateRpgToolEnergyAndCharacterUi();
 validateRpgTileArtPlaceholders();
 validateSanctuaryClutterV1();
 validateRpgCraftingV1();
+validateIconQaAndMechanismReadabilityV2();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

@@ -143,8 +143,8 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 68 | Crafting recipes V1 | Verified | Resource recipes consume materials transactionally and output placeable inventory items |
 | 69 | Current issue ledger and forward plan refresh | Verified | Device feedback, post-crafting roadmap, and future-dev protocol logged in this document |
 | 70 | Farm animals V1 | Not started | Placeable livestock, animal source pack filter, interaction rewards, animal product placeholders |
-| 71 | Icon QA and semantic asset cleanup V2 | Not started | Verified mappings for remaining wrong icons, especially leaves/produce/tools/shop cards |
-| 72 | Mechanism usability V2 | Not started | Lever/gate/trap visibility, ownership, link feedback, and player-readable state |
+| 71 | Icon QA and semantic asset cleanup V2 | In progress | Wood now uses a named stump placeholder; validator guards resource fallback regressions |
+| 72 | Mechanism usability V2 | In progress | Lever visual footprint enlarged; compact mechanism icons show LEVER/GATE/TRAP/MECH labels |
 | 73 | Shop/backpack density and tap comfort V2 | Not started | Lower book rows, clearer item art, reliable card hit targets, selected detail polish |
 | 74 | Farming art and seed taxonomy V2 | Not started | Crop-specific seed, stage, and produce art with archive/backpack/shop consistency |
 | 75 | Build/editor UX V3 | Not started | Clash-style direct drag placement, edit-only move/stash, invalid-cell feedback, no walking required |
@@ -3368,5 +3368,68 @@ Expansion notes saved:
 - Later add a script to enforce that every verified phase row has a matching audit block.
 
 Phase 69 status:
+
+- Verified.
+
+### Phase 71/72 Slice Audit
+
+Intended behavior:
+
+- Make the worst current icon/readability complaints better without waiting for a full asset QA phase.
+- Wood should show a named stump placeholder instead of the generic fallback box.
+- Temple Floor Lever should be easier to see in the world while still occupying only one collision tile.
+- Shop, Backpack, Archive, and Crafting compact item icons should label mechanism objects so tiny lever/gate/trap art is not the only clue.
+- Normal world target outlines and grid boxes remain disabled; this is not a return to debug overlays.
+
+Negative guarantees:
+
+- This slice must not change lever/gate/trap persistence, relation linking, collision passability, purchase logic, inventory counts, or action buttons.
+- This slice must not claim all wrong icons are fixed; crop/produce/tool/animal icon QA remains planned.
+- Lever collision footprint must remain 1x1 even though the visual footprint is larger.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this slice: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The floor lever was technically mapped but too small/flat in world context; increasing visual footprint improves readability without touching occupancy.
+- Wood had a verified placeholder in the asset registry but the catalog did not supply that source to the item renderer, so compact UI could fall back to a generic box.
+- Mechanism UI needed a player-readable cue in compact inventory/shop contexts because tiny top-down mechanism frames can be hard to parse on a phone.
+
+Implementation attack findings:
+
+- `RpgItemIcon` wraps only compact mechanism icons with a label badge; `RpgItemWorldArt` still renders world objects normally.
+- The lever visual footprint is catalog metadata and therefore flows through existing world/ghost rendering.
+- Validator guards were added for the new source mapping, lever footprint rule, and mechanism icon labels.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgItemIcon.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Shop > Mechanisms and confirm lever/gate/trap cards show readable labels.
+- Buy/place Temple Floor Lever and confirm it is easier to see in-world, while still blocking/occupying a 1x1 placement cell.
+- Open Backpack/Archive/Crafting where mechanism objects appear and confirm compact icons are labeled.
+- Confirm normal gameplay still shows no debug target outline or large grid box.
+- Confirm Wood now shows the stump placeholder rather than a generic fallback tile.
+
+Expansion notes saved:
+
+- Phase 71 still needs full semantic icon QA for produce, crop seeds, tools, animal products, and any remaining placeholders.
+- Phase 72 still needs better lever/gate/trap link ownership feedback and possibly visible state variants, but without normal-mode debug boxes.
+
+Phase 71/72 slice status:
 
 - Verified.

@@ -428,6 +428,9 @@ function templeObjectFootprint(asset: RpgObjectAsset) {
   if (asset.pixelWidth >= 160 || asset.tags.includes('large')) {
     return { colWidth: 3, colHeight: 2, visWidth: 5, visHeight: 5 };
   }
+  if (asset.tags.includes('lever')) {
+    return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };
+  }
   if (asset.tags.includes('sarcophagus') || asset.tags.includes('wall')) {
     return { colWidth: 2, colHeight: 1, visWidth: 3, visHeight: 2 };
   }
@@ -526,6 +529,7 @@ export const RPG_ITEM_CATALOG = {
     kind: 'resource',
     assetId: 'resource.wood',
     iconAssetId: 'resource.wood',
+    source: RPG_OBJECT_SOURCES.Broken_tree1,
     rarity: 'common',
     sourceLabel: 'Tree Drops',
     tags: ['wood', 'crafting'],
