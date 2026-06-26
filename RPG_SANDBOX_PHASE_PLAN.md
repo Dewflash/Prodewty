@@ -141,6 +141,18 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 66 | Tool energy, watering, and character panel | Verified | Watering Can action, MP energy costs, character/equipment panel, textured tile placeholders |
 | 67 | Clearable sanctuary clutter V1 | Verified | One-time weeds/twigs/rocks spawn, energy-gated clearing, resource rewards, collision cleanup |
 | 68 | Crafting recipes V1 | Verified | Resource recipes consume materials transactionally and output placeable inventory items |
+| 69 | Current issue ledger and forward plan refresh | Verified | Device feedback, post-crafting roadmap, and future-dev protocol logged in this document |
+| 70 | Farm animals V1 | Not started | Placeable livestock, animal source pack filter, interaction rewards, animal product placeholders |
+| 71 | Icon QA and semantic asset cleanup V2 | Not started | Verified mappings for remaining wrong icons, especially leaves/produce/tools/shop cards |
+| 72 | Mechanism usability V2 | Not started | Lever/gate/trap visibility, ownership, link feedback, and player-readable state |
+| 73 | Shop/backpack density and tap comfort V2 | Not started | Lower book rows, clearer item art, reliable card hit targets, selected detail polish |
+| 74 | Farming art and seed taxonomy V2 | Not started | Crop-specific seed, stage, and produce art with archive/backpack/shop consistency |
+| 75 | Build/editor UX V3 | Not started | Clash-style direct drag placement, edit-only move/stash, invalid-cell feedback, no walking required |
+| 76 | Full asset archive expansion | Not started | Production/candidate/deprecated/ignored classification for every usable asset pack |
+| 77 | Dungeon/sanctuary object split | Not started | Separate cozy sanctuary props from dungeon hazards, loot, locks, combat props, and zone rules |
+| 78 | Economy balance and crafting foundations V2 | Not started | Coherent prices, drops, reward sinks, recipes, station candidates, and resource value tiers |
+| 79 | Seasons/weather and farm loop V2 | Not started | Rain, seasons, growth modifiers, clutter regrowth rules, and daily cozy-life-sim cadence |
+| 80 | Performance and save-state hardening V2 | Not started | Runtime profiling, transactional persistence audits, migration simulations, and device baseline |
 
 ## Future Development Roadmap
 
@@ -157,6 +169,201 @@ The next RPG work should proceed in this order unless a device-blocking bug appe
 | 63 | Dungeon/sanctuary object split | Cozy sanctuary objects and risky dungeon props need separate rules before combat expands. | Catalog tags, interaction handlers, zone state, dungeon map data | Sanctuary stays safe/decorative; dungeon hazards, chests, locks, and combat props can evolve without leaking rules into sanctuary. |
 | 64 | Economy balance and crafting foundations | Rewards need sinks before the catalog becomes too large. | Inventory DB helpers, shop pricing, reward tables, future processor tables | Prices, drops, chest rewards, Water Drops, and crafting candidates have a coherent tuning model. |
 | 65 | Performance and save-state hardening | Content volume is rising; the runtime needs protection before more animation and AI. | `rpg.tsx`, DB helpers, migration scripts, validator/perf notes | No per-frame DB/catalog work, writes are transactional, migrations are simulated, and device performance has a profiling baseline. |
+
+## Current Device Feedback Queue
+
+This queue records the latest player-facing issues and preferences that should shape the next passes.
+
+| Issue | Current decision | Planned phase |
+| --- | --- | --- |
+| Normal target highlights and large footprint boxes felt like debug visuals. | Keep target outline/grid code disabled in normal mode; item name prompt is enough. Placement/build mode can still show green/red cells. | 54 done, continue guarding in 75 |
+| Some icons are still visually wrong or confusing. | Treat every wrong icon as an asset-mapping bug, not cosmetic noise. Use verified atlas entries or explicit placeholders only. | 71 |
+| Levers or mechanism props are hard to see/understand on device. | Improve shop/backpack visibility, world labels, mechanism hints, and link/state feedback without adding normal buttons. | 72 |
+| Shop/backpack/archive panels can sit too high or show tiny assets. | Tune rows, card scale, image containment, labels, and tap surfaces on real phone dimensions. | 73 |
+| Farming and seed art is still partly placeholder. | Build a crop taxonomy before adding more farm balance so seeds, plants, harvest produce, archive entries, and backpack icons agree. | 74 |
+| Placement should feel like Clash-style direct manipulation. | Backpack item placement should allow direct drag/preview from UI, show red/green footprint cells, and not require walking first. | 75 |
+| Build move/stash controls should not be persistent. | Move and stash remain edit-only/context-only after long press or build drag state. Normal mode stays `Interact` and `Attack`. | 75 |
+| Trees, props, clutter, avatar, crops, and future animals must share one occupancy model. | Collision, placement, and movement must read object footprints from catalog metadata and refresh together when objects move/delete/place. | 75 and 80 |
+| Animal assets exist but are not yet production-mapped. | Add animals through registry/catalog/archive/shop/backpack/validator, not as one-off screen imports. | 70 |
+
+## Post-Crafting Development Phases
+
+These are the recommended next phases after Phase 68. They supersede older loose chat plans but preserve their intent.
+
+### Phase 70: Farm Animals V1
+
+Goal: add the first cozy livestock loop without destabilizing movement, placement, or inventory.
+
+Deliverables:
+
+- Map verified animal sprite sources in `RpgAssetRegistry.ts`.
+- Add an `Animals` source-pack/category path through catalog, shop, backpack, and archive.
+- Add a small initial set of placeable animals such as Chick, Piglet, Sheep, and Calf.
+- Give each animal a 1x1 collision footprint unless a verified sprite needs a larger footprint.
+- Add `Interact` rewards with cooldown feedback: eggs, wool, milk, truffles, or explicit placeholder produce.
+- Add animal-product resources to inventory/archive with honest placeholder labels if no verified product icon exists.
+- Extend `validate-rpg-content.js` so animals cannot be added without registry/catalog/source validation.
+
+Acceptance target:
+
+- A player can buy or craft/place an animal, walk around it, interact with it, receive a readable reward/cooldown response, and see the animal/product in the archive/backpack.
+
+Negative guarantees:
+
+- Animals must not be animated or rewarded through per-frame database work.
+- Animals must not bypass placement collision, avatar blocking, stash/move cleanup, or catalog footprint rules.
+- Product icons must not use mystery assets unless visually verified and logged in `RPG_ASSET_ATLAS.md`.
+
+### Phase 71: Icon QA And Semantic Asset Cleanup V2
+
+Goal: remove remaining visual-trust breaks caused by incorrect icons.
+
+Deliverables:
+
+- Audit every visible resource, produce, tool, mechanism, seed, crop, animal, and craft output icon.
+- Update `RPG_ASSET_ATLAS.md` with verified production frames and placeholder decisions.
+- Replace wrong icons in `RpgObjectCatalog.ts` and `RpgAssetRegistry.ts`.
+- Add validator checks for known important semantic IDs.
+
+Acceptance target:
+
+- Shop, backpack, archive, HUD, crafting, forage drops, and interaction rewards never show obviously unrelated art such as a worm-like leaf icon.
+
+### Phase 72: Mechanism Usability V2
+
+Goal: make levers, gates, traps, and state changes understandable without debug overlays.
+
+Deliverables:
+
+- Improve mechanism shop cards and backpack cards so tiny lever art is visible.
+- Add concise mechanism state text in prompts/toasts/details.
+- Show linked mechanism effects through subtle state changes, labels, or action feedback.
+- Keep target outlines disabled in normal mode.
+- Preserve lever/gate/trap persistence and collision behavior.
+
+Acceptance target:
+
+- A player can place a lever near a gate or trap, press `Interact`, and understand what changed.
+
+### Phase 73: Shop, Backpack, And Archive Density V2
+
+Goal: make the panels feel like game UI on phone, not debug lists.
+
+Deliverables:
+
+- Lower archive/book item rows if they sit too high on the page art.
+- Tune card height, icon containment, label truncation, and selected details.
+- Improve empty states and result counts without cluttering the screen.
+- Keep touch targets comfortable and reliable on device.
+
+Acceptance target:
+
+- Shop items are visible and tappable, backpack inventory is readable, and archive rows sit naturally on the book art.
+
+### Phase 74: Farming Art And Seed Taxonomy V2
+
+Goal: make farming identity coherent before adding deeper balance.
+
+Deliverables:
+
+- Define crop IDs, seed IDs, stage art, harvest produce, growth duration, and water/season rules in one catalog path.
+- Replace generic crop placeholders where verified crop art exists.
+- Add archive/backpack facts for growth stage, produce, and seed source.
+- Keep old saves compatible with existing planted crop IDs.
+
+Acceptance target:
+
+- Planting, growing, watering, harvesting, inventory, and archive entries all agree on the crop identity and art.
+
+### Phase 75: Build/Editor UX V3
+
+Goal: rebuild placement around direct manipulation and clear footprint feedback.
+
+Deliverables:
+
+- Let backpack placement start a direct drag/preview flow without requiring the avatar to walk to the target first.
+- Show Clash-style green/red placement cells during drag.
+- Keep move/stash controls visible only in edit state.
+- Keep normal mode limited to `Interact` and `Attack`.
+- Ensure avatar, objects, crops, clutter, and animals all contribute to placement blocking.
+- Clamp zoom/pan and keep avatar/object scale inside the same world transform.
+
+Acceptance target:
+
+- A player can drag an item from inventory, see if it fits, drop it, move it, or stash it without trapping the avatar or desyncing collision.
+
+### Phase 76: Full Asset Archive Expansion
+
+Goal: turn the archive into both a player collection book and a developer content map.
+
+Deliverables:
+
+- Classify every asset pack as production, candidate, deprecated, or ignored.
+- Map production assets through registry/catalog/archive/shop/backpack/validator.
+- Add archive source filters for new packs only after asset quality is verified.
+- Keep animation sheets framed rather than rendering whole strips.
+
+Acceptance target:
+
+- Every player-visible asset has a known source, category, and archive entry; every unused asset has a documented reason.
+
+### Phase 77: Dungeon/Sanctuary Object Split
+
+Goal: prevent cozy sanctuary rules and dungeon hazard rules from contaminating each other.
+
+Deliverables:
+
+- Add catalog tags or zone rules that separate safe decor, farm objects, mechanisms, hazards, loot, and combat props.
+- Restrict risky props from sanctuary-only flows when needed.
+- Keep shared rendering/footprint metadata but separate interaction semantics.
+
+Acceptance target:
+
+- Sanctuary remains decorative/cozy while dungeon objects can become dangerous, lockable, lootable, or combat-aware.
+
+### Phase 78: Economy Balance And Crafting Foundations V2
+
+Goal: make resources, drops, purchases, and recipes feel intentionally tuned.
+
+Deliverables:
+
+- Establish resource tiers and expected earning rates.
+- Tune shop prices against forage, crop, animal, and crafting loops.
+- Expand recipes only after ingredient sources and sinks are clear.
+- Prepare station-gated processors without forcing a migration too early.
+
+Acceptance target:
+
+- Players have obvious reasons to gather, farm, interact, craft, and buy without one loop making all others pointless.
+
+### Phase 79: Seasons, Weather, And Daily Loop V2
+
+Goal: move from sandbox features toward a cozy daily-life rhythm.
+
+Deliverables:
+
+- Define season state, day/night hooks, rain effects, and growth modifiers.
+- Connect streak/weather bonuses to farming without making them mandatory.
+- Decide if clutter regrowth, animal yield, and crop growth reset daily or timer-based.
+
+Acceptance target:
+
+- Weather and seasons influence the farm visibly and mechanically while staying understandable.
+
+### Phase 80: Performance And Save-State Hardening V2
+
+Goal: protect the game from jank and persistence bugs as content grows.
+
+Deliverables:
+
+- Profile map render, movement, placement drag, zoom/pan, inventory overlays, and archive filtering.
+- Confirm no per-frame SQLite writes, catalog rebuilds, or asset scans.
+- Audit transactions for placement, stash, craft, harvest, animal collection, and clearing.
+- Simulate migrations and recovery paths for old saves.
+
+Acceptance target:
+
+- The RPG remains smooth on device and survives interrupted writes, app restarts, old saves, and large catalogs.
 
 ## Logging Protocol
 
@@ -3105,5 +3312,61 @@ Expansion notes saved:
 - Later add recipe unlocks through Archive discoveries, quests, or dungeon rewards.
 
 Phase 68 status:
+
+- Verified.
+
+### Phase 69 Audit
+
+Intended behavior:
+
+- Update the RPG ledger so current device feedback and future development phases are no longer scattered through chat memory.
+- Add post-crafting phases for animals, icon cleanup, mechanisms, panel density, farming art, direct placement, asset expansion, dungeon/sanctuary split, economy, seasons/weather, and performance hardening.
+- Record player-facing issues as acceptance criteria, especially wrong icons, hard-to-see levers, debug-looking highlights, direct drag placement, and shared occupancy/collision rules.
+- Keep the roadmap actionable without pretending planned phases are implemented.
+
+Negative guarantees:
+
+- This phase must not change runtime behavior, gameplay mechanics, item IDs, prices, migrations, assets, or validation rules.
+- This phase must not mark future phases as complete.
+- This phase must not stage unrelated dirty files or loose asset folders.
+
+Files changed:
+
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: `RPG_SANDBOX_PHASE_PLAN.md`
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The prior roadmap had become stale because Phases 66 through 68 shipped after the older Future Development Roadmap was written.
+- The fix is a new current feedback queue plus explicit Phase 70 through Phase 80 sections, leaving older Phase 57 through Phase 65 rows intact as historical backlog references.
+- Animal, icon, mechanism, placement, farming, and performance work are split so future passes can stop at stable commit points.
+
+Implementation attack findings:
+
+- Documentation-only change; no runtime code paths, DB writes, imports, or assets changed.
+- Future phases are marked `Not started` with acceptance targets, not implementation evidence.
+- The device feedback queue ties subjective UI complaints to concrete next-phase decisions.
+
+Verification evidence:
+
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md`
+
+Manual test checklist:
+
+- Confirm Phase Overview includes Phase 69 through Phase 80.
+- Confirm `Current Device Feedback Queue` captures wrong icons, invisible levers, hidden normal debug outlines, direct drag placement, edit-only move/stash, and shared occupancy concerns.
+- Confirm `Post-Crafting Development Phases` gives concrete deliverables and acceptance targets for future RPG work.
+- Confirm no runtime files are changed by this phase.
+
+Expansion notes saved:
+
+- Later convert Phase 70 through Phase 80 into GitHub issues or project-board cards if planning overhead grows.
+- Later add a script to enforce that every verified phase row has a matching audit block.
+
+Phase 69 status:
 
 - Verified.
