@@ -84,6 +84,7 @@ These rules must remain true after every phase.
 | 27 | Shop search and empty states | Verified | Search across catalog metadata, result counts, and safe empty shop states |
 | 28 | Cave content pack V1 | Verified | 32 curated tracked cave objects mapped into registry/catalog/archive/shop |
 | 29 | Source-pack filters | Verified | Archive and shop source filters split Forest/Crystal/Bush/Cave packs from gameplay tags |
+| 30 | Backpack source-pack filters | Verified | Backpack inventory source filters share Forest/Crystal/Bush/Cave catalog labels |
 
 ## Required Audit Loop For Every Phase
 
@@ -1059,6 +1060,38 @@ Manual test checklist:
 - Combine archive source filters with Objects/Seeds/Resources, Seen/Known/Locked, search, and sort.
 - Open shop and tap Forest, Crystal, Bush, and Cave source filters.
 - Combine shop source filters with gameplay tag filters and search, then buy one visible item.
+
+## Phase 30: Backpack Source-Pack Filters
+
+Goal: keep backpack inspection aligned with archive and shop now that the catalog has multiple source packs.
+
+Deliverables:
+
+- Add backpack source filters for Forest, Crystal, Bush, and Cave catalog labels.
+- Compose source filters with existing kind filters, search, and sort.
+- Preserve item selection/page recovery when any backpack filter changes.
+- Extend `validate:rpg` so backpack source filters remain mandatory.
+
+Acceptance gates:
+
+- Backpack source filtering uses catalog `sourceLabel` metadata.
+- Resource/seed items remain visible under `All` and do not incorrectly appear under object source packs.
+- Slot sizing remains bounded after the added row.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgBackpack.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-backpack-source-filters-export`
+
+Manual test checklist:
+
+- Open backpack with bought Forest, Crystal, Bush, and Cave items.
+- Tap each source filter and confirm owned stacks narrow correctly.
+- Combine source filters with Objects/Seeds/Resources, search, and sorting.
+- Confirm Place/Plant buttons still target the selected stack after filters change.
 
 ## Manual Regression Script
 

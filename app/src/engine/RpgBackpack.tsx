@@ -24,6 +24,7 @@ type InventorySlot = InventoryRow & {
 
 type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
 type BackpackSort = 'kind' | 'name' | 'quantity';
+type BackpackSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';
 
 type Props = {
   isOpen: boolean;
@@ -40,6 +41,13 @@ const FILTERS: { id: BackpackFilter; label: string }[] = [
   { id: 'object', label: 'Objects' },
   { id: 'seed', label: 'Seeds' },
   { id: 'resource', label: 'Resources' },
+];
+const BACKPACK_SOURCE_FILTERS: { id: BackpackSource; label: string; sourceLabel?: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'forest', label: 'Forest', sourceLabel: 'Forest Archive' },
+  { id: 'crystal', label: 'Crystal', sourceLabel: 'Crystal Archive' },
+  { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
+  { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
 ];
 const SORTS: { id: BackpackSort; label: string }[] = [
   { id: 'kind', label: 'Kind' },
@@ -76,6 +84,12 @@ function backpackSlotMatchesQuery(slot: InventorySlot, query: string) {
   ].some(value => value?.toLowerCase().includes(normalized));
 }
 
+function backpackSlotMatchesSource(slot: InventorySlot, source: BackpackSource) {
+  if (source === 'all') return true;
+  const sourceFilter = BACKPACK_SOURCE_FILTERS.find(item => item.id === source);
+  return !!sourceFilter?.sourceLabel && slot.item?.sourceLabel === sourceFilter.sourceLabel;
+}
+
 function sortBackpackSlots(a: InventorySlot, b: InventorySlot, sort: BackpackSort) {
   if (sort === 'quantity') {
     return b.quantity - a.quantity || (a.item?.name ?? a.item_id).localeCompare(b.item?.name ?? b.item_id);
@@ -95,6 +109,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<BackpackFilter>('all');
+  const [source, setSource] = useState<BackpackSource>('all');
   const [sort, setSort] = useState<BackpackSort>('kind');
   const [query, setQuery] = useState('');
 
@@ -125,9 +140,13 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
 
   const filteredInventory = useMemo(
     () => inventory
-      .filter(slot => (filter === 'all' || slot.item?.kind === filter) && backpackSlotMatchesQuery(slot, query))
+      .filter(slot => (
+        (filter === 'all' || slot.item?.kind === filter) &&
+        backpackSlotMatchesSource(slot, source) &&
+        backpackSlotMatchesQuery(slot, query)
+      ))
       .sort((a, b) => sortBackpackSlots(a, b, sort)),
-    [filter, inventory, query, sort],
+    [filter, inventory, query, sort, source],
   );
 
   const filterCounts = useMemo(() => ({
@@ -151,7 +170,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
         ? current
         : filteredInventory[0]?.item_id ?? null
     ));
-  }, [filter, filteredInventory, isOpen, query, sort]);
+  }, [filter, filteredInventory, isOpen, query, sort, source]);
 
   const pageItems = useMemo(
     () => filteredInventory.slice(page * SLOT_COUNT, page * SLOT_COUNT + SLOT_COUNT),
@@ -184,7 +203,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   const panelWidth = Math.min(width - 24, 430);
   const panelMaxHeight = Math.min(height - 60, 720);
   const slotWidthSize = Math.floor((panelWidth - 52) / 4);
-  const slotHeightSize = Math.floor((panelMaxHeight - 318) / 3);
+  const slotHeightSize = Math.floor((panelMaxHeight - 356) / 3);
   const slotSize = Math.min(70, Math.max(50, Math.min(slotWidthSize, slotHeightSize)));
 
   return (
@@ -220,6 +239,23 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
               >
                 <Text style={[styles.filterText, isActive && styles.activeFilterText]}>{item.label}</Text>
                 <Text style={[styles.filterCount, isActive && styles.activeFilterText]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.sourceBar}>
+          {BACKPACK_SOURCE_FILTERS.map(item => {
+            const active = source === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} backpack source`}
+                onPress={() => setSource(item.id)}
+                style={[styles.sourceButton, active && styles.activeSourceButton]}
+              >
+                <Text style={[styles.sourceText, active && styles.activeSourceText]}>{item.label}</Text>
               </Pressable>
             );
           })}
@@ -462,6 +498,35 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 8,
     marginTop: 1,
+  },
+  sourceBar: {
+    width: '100%',
+    minHeight: 30,
+    marginBottom: 8,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(247,230,165,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.18)',
+    flexDirection: 'row',
+  },
+  sourceButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeSourceButton: {
+    backgroundColor: 'rgba(247,230,165,0.16)',
+  },
+  sourceText: {
+    color: 'rgba(247,230,165,0.64)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  activeSourceText: {
+    color: '#fff2bb',
   },
   searchRow: {
     minHeight: 34,

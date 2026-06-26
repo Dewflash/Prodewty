@@ -331,6 +331,9 @@ function validateArchiveScalabilityControls() {
 
 function validateBackpackScalabilityControls() {
   if (!backpack.includes("type BackpackSort = 'kind' | 'name' | 'quantity';")) fail('Backpack must expose stable sort modes');
+  if (!backpack.includes("type BackpackSource = 'all' | 'forest' | 'crystal' | 'bush' | 'cave';")) fail('Backpack must expose source pack filters');
+  if (!backpack.includes('BACKPACK_SOURCE_FILTERS')) fail('Backpack must define source pack filter controls');
+  if (!backpack.includes('backpackSlotMatchesSource')) fail('Backpack source filters must use catalog source labels');
   if (!backpack.includes('TextInput')) fail('Backpack must include search input for large inventories');
   if (!backpack.includes('backpackSlotMatchesQuery')) fail('Backpack search must use catalog-derived item data');
   if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
