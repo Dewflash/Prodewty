@@ -43,6 +43,7 @@ export type RpgForestObjectAsset = RpgObjectAsset;
 export type RpgBushObjectAsset = RpgObjectAsset;
 export type RpgCaveObjectAsset = RpgObjectAsset;
 export type RpgTempleObjectAsset = RpgObjectAsset;
+export type RpgAnimalObjectAsset = RpgObjectAsset;
 
 const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
 const RPG_UI_INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
@@ -58,6 +59,10 @@ const RPG_TEMPLE_SPIKES_ANIMATION_SHEET = require('../../assets/game/craftpix-ne
 const RPG_TEMPLE_BLADES_TRAP_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/blades_trap.png');
 const RPG_TEMPLE_LEVER_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Lever.png');
 const RPG_TEMPLE_LATTICE_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/lattice.png');
+const RPG_ANIMAL_CHICK_SHEET = require('../../assets/game/craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites/Tiled/Chick_animation_with_shadow.png');
+const RPG_ANIMAL_PIGLET_SHEET = require('../../assets/game/craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites/Tiled/Piglet_animation_with_shadow.png');
+const RPG_ANIMAL_SHEEP_SHEET = require('../../assets/game/craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites/Tiled/Sheep_animation_with_shadow.png');
+const RPG_ANIMAL_CALF_SHEET = require('../../assets/game/craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites/Tiled/Calf_animation_with_shadow.png');
 
 export const RPG_TEMPLE_ANIMATIONS = {
   fireBowl: rpgSpriteAnimationGrid(RPG_TEMPLE_FIRE_ANIMATION_SHEET, 32, 32, 4, 15, 10),
@@ -304,6 +309,20 @@ function rpgUiIcon(row: number, col: number): RpgSpriteFrame {
   return rpgSpriteFrame(RPG_UI_ICONS_SHEET, col * 16, row * 16, 16, 16, 96, 304);
 }
 
+export const RPG_ANIMAL_ANIMATIONS = {
+  chick: rpgSpriteAnimationGrid(RPG_ANIMAL_CHICK_SHEET, 24, 32, 4, 4, 6),
+  piglet: rpgSpriteAnimationGrid(RPG_ANIMAL_PIGLET_SHEET, 48, 64, 4, 4, 6),
+  sheep: rpgSpriteAnimationGrid(RPG_ANIMAL_SHEEP_SHEET, 48, 64, 4, 4, 6),
+  calf: rpgSpriteAnimationGrid(RPG_ANIMAL_CALF_SHEET, 96, 128, 4, 4, 6),
+} satisfies Record<string, RpgSpriteAnimation>;
+
+export const RPG_ANIMAL_OBJECT_ASSETS = [
+  { itemId: 'Farm_chick', assetId: 'object.animal.Chick', name: 'Chick', frame: RPG_ANIMAL_ANIMATIONS.chick.frames[0], animation: RPG_ANIMAL_ANIMATIONS.chick, pixelWidth: 24, pixelHeight: 32, tags: ['animal', 'farm', 'livestock', 'chick', 'animated'] },
+  { itemId: 'Farm_piglet', assetId: 'object.animal.Piglet', name: 'Piglet', frame: RPG_ANIMAL_ANIMATIONS.piglet.frames[0], animation: RPG_ANIMAL_ANIMATIONS.piglet, pixelWidth: 48, pixelHeight: 64, tags: ['animal', 'farm', 'livestock', 'piglet', 'animated'] },
+  { itemId: 'Farm_sheep', assetId: 'object.animal.Sheep', name: 'Sheep', frame: RPG_ANIMAL_ANIMATIONS.sheep.frames[0], animation: RPG_ANIMAL_ANIMATIONS.sheep, pixelWidth: 48, pixelHeight: 64, tags: ['animal', 'farm', 'livestock', 'sheep', 'animated'] },
+  { itemId: 'Farm_calf', assetId: 'object.animal.Calf', name: 'Calf', frame: RPG_ANIMAL_ANIMATIONS.calf.frames[0], animation: RPG_ANIMAL_ANIMATIONS.calf, pixelWidth: 96, pixelHeight: 128, tags: ['animal', 'farm', 'livestock', 'calf', 'animated'] },
+] satisfies readonly RpgAnimalObjectAsset[];
+
 function rpgBookFrame(row: number, col: number): RpgSpriteFrame {
   return rpgSpriteFrame(RPG_ARCHIVE_BOOK_SHEET, col * 272, row * 272, 272, 272, 1088, 816);
 }
@@ -382,6 +401,7 @@ const RPG_OBJECT_ASSETS: readonly RpgObjectAsset[] = [
   ...RPG_BUSH_OBJECT_ASSETS,
   ...RPG_CAVE_OBJECT_ASSETS,
   ...RPG_TEMPLE_OBJECT_ASSETS,
+  ...RPG_ANIMAL_OBJECT_ASSETS,
 ];
 
 export const RPG_OBJECT_SOURCES = Object.fromEntries(
@@ -521,6 +541,15 @@ export const RPG_ASSET_REGISTRY = {
     source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Broken_tree1.png'),
     tags: ['drop', 'tree', 'crafting', 'placeholder'],
     note: 'Placeholder wood icon using a verified tiny stump object until a dedicated wood/log resource icon is curated.',
+  },
+  'resource.animalProduct': {
+    id: 'resource.animalProduct',
+    name: 'Animal Product Placeholder',
+    category: 'resource',
+    verified: false,
+    frame: RPG_UI_FRAMES.seed,
+    tags: ['animal', 'product', 'placeholder'],
+    note: 'Placeholder for egg/product resources until dedicated farm product icons are visually verified.',
   },
   'seed.treeGeneric': {
     id: 'seed.treeGeneric',

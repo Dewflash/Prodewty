@@ -177,6 +177,28 @@ function parseTempleAssets() {
   return assets;
 }
 
+function parseAnimalAssets() {
+  const block = extractBlock(assetRegistry, 'export const RPG_ANIMAL_OBJECT_ASSETS = [', '] satisfies readonly RpgAnimalObjectAsset[];');
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*frame:\s*(RPG_ANIMAL_ANIMATIONS\.[^.]+\.frames\[0\]),\s*animation:\s*(RPG_ANIMAL_ANIMATIONS\.[^,]+),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const assets = [];
+  let match;
+  while ((match = regex.exec(block))) {
+    const tags = [...match[8].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    assets.push({
+      itemId: match[1],
+      assetId: match[2],
+      name: match[3],
+      frame: match[4],
+      animation: match[5],
+      pixelWidth: Number(match[6]),
+      pixelHeight: Number(match[7]),
+      tags,
+    });
+  }
+  if (assets.length !== 4) fail(`Expected 4 farm animal assets, found ${assets.length}`);
+  return assets;
+}
+
 function parseTempleAnimations() {
   const block = extractBlock(assetRegistry, 'export const RPG_TEMPLE_ANIMATIONS = {', '} satisfies Record<string, RpgSpriteAnimation>;');
   const regex = /([A-Za-z0-9_]+):\s*rpgSpriteAnimationGrid\((RPG_TEMPLE_[A-Z_]+_SHEET),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)/g;
@@ -465,11 +487,40 @@ function validateTempleMetadata(templeAssets) {
   if (!assetRegistry.includes('Partial<Record<string, any>>')) fail('Object source map must be typed as partial for frame-only assets');
 }
 
+function validateAnimalMetadata(animalAssets) {
+  unique(animalAssets.map(asset => asset.itemId), 'animal itemId');
+  unique(animalAssets.map(asset => asset.assetId), 'animal assetId');
+
+  const expectedIds = ['Farm_chick', 'Farm_piglet', 'Farm_sheep', 'Farm_calf'];
+  expectedIds.forEach(itemId => {
+    if (!animalAssets.some(asset => asset.itemId === itemId)) fail(`Missing farm animal asset: ${itemId}`);
+  });
+
+  animalAssets.forEach(asset => {
+    if (!asset.assetId.startsWith('object.animal.')) fail(`Animal assetId must start with object.animal.: ${asset.assetId}`);
+    if (!asset.tags.includes('animal')) fail(`Animal asset missing animal tag: ${asset.itemId}`);
+    if (!asset.tags.includes('livestock')) fail(`Animal asset missing livestock tag: ${asset.itemId}`);
+    if (!asset.tags.includes('animated')) fail(`Animal asset missing animated tag: ${asset.itemId}`);
+    if (asset.pixelWidth <= 0 || asset.pixelHeight <= 0) fail(`Invalid animal dimensions for ${asset.itemId}`);
+  });
+
+  if (!assetRegistry.includes('RPG_ANIMAL_CHICK_SHEET')) fail('Runtime asset registry must require farm animal sheets');
+  if (!assetRegistry.includes('export const RPG_ANIMAL_ANIMATIONS')) fail('Runtime asset registry must expose farm animal animations');
+  if (!assetRegistry.includes('...RPG_ANIMAL_OBJECT_ASSETS')) fail('Runtime object registry must include farm animals');
+  if (!catalog.includes("sourceLabel: 'Animal Archive'")) fail('Animal objects must expose source label metadata');
+  if (!catalog.includes('RPG_ANIMAL_OBJECT_CATALOG')) fail('Catalog must expose animal object catalog');
+  if (!catalog.includes('...RPG_ANIMAL_OBJECT_CATALOG')) fail('Animal object catalog must be spread into RPG_ITEM_CATALOG and SHOP_CATALOG');
+  if (!catalog.includes("{ id: 'animal', label: 'Animals', sourceLabel: 'Animal Archive' }")) {
+    fail('Shared source filters must expose an animal pack');
+  }
+  if (!shop.includes("{ id: 'animal', label: 'Animals' }")) fail('Shop must expose an animal filter');
+}
+
 function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
   }
-  if (!catalog.includes("export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple';")) {
+  if (!catalog.includes("export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple' | 'animal';")) {
     fail('Catalog must expose shared source pack ids');
   }
   if (!catalog.includes('export const RPG_SOURCE_PACK_FILTERS')) fail('Catalog must expose shared source pack filters');
@@ -1114,13 +1165,46 @@ function validateIconQaAndMechanismReadabilityV2() {
   }
 }
 
+function validateFarmAnimalsV1() {
+  ['rpg_egg', 'rpg_milk', 'rpg_wool', 'rpg_truffle'].forEach(itemId => {
+    if (!catalog.includes(itemId)) fail(`Catalog must expose animal product resource: ${itemId}`);
+  });
+  ['rpg_egg', 'rpg_milk', 'rpg_wool'].forEach(itemId => {
+    if (!catalog.includes("tags: ['animal_product'")) {
+      fail(`Animal product resources must be tagged as placeholders until verified icons exist: ${itemId}`);
+    }
+  });
+  if (!assetRegistry.includes("'resource.animalProduct'")) {
+    fail('Asset registry must declare an animal product placeholder asset');
+  }
+  if (!rpgScreen.includes('const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;')) {
+    fail('Animal product collection must have an explicit cooldown');
+  }
+  if (!rpgScreen.includes('const isFarmAnimalObject = (item: ShopCatalogItem)')) {
+    fail('RPG screen must centralize farm animal object detection');
+  }
+  if (!rpgScreen.includes('const collectAnimalProduct = (object: MapObject, item: ShopCatalogItem)')) {
+    fail('RPG screen must expose animal product collection through Interact');
+  }
+  if (!rpgScreen.includes('addSandboxInventoryItem(drop.itemId, drop.quantity, \'forage\')')) {
+    fail('Animal products must be granted through inventory/discovery helper');
+  }
+  if (!rpgScreen.includes('if (isFarmAnimalObject(item))')) {
+    fail('Interact object flow must route farm animals before generic forage handling');
+  }
+  if (!catalog.includes("description: `${asset.name} from the farm animal archive. Interact to collect a small farm product.`")) {
+    fail('Animal catalog descriptions must explain Interact product collection');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
 const caveAssets = parseCaveAssets();
 const templeAnimations = parseTempleAnimations();
 const templeAssets = parseTempleAssets();
-const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets, ...templeAssets];
+const animalAssets = parseAnimalAssets();
+const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets, ...caveAssets, ...templeAssets, ...animalAssets];
 const registryIds = parseRegistryIds(objectAssets);
 const catalogItemIds = parseCatalogItemIds(objectAssets);
 
@@ -1140,6 +1224,7 @@ validateCrystalMetadata(crystalAssets, catalogItemIds);
 validateBushMetadata(bushAssets);
 validateCaveMetadata(caveAssets);
 validateTempleMetadata(templeAssets);
+validateAnimalMetadata(animalAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
@@ -1165,6 +1250,7 @@ validateRpgTileArtPlaceholders();
 validateSanctuaryClutterV1();
 validateRpgCraftingV1();
 validateIconQaAndMechanismReadabilityV2();
+validateFarmAnimalsV1();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');
@@ -1172,4 +1258,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${caveAssets.length} cave assets, ${templeAssets.length} temple assets, ${catalogItemIds.size} catalog items).`);
+console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${caveAssets.length} cave assets, ${templeAssets.length} temple assets, ${animalAssets.length} animal assets, ${catalogItemIds.size} catalog items).`);

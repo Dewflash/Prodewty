@@ -18,7 +18,7 @@ type OwnedRow = {
   quantity: number;
 };
 
-type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave' | 'mechanism';
+type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave' | 'mechanism' | 'animal';
 type ShopSort = 'name' | 'rarity' | 'price';
 
 interface Props {
@@ -44,6 +44,7 @@ const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'cactus', label: 'Cacti' },
   { id: 'cave', label: 'Cave' },
   { id: 'mechanism', label: 'Mechanisms' },
+  { id: 'animal', label: 'Animals' },
 ];
 const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'name', label: 'Name' },

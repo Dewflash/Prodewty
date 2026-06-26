@@ -133,6 +133,7 @@ const TOOL_ENERGY_COST: Record<ToolId, number> = {
   watering: 4,
 };
 const CLUTTER_ENERGY_COST = 3;
+const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;
 const CLUTTER_ITEM_IDS = ['rpg_clutter_weeds', 'rpg_clutter_twig', 'rpg_clutter_rock'];
 const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_weeds', row: 4, col: 5 },
@@ -1511,6 +1512,7 @@ export default function RpgScreen() {
   };
 
   const getForageCooldownText = (tags: string[] | undefined) => {
+    if (tags?.includes('animal')) return 'Animal needs a little time';
     if (tags?.includes('crystal')) return 'Crystal is recharging';
     if (tags?.includes('tree')) return 'Tree needs time to regrow';
     if (tags?.some(tag => tag === 'bush' || tag === 'fern')) return 'Brush is resting';
@@ -1532,6 +1534,40 @@ export default function RpgScreen() {
     if (tags.includes('tree')) return `Chopped tree: ${reward}`;
     if (tags.some(tag => tag === 'bush' || tag === 'fern' || tag === 'flower')) return `Foraged brush: ${reward}`;
     return reward;
+  };
+
+  const isFarmAnimalObject = (item: ShopCatalogItem) => item.tags?.includes('animal') && item.tags?.includes('livestock');
+
+  const getAnimalProductText = (item: ShopCatalogItem, dropDef: RpgItemDefinition | null, quantity: number) => {
+    const reward = `+${quantity} ${dropDef?.name ?? 'product'}`;
+    if (item.tags?.includes('chick')) return `Collected egg: ${reward}`;
+    if (item.tags?.includes('piglet')) return `Piglet found: ${reward}`;
+    if (item.tags?.includes('sheep')) return `Gathered wool: ${reward}`;
+    if (item.tags?.includes('calf')) return `Collected milk: ${reward}`;
+    return `Animal product: ${reward}`;
+  };
+
+  const collectAnimalProduct = (object: MapObject, item: ShopCatalogItem) => {
+    const now = Date.now();
+    if ((forageCooldowns.current[object.id] ?? 0) > now) {
+      showWorldToast({ text: 'Animal needs a little time', item, tone: 'muted' });
+      return;
+    }
+
+    forageCooldowns.current[object.id] = now + ANIMAL_PRODUCT_COOLDOWN_MS;
+    const drop = rollForageDrop(item.forageDrops ?? []);
+    if (!drop) {
+      showWorldToast({ text: `${item.name} is resting`, item, tone: 'muted' });
+      return;
+    }
+
+    const dropDef = getRpgItem(drop.itemId);
+    addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
+    showWorldToast({
+      text: getAnimalProductText(item, dropDef, drop.quantity),
+      item: dropDef,
+      tone: 'success',
+    });
   };
 
   const isLeverObject = (item: ShopCatalogItem) => (
@@ -1777,6 +1813,11 @@ export default function RpgScreen() {
         item,
         tone: 'muted',
       });
+      return;
+    }
+
+    if (isFarmAnimalObject(item)) {
+      collectAnimalProduct(object, item);
       return;
     }
 

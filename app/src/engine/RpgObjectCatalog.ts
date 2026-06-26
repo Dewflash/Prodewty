@@ -1,5 +1,6 @@
 import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from './RpgItemIds';
 import {
+  RPG_ANIMAL_OBJECT_ASSETS,
   RPG_BUSH_OBJECT_ASSETS,
   RPG_CAVE_OBJECT_ASSETS,
   RPG_CRYSTAL_OBJECT_ASSETS,
@@ -31,7 +32,7 @@ export type RpgInteractionLoot = {
 };
 
 export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';
-export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple';
+export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple' | 'animal';
 
 export type RpgSourcePackFilter = {
   id: RpgSourcePackId;
@@ -47,6 +48,7 @@ export const RPG_SOURCE_PACK_FILTERS = [
   { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
   { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
   { id: 'temple', label: 'Temple', sourceLabel: 'Temple Archive' },
+  { id: 'animal', label: 'Animals', sourceLabel: 'Animal Archive' },
 ] satisfies readonly RpgSourcePackFilter[];
 
 export function getRpgSourcePackIdForLabel(sourceLabel: string | null | undefined): RpgSourcePackId | null {
@@ -492,6 +494,49 @@ const RPG_TEMPLE_OBJECT_CATALOG = Object.fromEntries(
   RPG_TEMPLE_OBJECT_ASSETS.map(asset => [asset.itemId, makeTempleObjectItem(asset)]),
 ) as Record<string, RpgPlaceableItem>;
 
+function animalObjectPrice(asset: RpgObjectAsset) {
+  if (asset.tags.includes('calf')) return 420;
+  if (asset.tags.includes('sheep')) return 320;
+  if (asset.tags.includes('piglet')) return 260;
+  return 140;
+}
+
+function animalObjectFootprint(asset: RpgObjectAsset) {
+  if (asset.tags.includes('calf')) {
+    return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };
+  }
+  return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+}
+
+function animalProductDrop(asset: RpgObjectAsset): RpgDrop[] {
+  if (asset.tags.includes('chick')) return [{ itemId: 'rpg_egg', chance: 1, min: 1, max: 1 }];
+  if (asset.tags.includes('piglet')) return [{ itemId: 'rpg_truffle', chance: 0.55, min: 1, max: 1 }];
+  if (asset.tags.includes('sheep')) return [{ itemId: 'rpg_wool', chance: 0.8, min: 1, max: 1 }];
+  if (asset.tags.includes('calf')) return [{ itemId: 'rpg_milk', chance: 0.75, min: 1, max: 1 }];
+  return [];
+}
+
+function makeAnimalObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
+  return {
+    name: asset.name,
+    kind: 'object',
+    assetId: asset.assetId,
+    price: animalObjectPrice(asset),
+    ...animalObjectFootprint(asset),
+    icon: asset.frame,
+    animation: asset.animation,
+    tags: asset.tags,
+    rarity: asset.tags.includes('calf') || asset.tags.includes('sheep') ? 'uncommon' : 'common',
+    sourceLabel: 'Animal Archive',
+    description: `${asset.name} from the farm animal archive. Interact to collect a small farm product.`,
+    forageDrops: animalProductDrop(asset),
+  };
+}
+
+const RPG_ANIMAL_OBJECT_CATALOG = Object.fromEntries(
+  RPG_ANIMAL_OBJECT_ASSETS.map(asset => [asset.itemId, makeAnimalObjectItem(asset)]),
+) as Record<string, RpgPlaceableItem>;
+
 export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
@@ -534,6 +579,50 @@ export const RPG_ITEM_CATALOG = {
     sourceLabel: 'Tree Drops',
     tags: ['wood', 'crafting'],
     description: 'Sturdy timber chopped from sanctuary trees.',
+  },
+  rpg_egg: {
+    name: 'Egg',
+    kind: 'resource',
+    assetId: 'resource.animalProduct',
+    iconAssetId: 'resource.animalProduct',
+    icon: RPG_UI_FRAMES.seed,
+    rarity: 'common',
+    sourceLabel: 'Animal Products',
+    tags: ['animal_product', 'egg', 'placeholder'],
+    description: 'A small egg from a Chick. Placeholder seed-packet art until a dedicated egg icon is verified.',
+  },
+  rpg_milk: {
+    name: 'Milk',
+    kind: 'resource',
+    assetId: 'resource.waterDrop',
+    iconAssetId: 'resource.waterDrop',
+    icon: RPG_UI_FRAMES.waterDrop,
+    rarity: 'common',
+    sourceLabel: 'Animal Products',
+    tags: ['animal_product', 'milk', 'placeholder'],
+    description: 'Fresh milk from a Calf. Placeholder droplet art until a dedicated milk icon is verified.',
+  },
+  rpg_wool: {
+    name: 'Wool',
+    kind: 'resource',
+    assetId: 'resource.leaves',
+    iconAssetId: 'resource.leaves',
+    icon: RPG_UI_FRAMES.leaves,
+    rarity: 'common',
+    sourceLabel: 'Animal Products',
+    tags: ['animal_product', 'wool', 'placeholder'],
+    description: 'Soft wool from a Sheep. Placeholder leaf-cluster art until a dedicated wool icon is verified.',
+  },
+  rpg_truffle: {
+    name: 'Truffle',
+    kind: 'resource',
+    assetId: 'object.cave.Cave_mushroom1_3',
+    iconAssetId: 'object.cave.Cave_mushroom1_3',
+    source: RPG_OBJECT_SOURCES.Cave_mushroom1_3,
+    rarity: 'uncommon',
+    sourceLabel: 'Animal Products',
+    tags: ['animal_product', 'truffle', 'placeholder'],
+    description: 'A truffle found by a Piglet. Placeholder cave mushroom art until a dedicated truffle icon is verified.',
   },
   rpg_coin_mine: {
     name: 'Coin Mine (Test)',
@@ -698,6 +787,7 @@ export const RPG_ITEM_CATALOG = {
   ...RPG_BUSH_OBJECT_CATALOG,
   ...RPG_CAVE_OBJECT_CATALOG,
   ...RPG_TEMPLE_OBJECT_CATALOG,
+  ...RPG_ANIMAL_OBJECT_CATALOG,
 } satisfies Record<string, RpgItemDefinition>;
 
 export const SHOP_CATALOG = {
@@ -706,6 +796,7 @@ export const SHOP_CATALOG = {
   ...RPG_BUSH_OBJECT_CATALOG,
   ...RPG_CAVE_OBJECT_CATALOG,
   ...RPG_TEMPLE_OBJECT_CATALOG,
+  ...RPG_ANIMAL_OBJECT_CATALOG,
   rpg_coin_mine: RPG_ITEM_CATALOG.rpg_coin_mine,
 } satisfies Record<string, RpgPlaceableItem>;
 

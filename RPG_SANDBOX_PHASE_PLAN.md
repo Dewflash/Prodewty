@@ -142,7 +142,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 67 | Clearable sanctuary clutter V1 | Verified | One-time weeds/twigs/rocks spawn, energy-gated clearing, resource rewards, collision cleanup |
 | 68 | Crafting recipes V1 | Verified | Resource recipes consume materials transactionally and output placeable inventory items |
 | 69 | Current issue ledger and forward plan refresh | Verified | Device feedback, post-crafting roadmap, and future-dev protocol logged in this document |
-| 70 | Farm animals V1 | Not started | Placeable livestock, animal source pack filter, interaction rewards, animal product placeholders |
+| 70 | Farm animals V1 | Verified | Four placeable livestock objects, Animal source/shop filters, Interact product rewards, placeholder product icons |
 | 71 | Icon QA and semantic asset cleanup V2 | In progress | Wood now uses a named stump placeholder; validator guards resource fallback regressions |
 | 72 | Mechanism usability V2 | In progress | Lever visual footprint enlarged; compact mechanism icons show LEVER/GATE/TRAP/MECH labels |
 | 73 | Shop/backpack density and tap comfort V2 | Not started | Lower book rows, clearer item art, reliable card hit targets, selected detail polish |
@@ -184,7 +184,7 @@ This queue records the latest player-facing issues and preferences that should s
 | Placement should feel like Clash-style direct manipulation. | Backpack item placement should allow direct drag/preview from UI, show red/green footprint cells, and not require walking first. | 75 |
 | Build move/stash controls should not be persistent. | Move and stash remain edit-only/context-only after long press or build drag state. Normal mode stays `Interact` and `Attack`. | 75 |
 | Trees, props, clutter, avatar, crops, and future animals must share one occupancy model. | Collision, placement, and movement must read object footprints from catalog metadata and refresh together when objects move/delete/place. | 75 and 80 |
-| Animal assets exist but are not yet production-mapped. | Add animals through registry/catalog/archive/shop/backpack/validator, not as one-off screen imports. | 70 |
+| Animal assets exist but are not yet production-mapped. | First four livestock are mapped through registry/catalog/archive/shop/backpack/validator. Remaining animal pack expansion is deferred. | 70 done, continue in 76 |
 
 ## Post-Crafting Development Phases
 
@@ -3368,6 +3368,78 @@ Expansion notes saved:
 - Later add a script to enforce that every verified phase row has a matching audit block.
 
 Phase 69 status:
+
+- Verified.
+
+### Phase 70 Audit
+
+Intended behavior:
+
+- Add a first livestock loop using tracked farm animal assets instead of leaving the animal pack unused.
+- Map Chick, Piglet, Sheep, and Calf through `RpgAssetRegistry.ts`, `RpgObjectCatalog.ts`, Shop, Backpack, Archive, placement, and validation.
+- Add an `Animals` source/shop path so the player can find livestock directly.
+- Allow `Interact` on placed livestock to collect small animal products with cooldown feedback.
+- Add Egg, Milk, Wool, and Truffle resources so products are visible in Backpack/Archive after collection.
+- Log placeholder product icons honestly in `RPG_ASSET_ATLAS.md`.
+
+Negative guarantees:
+
+- This phase must not add normal-world action buttons; animals use the existing `Interact` flow.
+- This phase must not add per-frame DB writes or autonomous animal AI.
+- This phase must not bypass the existing placement/collision footprint model.
+- This phase must not claim final product icons: Egg, Milk, Wool, and Truffle art remains placeholder until a dedicated icon QA pass.
+- This phase must not stage the loose duplicate untracked animal asset folder; it uses the tracked `app/assets/game/...` pack.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_ASSET_ATLAS.md`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, loose untracked duplicate asset folders.
+
+Design attack findings:
+
+- The animal sheets are animation strips, so runtime mapping uses framed sprite animations instead of rendering whole images.
+- Animal objects are normal placeable objects with 1x1 collision footprints, preserving the shared occupancy model.
+- Animal product collection is routed before generic forage handling so livestock gets animal-specific feedback and a longer cooldown.
+- Product icons are intentionally placeholders because no dedicated egg/milk/wool/truffle icons were verified in the atlas during this pass.
+
+Implementation attack findings:
+
+- `RPG_ANIMAL_OBJECT_ASSETS` flows into `RPG_OBJECT_ASSETS`, which feeds the asset registry and object metadata path.
+- `RPG_ANIMAL_OBJECT_CATALOG` flows into both `RPG_ITEM_CATALOG` and `SHOP_CATALOG`, so Archive/Backpack/Shop share the same source of truth.
+- `ANIMAL_PRODUCT_COOLDOWN_MS` is memory-only for V1; product collection persists only the granted inventory/discovery result.
+- Validator now checks animal assets, source filters, shop filter, product resources, placeholder asset entry, and Interact routing.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_ASSET_ATLAS.md RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryShop.tsx`
+
+Manual test checklist:
+
+- Open Shop and confirm `Animals` filter shows Chick, Piglet, Sheep, and Calf.
+- Buy and place each animal; confirm placement/collision behaves like a normal 1x1 object.
+- Walk up to each animal and press `Interact`; confirm a product toast appears or a cooldown/resting toast appears.
+- Confirm Egg, Milk, Wool, and Truffle appear in Backpack/Archive after collection.
+- Confirm normal gameplay still shows only `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Later add dedicated product art for egg/milk/wool/truffle during Phase 71.
+- Later add stable daily timers or persisted animal collection cooldowns if livestock yield becomes balance-critical.
+- Later expand the rest of the animal pack through Phase 76 after each sprite sheet is framed and categorized.
+
+Phase 70 status:
 
 - Verified.
 

@@ -67,7 +67,7 @@ Good near-term candidates:
 Do not use yet:
 
 - Large trees from `Plants.png` as crops. They are too large for early farming and will confuse object placement/canopy logic.
-- Animal sprites from `craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites` for Phase 1 through Phase 10. They belong to a later livestock phase.
+- Additional animal sprites from `craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites` beyond the four Phase 70 livestock entries until each one is framed and cataloged.
 
 ## Current Code Mapping
 
@@ -97,6 +97,14 @@ Current item mappings:
 | `Luminous_tree1_seed` | seed | Uses verified draft `seed` |
 | `Blue-green_balls_tree1_seed` | seed | Uses verified draft `seed` |
 | `Mega_tree1_seed` | seed | Uses verified draft `seed` |
+| `Farm_chick` | object | Uses framed animation from tracked farm animal pack |
+| `Farm_piglet` | object | Uses framed animation from tracked farm animal pack |
+| `Farm_sheep` | object | Uses framed animation from tracked farm animal pack |
+| `Farm_calf` | object | Uses framed animation from tracked farm animal pack |
+| `rpg_egg` | resource | Placeholder `seed` frame until a verified egg icon exists |
+| `rpg_milk` | resource | Placeholder `waterDrop` frame until a verified milk icon exists |
+| `rpg_wool` | resource | Placeholder `leaves` frame until a verified wool icon exists |
+| `rpg_truffle` | resource | Placeholder cave mushroom source until a verified truffle icon exists |
 | tree/gazebo objects | object | Uses full object sprite source, not icon frame |
 
 ## Forest Object Pack Mapping
@@ -129,6 +137,26 @@ Runtime behavior:
 - The plot renderer falls back to the seed icon if a crop has no verified stage frames.
 - `Plants.png` is not imported by runtime crop rendering because its previously chosen frames were visually wrong on device.
 - `Supplies.png` remains a candidate sheet for produce/harvest icons and is not yet used at runtime.
+
+## Farm Animal Pack Mapping
+
+`RpgAssetRegistry.ts` maps the first four livestock entries from:
+
+`app/assets/game/craftpix-net-291971-free-top-down-animals-farm-pixel-art-sprites/Tiled/`
+
+Mapped production animals:
+
+- `Farm_chick`: `Chick_animation_with_shadow.png`, framed as 24x32 cells.
+- `Farm_piglet`: `Piglet_animation_with_shadow.png`, framed as 48x64 cells.
+- `Farm_sheep`: `Sheep_animation_with_shadow.png`, framed as 48x64 cells.
+- `Farm_calf`: `Calf_animation_with_shadow.png`, framed as 96x128 cells.
+
+Runtime behavior:
+
+- All four animals are archive-visible and shop-visible.
+- Animals are placeable world objects with 1x1 collision footprints.
+- Interacting with animals can grant products through the inventory/discovery path.
+- Product icons are placeholder mappings, not final verified produce art.
 
 ## Open Asset Issues
 
