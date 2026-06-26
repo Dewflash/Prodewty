@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import {
+  countRpgSourcePacks,
   RPG_SOURCE_PACK_FILTERS,
   SHOP_CATALOG,
   type RpgItemRarity,
@@ -102,6 +103,10 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const [notice, setNotice] = useState<ShopPurchaseResult | null>(null);
 
   const shopEntries = useMemo(() => Object.entries(SHOP_CATALOG), []);
+  const sourceCounts = useMemo(
+    () => countRpgSourcePacks(shopEntries, ([, item]) => item.sourceLabel),
+    [shopEntries],
+  );
   const filteredShopEntries = useMemo(
     () => shopEntries
       .filter(([id, item]) => (
@@ -222,6 +227,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         <View style={styles.sourceBar}>
           {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
+            const count = sourceCounts[item.id];
             return (
               <Pressable
                 key={item.id}
@@ -231,6 +237,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
                 style={[styles.sourceButton, active && styles.sourceButtonActive]}
               >
                 <Text style={[styles.sourceText, active && styles.sourceTextActive]}>{item.label}</Text>
+                <Text style={[styles.sourceCount, active && styles.sourceTextActive]}>{count}</Text>
               </Pressable>
             );
           })}
@@ -498,6 +505,12 @@ const styles = StyleSheet.create({
   },
   sourceTextActive: {
     color: '#fff2bb',
+  },
+  sourceCount: {
+    marginTop: 1,
+    color: 'rgba(247,230,165,0.56)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
   },
   searchRow: {
     minHeight: 34,

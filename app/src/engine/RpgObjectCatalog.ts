@@ -29,6 +29,7 @@ export type RpgSourcePackFilter = {
   label: string;
   sourceLabel?: string;
 };
+export type RpgSourcePackCounts = Record<RpgSourcePackId, number>;
 
 export const RPG_SOURCE_PACK_FILTERS = [
   { id: 'all', label: 'All' },
@@ -37,6 +38,27 @@ export const RPG_SOURCE_PACK_FILTERS = [
   { id: 'bush', label: 'Bush', sourceLabel: 'Bush Archive' },
   { id: 'cave', label: 'Cave', sourceLabel: 'Cave Archive' },
 ] satisfies readonly RpgSourcePackFilter[];
+
+export function getRpgSourcePackIdForLabel(sourceLabel: string | null | undefined): RpgSourcePackId | null {
+  if (!sourceLabel) return null;
+  const sourcePack = RPG_SOURCE_PACK_FILTERS.find(item => item.sourceLabel === sourceLabel);
+  return sourcePack && sourcePack.id !== 'all' ? sourcePack.id : null;
+}
+
+export function countRpgSourcePacks<T>(
+  items: readonly T[],
+  getSourceLabel: (item: T) => string | null | undefined,
+): RpgSourcePackCounts {
+  const counts = Object.fromEntries(
+    RPG_SOURCE_PACK_FILTERS.map(item => [item.id, 0]),
+  ) as RpgSourcePackCounts;
+  counts.all = items.length;
+  items.forEach(item => {
+    const sourcePackId = getRpgSourcePackIdForLabel(getSourceLabel(item));
+    if (sourcePackId) counts[sourcePackId] += 1;
+  });
+  return counts;
+}
 
 export type RpgInventoryItem = {
   name: string;

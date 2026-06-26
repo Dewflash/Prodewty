@@ -86,6 +86,7 @@ These rules must remain true after every phase.
 | 29 | Source-pack filters | Verified | Archive and shop source filters split Forest/Crystal/Bush/Cave packs from gameplay tags |
 | 30 | Backpack source-pack filters | Verified | Backpack inventory source filters share Forest/Crystal/Bush/Cave catalog labels |
 | 31 | Shared source-pack metadata | Verified | Source-pack filter definitions are centralized in the gameplay catalog |
+| 32 | Source-pack filter counts | Verified | Archive, shop, and backpack source filters show catalog/inventory counts |
 
 ## Required Audit Loop For Every Phase
 
@@ -1124,6 +1125,39 @@ Manual test checklist:
 - Open archive, shop, and backpack and confirm source filter rows still show All/Forest/Crystal/Bush/Cave.
 - Tap each filter in all three surfaces and confirm result counts update.
 - Combine source filters with existing category/tag filters and search.
+
+## Phase 32: Source-Pack Filter Counts
+
+Goal: make source filters more inspectable by showing how many entries each pack contains on each surface.
+
+Deliverables:
+
+- Add a shared source-pack count helper in `RpgObjectCatalog.ts`.
+- Show source counts in the archive source filter row.
+- Show source counts in the shop source filter row.
+- Show owned-stack source counts in the backpack source filter row.
+- Extend `validate:rpg` so source filter counts stay wired.
+
+Acceptance gates:
+
+- `All` counts every item/stack in the current surface.
+- Pack counts use catalog `sourceLabel` metadata through the shared helper.
+- Tree-drop resources and other non-pack items remain counted under `All`, not incorrectly under object packs.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgArchive.tsx app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-source-counts-export`
+
+Manual test checklist:
+
+- Open archive and confirm source filter counts roughly match pack sizes.
+- Open shop and confirm Forest/Crystal/Bush/Cave counts are visible.
+- Buy a few source-pack items and confirm backpack source counts update by owned stack.
+- Confirm counts do not hide or shift source filter labels on phone.
 
 ## Manual Regression Script
 

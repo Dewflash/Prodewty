@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import {
+  countRpgSourcePacks,
   getCropForSeed,
   getPlaceableItem,
   getRpgItem,
@@ -149,6 +150,10 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
     seed: inventory.filter(slot => slot.item?.kind === 'seed').length,
     resource: inventory.filter(slot => slot.item?.kind === 'resource').length,
   }), [inventory]);
+  const sourceCounts = useMemo(
+    () => countRpgSourcePacks(inventory, slot => slot.item?.sourceLabel),
+    [inventory],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -241,6 +246,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
         <View style={styles.sourceBar}>
           {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
+            const count = sourceCounts[item.id];
             return (
               <Pressable
                 key={item.id}
@@ -250,6 +256,7 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
                 style={[styles.sourceButton, active && styles.activeSourceButton]}
               >
                 <Text style={[styles.sourceText, active && styles.activeSourceText]}>{item.label}</Text>
+                <Text style={[styles.sourceCount, active && styles.activeSourceText]}>{count}</Text>
               </Pressable>
             );
           })}
@@ -521,6 +528,12 @@ const styles = StyleSheet.create({
   },
   activeSourceText: {
     color: '#fff2bb',
+  },
+  sourceCount: {
+    marginTop: 1,
+    color: 'rgba(247,230,165,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
   },
   searchRow: {
     minHeight: 34,

@@ -5,6 +5,7 @@ import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import { getRpgDiscoveries, type RpgDiscoveryRow } from '../db/rpgDiscovery';
 import {
+  countRpgSourcePacks,
   getRpgArchiveEntries,
   RPG_SOURCE_PACK_FILTERS,
   SHOP_CATALOG,
@@ -253,6 +254,10 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
     known: entries.filter(entry => !entry.discovered && entry.known).length,
     locked: entries.filter(entry => !entry.discovered && !entry.known).length,
   }), [entries]);
+  const sourceCounts = useMemo(
+    () => countRpgSourcePacks(entries, entry => entry.sourceLabel),
+    [entries],
+  );
   const maxPage = Math.max(0, Math.ceil(filteredEntries.length / PAGE_SIZE) - 1);
   const pageEntries = filteredEntries.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const selected = filteredEntries.find(entry => entry.itemId === selectedId) ?? pageEntries[0] ?? null;
@@ -298,6 +303,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         <View style={styles.sourceBar}>
           {RPG_SOURCE_PACK_FILTERS.map(item => {
             const active = source === item.id;
+            const count = sourceCounts[item.id];
             return (
               <Pressable
                 key={item.id}
@@ -307,6 +313,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
                 style={[styles.sourceButton, active && styles.sourceButtonActive]}
               >
                 <Text style={[styles.sourceText, active && styles.sourceTextActive]}>{item.label}</Text>
+                <Text style={[styles.sourceCount, active && styles.sourceTextActive]}>{count}</Text>
               </Pressable>
             );
           })}
@@ -588,6 +595,12 @@ const styles = StyleSheet.create({
   },
   sourceTextActive: {
     color: '#fff2bb',
+  },
+  sourceCount: {
+    marginTop: 1,
+    color: 'rgba(247,230,165,0.52)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
   },
   searchRow: {
     width: '100%',

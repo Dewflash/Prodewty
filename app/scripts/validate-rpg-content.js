@@ -312,6 +312,7 @@ function validateContentMetadata() {
     fail('Catalog must expose shared source pack ids');
   }
   if (!catalog.includes('export const RPG_SOURCE_PACK_FILTERS')) fail('Catalog must expose shared source pack filters');
+  if (!catalog.includes('export function countRpgSourcePacks')) fail('Catalog must expose shared source pack count helper');
   if (!catalog.includes('rarity?: RpgItemRarity;')) fail('Catalog items must expose rarity metadata');
   if (!catalog.includes('sourceLabel?: string;')) fail('Catalog items must expose sourceLabel metadata');
   if (!catalog.includes('function forestObjectRarity')) fail('Missing forest object rarity derivation');
@@ -328,6 +329,7 @@ function validateArchiveScalabilityControls() {
   if (!archive.includes('RPG_SOURCE_PACK_FILTERS')) fail('Archive must use shared source pack filters');
   if (archive.includes('ARCHIVE_SOURCE_FILTERS')) fail('Archive must not duplicate source pack filter definitions');
   if (!archive.includes('archiveSourceMatches')) fail('Archive source filters must use catalog source labels');
+  if (!archive.includes('sourceCounts')) fail('Archive must show source pack counts');
   if (!archive.includes('TextInput')) fail('Archive must include search input for large catalogs');
   if (!archive.includes('archiveEntryMatchesQuery')) fail('Archive search must use catalog-derived entry data');
   if (!archive.includes('Showing {filteredEntries.length}')) fail('Archive summary must expose filtered result count');
@@ -338,6 +340,7 @@ function validateBackpackScalabilityControls() {
   if (!backpack.includes('RPG_SOURCE_PACK_FILTERS')) fail('Backpack must use shared source pack filters');
   if (backpack.includes('BACKPACK_SOURCE_FILTERS')) fail('Backpack must not duplicate source pack filter definitions');
   if (!backpack.includes('backpackSlotMatchesSource')) fail('Backpack source filters must use catalog source labels');
+  if (!backpack.includes('sourceCounts')) fail('Backpack must show source pack counts');
   if (!backpack.includes('TextInput')) fail('Backpack must include search input for large inventories');
   if (!backpack.includes('backpackSlotMatchesQuery')) fail('Backpack search must use catalog-derived item data');
   if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
@@ -347,6 +350,7 @@ function validateShopScalabilityControls() {
   if (!shop.includes('RPG_SOURCE_PACK_FILTERS')) fail('Shop must use shared source pack filters');
   if (shop.includes('SHOP_SOURCE_FILTERS')) fail('Shop must not duplicate source pack filter definitions');
   if (!shop.includes('matchesShopSource')) fail('Shop source filters must use catalog source labels');
+  if (!shop.includes('sourceCounts')) fail('Shop must show source pack counts');
   if (!shop.includes('TextInput')) fail('Shop must include search input for large catalogs');
   if (!shop.includes('shopEntryMatchesQuery')) fail('Shop search must use catalog-derived item data');
   if (!shop.includes('Showing {filteredShopEntries.length}')) fail('Shop summary must expose filtered result count');
