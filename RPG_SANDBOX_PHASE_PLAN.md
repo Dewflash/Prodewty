@@ -80,6 +80,7 @@ These rules must remain true after every phase.
 | 23 | Forage feedback polish | Verified | Object cooldown copy is tag-aware for trees, crystals, and future forage objects |
 | 24 | Backpack search and sorting | Verified | Search across inventory metadata plus sort by kind, name, and quantity |
 | 25 | Bush content pack V1 | Verified | 40 tracked bush/cactus/fern/stump objects mapped into registry/catalog/archive/shop |
+| 26 | Frame-capable world art renderer | Verified | Placed objects and build ghosts can render catalog sprite frames or standalone PNGs |
 
 ## Required Audit Loop For Every Phase
 
@@ -924,6 +925,39 @@ Manual test checklist:
 - Open backpack, search `bush`, `fern`, and `cactus`.
 - Place a 64px bush and confirm it occupies one blocked tile with a 2x2 visual footprint.
 - Interact with a leafy bush twice quickly and confirm leaf/drop feedback plus `Brush is resting`.
+
+## Phase 26: Frame-Capable World Art Renderer
+
+Goal: unlock future spritesheet-backed placeable objects without forking preview, placement, and world render logic.
+
+Deliverables:
+
+- Add a shared `RpgItemWorldArt` renderer for full-size world art.
+- Support both standalone item `source` images and verified sprite-frame `icon` art.
+- Route placed sanctuary objects through the shared renderer.
+- Route build ghosts through the shared renderer so previews match final objects.
+- Extend `validate:rpg` to require frame-capable world rendering.
+
+Acceptance gates:
+
+- Existing standalone PNG objects still render through their catalog `source`.
+- Future frame-backed placeables can render from `item.icon` without adding another special case.
+- Build ghost art and placed object art use the same source-of-truth renderer.
+- No placement, collision, economy, or action-button behavior changes.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/RpgItemIcon.tsx app/src/engine/SanctuaryObject.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-world-art-renderer-export`
+
+Manual test checklist:
+
+- Place or move a tree/crystal/bush and confirm the build ghost still matches the placed object.
+- Confirm long-press move still fades/hides the static object while editing.
+- Confirm normal world mode still only exposes `Interact` and `Attack`.
 
 ## Manual Regression Script
 

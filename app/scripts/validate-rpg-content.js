@@ -11,6 +11,9 @@ const itemIdsPath = path.join(engineDir, 'RpgItemIds.ts');
 const archivePath = path.join(engineDir, 'RpgArchive.tsx');
 const backpackPath = path.join(engineDir, 'RpgBackpack.tsx');
 const shopPath = path.join(engineDir, 'SanctuaryShop.tsx');
+const itemIconPath = path.join(engineDir, 'RpgItemIcon.tsx');
+const sanctuaryObjectPath = path.join(engineDir, 'SanctuaryObject.tsx');
+const rpgScreenPath = path.join(appRoot, 'app', 'rpg.tsx');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
@@ -18,6 +21,9 @@ const itemIds = fs.readFileSync(itemIdsPath, 'utf8');
 const archive = fs.readFileSync(archivePath, 'utf8');
 const backpack = fs.readFileSync(backpackPath, 'utf8');
 const shop = fs.readFileSync(shopPath, 'utf8');
+const itemIcon = fs.readFileSync(itemIconPath, 'utf8');
+const sanctuaryObject = fs.readFileSync(sanctuaryObjectPath, 'utf8');
+const rpgScreen = fs.readFileSync(rpgScreenPath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -280,6 +286,13 @@ function validateBackpackScalabilityControls() {
   if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
 }
 
+function validateWorldArtRenderer() {
+  if (!itemIcon.includes('export function RpgItemWorldArt')) fail('Shared item art renderer must expose RpgItemWorldArt');
+  if (!itemIcon.includes('item?.icon')) fail('Shared item art renderer must support sprite-frame icons');
+  if (!sanctuaryObject.includes('RpgItemWorldArt')) fail('Placed sanctuary objects must use shared item art rendering');
+  if (!rpgScreen.includes('RpgItemWorldArt')) fail('Build ghost must use shared item art rendering');
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -299,6 +312,7 @@ validateBushMetadata(bushAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
+validateWorldArtRenderer();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

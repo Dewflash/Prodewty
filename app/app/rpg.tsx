@@ -15,7 +15,7 @@ import { Joystick } from '../src/engine/Joystick';
 import { SpriteAnimator } from '../src/engine/SpriteAnimator';
 import { RpgBackpack } from '../src/engine/RpgBackpack';
 import { RpgArchive } from '../src/engine/RpgArchive';
-import { RpgItemIcon, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
+import { RpgItemIcon, RpgItemWorldArt, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
 import { SanctuaryShop } from '../src/engine/SanctuaryShop';
 import {
@@ -203,6 +203,8 @@ export default function RpgScreen() {
 
   const buildCatalogItem = getItem(buildItem?.itemId ?? null);
   const buildSeedItem = buildItem?.mode === 'plant' ? getRpgItem(buildItem.itemId) : null;
+  const buildGhostWidth = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visWidth ?? 0) * TILE_SIZE;
+  const buildGhostHeight = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visHeight ?? 0) * TILE_SIZE;
 
   const makeMovementCollisionFlat = (objects: MapObject[], zone: Zone = activeZone, data: TileType[][] = mapData) => {
     const cols = data[0]?.length ?? 0;
@@ -1192,11 +1194,14 @@ export default function RpgScreen() {
           {(buildCatalogItem || buildSeedItem) && (
             <>
               {buildCatalogItem ? (
-                <Animated.Image
-                  source={buildCatalogItem.source}
-                  style={buildGhostStyle}
-                  resizeMode="contain"
-                />
+                <Animated.View style={buildGhostStyle}>
+                  <RpgItemWorldArt
+                    item={buildCatalogItem}
+                    width={buildGhostWidth}
+                    height={buildGhostHeight}
+                    fallbackLabel={buildItem?.itemId ?? 'object'}
+                  />
+                </Animated.View>
               ) : (
                 <Animated.View style={[buildGhostStyle, styles.seedGhost]}>
                   <RpgItemIcon item={buildSeedItem} size={24} fallbackLabel={buildItem?.itemId ?? 'seed'} />

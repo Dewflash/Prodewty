@@ -1,9 +1,9 @@
 import React from 'react';
-import { Image } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TILE_SIZE } from './MapData';
 import { getPlaceableItem } from './RpgObjectCatalog';
+import { RpgItemWorldArt } from './RpgItemIcon';
 
 interface Props {
   id: number;
@@ -20,7 +20,6 @@ const AVATAR_SIZE = 64;
 
 export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isInteracting = false, onMoveRequest }: Props) {
   const catalogItem = getPlaceableItem(type);
-  const source = catalogItem?.source || require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png');
 
   const colWidth = catalogItem?.colWidth || 1;
   const colHeight = catalogItem?.colHeight || 1;
@@ -76,11 +75,7 @@ export function SanctuaryObject({ id, type, row, col, avatarX, avatarY, isIntera
           }
         ]}
       >
-        <Image
-          source={source}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="contain"
-        />
+        <RpgItemWorldArt item={catalogItem} width={width} height={height} fallbackLabel={type} />
       </Animated.View>
     </GestureDetector>
   );

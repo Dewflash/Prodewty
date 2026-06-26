@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import type { RpgItemDefinition, RpgSpriteFrame } from './RpgObjectCatalog';
@@ -55,6 +55,39 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
   );
 }
 
+type ItemWorldArtProps = {
+  item?: RpgItemDefinition | null;
+  width: number;
+  height: number;
+  fallbackLabel?: string;
+  style?: StyleProp<ViewStyle>;
+};
+
+export function RpgItemWorldArt({ item, width, height, fallbackLabel = '?', style }: ItemWorldArtProps) {
+  if (item?.source) {
+    return (
+      <View style={[styles.worldArtFrame, { width, height }, style]}>
+        <Image source={item.source} resizeMode="contain" style={styles.worldArtImage} />
+      </View>
+    );
+  }
+
+  if (item?.icon) {
+    const frameScale = Math.min(width / item.icon.width, height / item.icon.height);
+    return (
+      <View style={[styles.worldArtFrame, { width, height }, style]}>
+        <RpgSpriteFrameView frame={item.icon} scale={frameScale} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.worldArtFrame, { width, height }, style]}>
+      <RpgItemIcon item={item} size={Math.min(width, height)} fallbackLabel={fallbackLabel} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   fallback: {
     alignItems: 'center',
@@ -70,5 +103,13 @@ const styles = StyleSheet.create({
     color: '#eadca8',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  worldArtFrame: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  worldArtImage: {
+    width: '100%',
+    height: '100%',
   },
 });
