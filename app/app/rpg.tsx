@@ -980,6 +980,10 @@ export default function RpgScreen() {
     item.tags?.includes('lever') || item.assetId === 'object.temple.Floor_lever'
   );
 
+  const isTrapObject = (item: ShopCatalogItem) => (
+    item.tags?.includes('trap') || item.tags?.includes('hazard')
+  );
+
   const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
     const detail = (() => {
@@ -1019,6 +1023,21 @@ export default function RpgScreen() {
       const isOn = toggle.count % 2 === 1;
       showWorldToast({
         text: isOn ? 'Lever switched on' : 'Lever switched off',
+        item,
+        tone: 'muted',
+      });
+      return;
+    }
+
+    if (isTrapObject(item)) {
+      const toggle = markSanctuaryObjectInteraction(object.id, object.type, 'disable_trap');
+      if (!toggle.ok) {
+        showWorldToast({ text: 'Trap mechanism jammed', item, tone: 'warn' });
+        return;
+      }
+      const isDisabled = toggle.count % 2 === 1;
+      showWorldToast({
+        text: isDisabled ? 'Trap disarmed' : 'Trap re-armed',
         item,
         tone: 'muted',
       });

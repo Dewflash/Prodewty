@@ -592,7 +592,7 @@ function validateSanctuaryRewardClaims() {
 }
 
 function validateLeverToggleFeedback() {
-  if (!sanctuaryInteractions.includes("export type SanctuaryObjectInteractionKind = 'inspect' | 'toggle_lever';")) {
+  if (!sanctuaryInteractions.includes("'toggle_lever'")) {
     fail('Object interaction memory must support toggle_lever interactions');
   }
   if (!rpgScreen.includes('const isLeverObject = (item: ShopCatalogItem)')) {
@@ -610,6 +610,25 @@ function validateLeverToggleFeedback() {
   if (rpgScreen.includes('UPDATE sanctuary_objects SET type')) {
     fail('Lever toggle feedback must not mutate object type or placement state');
   }
+}
+
+function validateTrapDisableFeedback() {
+  if (!sanctuaryInteractions.includes("'disable_trap'")) {
+    fail('Object interaction memory must support disable_trap interactions');
+  }
+  if (!rpgScreen.includes('const isTrapObject = (item: ShopCatalogItem)')) {
+    fail('RPG screen must centralize trap object detection');
+  }
+  if (!rpgScreen.includes("markSanctuaryObjectInteraction(object.id, object.type, 'disable_trap')")) {
+    fail('Trap interactions must persist disable state through object interaction memory');
+  }
+  if (!rpgScreen.includes('Trap disarmed') || !rpgScreen.includes('Trap re-armed')) {
+    fail('Trap interactions must show disarm/re-arm feedback');
+  }
+  if (rpgScreen.includes('UPDATE rpg_state SET hp')) {
+    fail('Trap feedback phase must not add HP damage rules');
+  }
+  if (rpgScreen.includes('disable_trap_collision')) fail('Trap feedback must not mutate movement collision state');
 }
 
 const forestAssets = parseForestAssets();
@@ -646,6 +665,7 @@ validateWorldArtRenderer();
 validateSanctuaryInteractionMemory();
 validateSanctuaryRewardClaims();
 validateLeverToggleFeedback();
+validateTrapDisableFeedback();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

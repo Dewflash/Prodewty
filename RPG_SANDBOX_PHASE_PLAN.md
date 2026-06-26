@@ -95,6 +95,7 @@ These rules must remain true after every phase.
 | 38 | Object interaction memory V1 | Verified | Persist first/repeat object inspect state for future chest, lever, and trap rules |
 | 39 | Safe chest rewards V1 | Verified | Temple chests grant once-per-type rewards through a reward-claim ledger |
 | 40 | Lever toggle feedback V1 | Verified | Temple levers persist on/off toggle feedback without puzzle side effects |
+| 41 | Trap disable feedback V1 | Verified | Temple traps persist disarm/re-arm feedback without damage or collision side effects |
 
 ## Required Audit Loop For Every Phase
 
@@ -2117,5 +2118,55 @@ Expansion notes saved:
 - Add puzzle-side effects only after safe-path, gate-blocking, and trap-disable rules are designed.
 
 Phase 40 status:
+
+- Verified.
+
+### Phase 41 Audit
+
+Intended behavior:
+
+- `Interact` on temple trap/hazard props toggles a persisted `disable_trap` interaction count.
+- Trap state derives from `disable_trap` count parity.
+- Trap feedback alternates between `Trap disarmed` and `Trap re-armed`.
+- Trap interactions still record normal inspect discovery through the shared object interaction path.
+- The RPG validator enforces the new interaction kind, trap detection, persisted disable call, and disarm/re-arm feedback.
+
+Negative guarantees:
+
+- Trap disable feedback must not damage the avatar, heal the avatar, change HP, mutate collision, mutate object placement, grant loot, or link to levers/gates.
+- Trap feedback must not add any normal-mode buttons beyond `Interact` and `Attack`.
+- Trap feedback must not affect chest rewards, forage drops, crop growth, gate state, or lever state.
+- Stashing a trap must still clean its interaction memory through the existing stash cleanup path.
+
+Files changed:
+
+- `app/src/db/sanctuaryInteractions.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --cached --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-trap-disable-export`
+- Passed: source inspection confirmed trap feedback only writes interaction memory and does not mutate health, collision, rewards, gates, or placement.
+
+Manual test checklist:
+
+- Place a Temple Spike Trap and interact once; confirm `Trap disarmed`.
+- Interact with the same trap again; confirm `Trap re-armed`.
+- Repeat on the Temple Blade Trap and confirm the same feedback loop.
+- Confirm walking collision remains based on the trap footprint even while disarmed.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Add actual trap damage only after health, invulnerability, and cooldown windows are designed.
+- Add collision/passability changes only after safe-path and map-authoring rules can prevent soft locks.
+- Link lever-disarm behavior only after an object relation table exists.
+
+Phase 41 status:
 
 - Verified.
