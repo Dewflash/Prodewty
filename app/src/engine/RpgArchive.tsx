@@ -488,7 +488,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           )}
           {selected && (selected.discovered || selected.known) && selected.facts.length > 0 && (
             <View style={styles.factGrid}>
-              {selected.facts.slice(0, 4).map(fact => (
+              {selected.facts.slice(0, 6).map(fact => (
                 <View key={fact} style={styles.factPill}>
                   <Text numberOfLines={1} style={styles.factText}>{fact}</Text>
                 </View>

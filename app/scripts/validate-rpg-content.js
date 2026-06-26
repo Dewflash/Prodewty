@@ -532,6 +532,9 @@ function validateContentMetadata() {
   if (!catalog.includes("rarity: item.rarity ?? 'common'")) fail('Archive entries must preserve item rarity');
   if (!catalog.includes("sourceLabel: item.sourceLabel ?? 'Sanctuary'")) fail('Archive entries must preserve item source label');
   if (!catalog.includes('facts: getRpgItemFacts(item, catalog)')) fail('Archive entries must derive detail facts from catalog metadata');
+  if (!catalog.includes("Granted automatically - equip it from the hotbar or character panel.")) {
+    fail('Archive tool unlock hints must point to hotbar/character panel, not Backpack');
+  }
   if (!catalog.includes('Footprint:')) fail('Object facts must expose placement footprint metadata');
   if (!catalog.includes('Mechanic: toggles nearby linked gates and traps')) fail('Catalog facts must expose lever mechanics');
   if (!catalog.includes('Mechanic: blocks movement until opened by a lever')) fail('Catalog facts must expose gate mechanics');
@@ -1274,6 +1277,27 @@ function validateFarmAnimalsV1() {
   }
 }
 
+function validateArchiveFarmGuideV1() {
+  [
+    "facts.push(`Crop: ${item.crop.name}`)",
+    "facts.push(`Stages: sprout now, growing ${formatMinutes(item.crop.stageMinutes[1])}, mature ${formatMinutes(item.crop.stageMinutes[2])}`)",
+    "facts.push('Water: Watering Can or streak rain can advance growth')",
+    "facts.push('Season: harvest includes the current season bonus')",
+    "facts.push('Cooldown: 30 sec after a successful collection')",
+    "facts.push('Action: stand near it and press Interact')",
+    "facts.push('Use: animal product resource for selling or future crafting')",
+    "facts.push('Art: labeled placeholder until final product art is verified')",
+  ].forEach(snippet => {
+    if (!catalog.includes(snippet)) fail(`Archive farm guide missing: ${snippet}`);
+  });
+  if (!catalog.includes('function formatMinutes(minutes: number)')) {
+    fail('Archive farm guide must format crop stage timing');
+  }
+  if (!archive.includes('selected.facts.slice(0, 6)')) {
+    fail('Archive detail panel must show enough facts for farm guide entries');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1304,6 +1328,7 @@ validateTempleMetadata(templeAssets);
 validateAnimalMetadata(animalAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
+validateArchiveFarmGuideV1();
 validateBackpackScalabilityControls();
 validateBackpackCharacterInventorySplit();
 validateShopScalabilityControls();

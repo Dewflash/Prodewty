@@ -157,6 +157,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 82 | Backpack/tool ownership split | Verified | Backpack hides tools; hotbar and character/equipment panel own tool equip/unequip |
 | 83 | Seasons and weather farm loop V2 | Verified | Season/weather HUD chip plus season-specific transactional harvest bonus drops |
 | 84 | Asset correctness and placeholder honesty V3 | Verified | Mechanism compact markers no longer hide art; animal products use distinct labeled placeholders |
+| 85 | Archive farm guide V1 | Verified | Archive now explains crop stages, watering/rain acceleration, season harvest bonuses, animal products, and current tool equip surface |
 
 ## Future Development Roadmap
 
@@ -3768,5 +3769,68 @@ Expansion notes saved:
 - Later add an asset QA screen or Archive filter that lists every placeholder explicitly so art debt is visible.
 
 Phase 84 status:
+
+- Verified.
+
+### Phase 85 Audit
+
+Intended behavior:
+
+- Turn the Archive into a more useful farm guide for current systems, not just a collection checklist.
+- Seed entries should explain crop name, growth stage timing, Watering Can/rain acceleration, harvest coin value, season bonus, and yield.
+- Animal entries should explain their product drop, collection cooldown, and that the normal `Interact` button is the collection action.
+- Animal product resources should explain that they are livestock outputs for selling or future crafting, and that their current art is a labeled placeholder.
+- Tool archive hints should no longer claim tools are equipped from Backpack; tools now belong to the hotbar and character panel.
+
+Negative guarantees:
+
+- This phase must not change crop growth timing, harvest rewards, season bonus logic, animal product cooldowns, animal drop chances, inventory transactions, or normal-world action buttons.
+- This phase must not claim final product art exists.
+- This phase must not stage unrelated settings or loose asset folders.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The Archive already had catalog-derived fact rendering, so the scalable move was to enrich `getRpgItemFacts` rather than hard-code a separate crop screen.
+- Showing six fact pills instead of four is enough for seed entries to communicate the current farm loop without redesigning the book layout.
+- Correcting stale Backpack tool text prevents the Archive from contradicting the Backpack/tool ownership split.
+
+Implementation attack findings:
+
+- Crop facts derive from `item.crop`, so future crop additions inherit the same guidebook shape.
+- Animal product facts derive from `forageDrops` and tags, so current livestock and later livestock stay consistent.
+- Product placeholder facts are attached to tagged resources rather than product-specific UI branches.
+- Validator now enforces the guide facts, six visible fact slots, formatted stage timing, and corrected tool unlock hint.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/src/engine/RpgObjectCatalog.ts app/src/engine/RpgArchive.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Archive, filter to Seeds, and confirm tree seed detail facts show crop, stages, water/rain acceleration, harvest, season bonus, and yield.
+- Open Archive, filter to Animals, and confirm livestock entries show product drop, cooldown, and Interact action.
+- Open Archive resources for Egg/Milk/Wool/Truffle and confirm they explain product use plus placeholder art.
+- Open Archive tools and confirm unlock hints point to hotbar or character panel, not Backpack.
+
+Expansion notes saved:
+
+- Later add a dedicated crop journal page with stage sprites and product previews once crop art is less placeholder-heavy.
+- Later add season affinity and crop restrictions to these facts when those systems become real mechanics.
+
+Phase 85 status:
 
 - Verified.

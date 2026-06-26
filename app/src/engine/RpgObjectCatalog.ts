@@ -849,7 +849,7 @@ export function getRpgArchiveEntries(): RpgArchiveEntry[] {
         : item.kind === 'seed'
           ? 'Find this seed through sanctuary interactions.'
           : item.kind === 'tool'
-            ? 'Granted automatically — equip it from the Backpack.'
+            ? 'Granted automatically - equip it from the hotbar or character panel.'
             : 'Collect this resource to record it.',
     }))
     .sort((a, b) => (
@@ -870,6 +870,12 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
   if (isPlaceableItemDefinition(item)) {
     facts.push(`Price: ${item.price}`);
     facts.push(`Footprint: ${item.colWidth}x${item.colHeight}`);
+    if (item.tags?.includes('animal')) {
+      const productDrops = item.forageDrops?.map(drop => formatDrop(drop, catalog)).join(', ') || 'none';
+      facts.push(`Product: ${productDrops}`);
+      facts.push('Cooldown: 30 sec after a successful collection');
+      facts.push('Action: stand near it and press Interact');
+    }
     if (item.tags?.includes('lever')) {
       facts.push('Mechanic: toggles nearby linked gates and traps');
     } else if (item.tags?.includes('gate')) {
@@ -889,8 +895,11 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
   }
 
   if (item.kind === 'seed' && item.crop) {
+    facts.push(`Crop: ${item.crop.name}`);
+    facts.push(`Stages: sprout now, growing ${formatMinutes(item.crop.stageMinutes[1])}, mature ${formatMinutes(item.crop.stageMinutes[2])}`);
+    facts.push('Water: Watering Can or streak rain can advance growth');
     facts.push(`Harvest: ${item.crop.harvest.coins} coins`);
-    facts.push(`Mature: ${item.crop.stageMinutes[2]} min`);
+    facts.push('Season: harvest includes the current season bonus');
     if (item.crop.harvest.drops.length) {
       facts.push(`Yield: ${item.crop.harvest.drops.map(drop => formatDrop(drop, catalog)).join(', ')}`);
     }
@@ -898,6 +907,13 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
 
   if (item.kind === 'resource' && item.tags?.length) {
     facts.push(`Tags: ${item.tags.join(', ')}`);
+    if (item.tags.includes('animal_product')) {
+      facts.push('Use: animal product resource for selling or future crafting');
+      facts.push('Source: collect from placed livestock with Interact');
+    }
+    if (item.tags.includes('placeholder')) {
+      facts.push('Art: labeled placeholder until final product art is verified');
+    }
   }
 
   return facts;
@@ -911,6 +927,10 @@ function formatDrop(drop: RpgDrop, catalog: Record<string, RpgItemDefinition>) {
   const itemName = catalog[drop.itemId]?.name ?? drop.itemId;
   const amount = drop.min === drop.max ? `x${drop.min}` : `x${drop.min}-${drop.max}`;
   return `${Math.round(drop.chance * 100)}% ${itemName} ${amount}`;
+}
+
+function formatMinutes(minutes: number) {
+  return minutes === 1 ? '1 min' : `${minutes} min`;
 }
 
 function formatLoot(loot: RpgInteractionLoot, catalog: Record<string, RpgItemDefinition>) {
