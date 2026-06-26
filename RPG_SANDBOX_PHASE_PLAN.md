@@ -154,6 +154,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 79 | Seasons/weather and farm loop V2 | Not started | Rain, seasons, growth modifiers, clutter regrowth rules, and daily cozy-life-sim cadence |
 | 80 | Performance and save-state hardening V2 | Not started | Runtime profiling, transactional persistence audits, migration simulations, and device baseline |
 | 81 | Tool terrain art V2 | Verified | Bridge, Path, and Tilled Soil now render tracked sprite frames instead of hand-drawn View fills |
+| 82 | Backpack/tool ownership split | Verified | Backpack hides tools; hotbar and character/equipment panel own tool equip/unequip |
 
 ## Future Development Roadmap
 
@@ -3565,5 +3566,68 @@ Expansion notes saved:
 - Later add tile variants/auto-tiling for path and bridge adjacency after direct placement UX is stronger.
 
 Phase 81 status:
+
+- Verified.
+
+### Phase 82 Audit
+
+Intended behavior:
+
+- Resolve the inventory tension where tools were visible/equippable inside Backpack even though the desired inventory feel is seeds, resources, and placeable items.
+- Keep tools as real catalog/starter items, but hide them from Backpack display and filters.
+- Preserve tool equip/unequip through the hotbar and dedicated character/equipment panel.
+- Remove the Backpack tool equip button path so the bag is no longer the tool-management surface.
+- Add validator guards so tools do not drift back into Backpack UI accidentally.
+
+Negative guarantees:
+
+- This phase must not remove tools from the catalog, starter grant, hotbar, character panel, tool energy costs, or in-world tool actions.
+- This phase must not change Backpack placement, planting, selling, source filters, sorting, or search for non-tool items.
+- This phase must not add new normal-world action buttons; normal controls remain `Interact` and `Attack`.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The dedicated character/equipment panel already exists and renders tool slots from `TOOLS`, so Backpack does not need to be a second equip surface.
+- Hiding tools at Backpack load time keeps inventory counts, source counts, search, and pagination consistent for visible item stacks.
+- Tool catalog entries remain useful for Archive/docs/starter grants even though Backpack hides them.
+
+Implementation attack findings:
+
+- `RpgBackpack` filters out `item.kind === 'tool'` after resolving catalog metadata.
+- Backpack filters now include only All, Objects, Seeds, and Resources.
+- Obsolete `equippedToolId` and `onEquipTool` props were removed from Backpack and its RPG screen call site.
+- Validator now enforces the Backpack/character ownership split.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/src/engine/RpgBackpack.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Backpack and confirm there is no Tools filter and no tool stacks in the grid.
+- Confirm objects, seeds, and resources still show, search, sort, place, plant, and sell normally.
+- Open character/equipment panel and confirm tools can still be equipped/unequipped there.
+- Use hotbar to equip/unequip tools and confirm in-world tool actions still work.
+
+Expansion notes saved:
+
+- Later decide whether tools should still appear in Archive as discoverable equipment or move to a dedicated Equipment tab.
+- Later tune starter inventory migration if old saves keep tool item rows that are now intentionally hidden from Backpack.
+
+Phase 82 status:
 
 - Verified.

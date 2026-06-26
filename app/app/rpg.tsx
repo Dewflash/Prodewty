@@ -2873,13 +2873,6 @@ export default function RpgScreen() {
         onPlantSeed={handleBackpackPlantSeed}
         onSellItem={handleSellItem}
         onSellAllItem={handleSellAllItem}
-        equippedToolId={TOOLS.find(t => t.id === equippedTool)?.itemId ?? null}
-        onEquipTool={(itemId) => {
-          const tool = TOOLS.find(t => t.itemId === itemId);
-          setEquippedTool(tool?.id ?? null);
-          setIsBackpackOpen(false);
-          showWorldToast({ text: tool ? `Equipped ${tool.label}` : 'Unequipped tool', tone: 'success' });
-        }}
       />
       <RpgArchive
         isOpen={isArchiveOpen}

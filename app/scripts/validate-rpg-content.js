@@ -561,6 +561,27 @@ function validateBackpackScalabilityControls() {
   if (!backpack.includes('Showing {filteredInventory.length}')) fail('Backpack summary must expose filtered result count');
 }
 
+function validateBackpackCharacterInventorySplit() {
+  if (!backpack.includes("type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';")) {
+    fail('Backpack filters must exclude tools so the bag stays focused on items/resources/seeds');
+  }
+  if (backpack.includes("{ id: 'tool', label: 'Tools' }")) {
+    fail('Backpack must not expose a Tools filter; tools belong to hotbar/character equipment');
+  }
+  if (!backpack.includes(".filter(slot => slot.item?.kind !== 'tool')")) {
+    fail('Backpack inventory query must hide tool rows');
+  }
+  if (backpack.includes('onEquipTool') || backpack.includes('equippedToolId') || backpack.includes("selectedItem?.kind === 'tool'")) {
+    fail('Backpack must not equip tools directly');
+  }
+  if (!rpgScreen.includes('accessibilityLabel="Open character equipment"')) {
+    fail('Character/equipment panel must remain the dedicated tool surface');
+  }
+  if (!rpgScreen.includes('{TOOLS.map(tool => (')) {
+    fail('Character/equipment panel or hotbar must render tool slots from TOOLS');
+  }
+}
+
 function validateShopScalabilityControls() {
   if (!shop.includes('RPG_SOURCE_PACK_FILTERS')) fail('Shop must use shared source pack filters');
   if (shop.includes('SHOP_SOURCE_FILTERS')) fail('Shop must not duplicate source pack filter definitions');
@@ -1239,6 +1260,7 @@ validateAnimalMetadata(animalAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
+validateBackpackCharacterInventorySplit();
 validateShopScalabilityControls();
 validateWorldArtRenderer();
 validateSanctuaryInteractionMemory();
