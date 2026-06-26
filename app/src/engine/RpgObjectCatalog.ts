@@ -1,5 +1,6 @@
 import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID } from './RpgItemIds';
 import {
+  RPG_BUSH_OBJECT_ASSETS,
   RPG_CRYSTAL_OBJECT_ASSETS,
   RPG_CROP_STAGE_FRAMES,
   RPG_FOREST_OBJECT_ASSETS,
@@ -240,6 +241,51 @@ const RPG_CRYSTAL_OBJECT_CATALOG = Object.fromEntries(
   RPG_CRYSTAL_OBJECT_ASSETS.map(asset => [asset.itemId, makeCrystalObjectItem(asset)]),
 ) as Record<string, RpgPlaceableItem>;
 
+function bushObjectDescription(asset: RpgObjectAsset) {
+  if (asset.tags.includes('cactus')) return `${asset.name} from the bush archive. A compact desert object for sanctuary landscaping.`;
+  if (asset.tags.includes('stump')) return `${asset.name} from the bush archive. A small ground object for paths, edges, and ruins.`;
+  if (asset.tags.includes('fern')) return `${asset.name} from the bush archive. Interact with it for a small chance at leaves.`;
+  if (asset.tags.includes('flower')) return `${asset.name} from the bush archive. A flowering shrub with a small leaf forage hook.`;
+  return `${asset.name} from the bush archive. A compact plant object with light sanctuary forage hooks.`;
+}
+
+function bushObjectPrice(asset: RpgObjectAsset) {
+  if (asset.pixelWidth >= 64) return 90;
+  if (asset.pixelWidth >= 32) return 55;
+  return 30;
+}
+
+function bushObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
+  if (asset.tags.includes('snow') || asset.tags.includes('autumn')) return 'uncommon';
+  if (asset.tags.includes('flower')) return 'uncommon';
+  return 'common';
+}
+
+function bushObjectFootprint(asset: RpgObjectAsset) {
+  if (asset.pixelWidth >= 64) return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };
+  return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+}
+
+function makeBushObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
+  return {
+    name: asset.name,
+    kind: 'object',
+    assetId: asset.assetId,
+    price: bushObjectPrice(asset),
+    ...bushObjectFootprint(asset),
+    source: RPG_OBJECT_SOURCES[asset.itemId],
+    tags: asset.tags,
+    rarity: bushObjectRarity(asset),
+    sourceLabel: 'Bush Archive',
+    description: bushObjectDescription(asset),
+    forageDrops: asset.tags.includes('forage') ? LEAF_FORAGE_DROPS : undefined,
+  };
+}
+
+const RPG_BUSH_OBJECT_CATALOG = Object.fromEntries(
+  RPG_BUSH_OBJECT_ASSETS.map(asset => [asset.itemId, makeBushObjectItem(asset)]),
+) as Record<string, RpgPlaceableItem>;
+
 export const RPG_ITEM_CATALOG = {
   rpg_leaves: {
     name: 'Leaves',
@@ -329,11 +375,13 @@ export const RPG_ITEM_CATALOG = {
   },
   ...RPG_FOREST_OBJECT_CATALOG,
   ...RPG_CRYSTAL_OBJECT_CATALOG,
+  ...RPG_BUSH_OBJECT_CATALOG,
 } satisfies Record<string, RpgItemDefinition>;
 
 export const SHOP_CATALOG = {
   ...RPG_FOREST_OBJECT_CATALOG,
   ...RPG_CRYSTAL_OBJECT_CATALOG,
+  ...RPG_BUSH_OBJECT_CATALOG,
 } satisfies Record<string, RpgPlaceableItem>;
 
 export type ShopCatalogItem = RpgPlaceableItem;

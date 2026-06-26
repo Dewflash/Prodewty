@@ -10,12 +10,14 @@ const catalogPath = path.join(engineDir, 'RpgObjectCatalog.ts');
 const itemIdsPath = path.join(engineDir, 'RpgItemIds.ts');
 const archivePath = path.join(engineDir, 'RpgArchive.tsx');
 const backpackPath = path.join(engineDir, 'RpgBackpack.tsx');
+const shopPath = path.join(engineDir, 'SanctuaryShop.tsx');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
 const itemIds = fs.readFileSync(itemIdsPath, 'utf8');
 const archive = fs.readFileSync(archivePath, 'utf8');
 const backpack = fs.readFileSync(backpackPath, 'utf8');
+const shop = fs.readFileSync(shopPath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -83,6 +85,27 @@ function parseCrystalAssets() {
     });
   }
   if (assets.length !== 40) fail(`Expected 40 crystal assets, found ${assets.length}`);
+  return assets;
+}
+
+function parseBushAssets() {
+  const block = extractBlock(assetRegistry, 'export const RPG_BUSH_OBJECT_ASSETS = [', '] satisfies readonly RpgBushObjectAsset[];');
+  const regex = /\{\s*itemId:\s*'([^']+)',\s*assetId:\s*'([^']+)',\s*name:\s*'([^']+)',\s*source:\s*require\('([^']+)'\),\s*pixelWidth:\s*(\d+),\s*pixelHeight:\s*(\d+),\s*tags:\s*\[([^\]]*)\]\s*\}/g;
+  const assets = [];
+  let match;
+  while ((match = regex.exec(block))) {
+    const tags = [...match[7].matchAll(/'([^']+)'/g)].map(tagMatch => tagMatch[1]);
+    assets.push({
+      itemId: match[1],
+      assetId: match[2],
+      name: match[3],
+      sourcePath: match[4],
+      pixelWidth: Number(match[5]),
+      pixelHeight: Number(match[6]),
+      tags,
+    });
+  }
+  if (assets.length !== 40) fail(`Expected 40 bush assets, found ${assets.length}`);
   return assets;
 }
 
@@ -154,6 +177,20 @@ function validateCrystalAssets(crystalAssets) {
   });
 }
 
+function validateBushAssets(bushAssets) {
+  unique(bushAssets.map(asset => asset.itemId), 'bush itemId');
+  unique(bushAssets.map(asset => asset.assetId), 'bush assetId');
+
+  bushAssets.forEach(asset => {
+    const resolvedPath = path.resolve(engineDir, asset.sourcePath);
+    if (!fs.existsSync(resolvedPath)) fail(`Missing bush asset file for ${asset.itemId}: ${asset.sourcePath}`);
+    if (!asset.assetId.startsWith('object.bush.')) fail(`Bush assetId must start with object.bush.: ${asset.assetId}`);
+    if (![16, 32, 64].includes(asset.pixelWidth)) fail(`Unexpected bush width for ${asset.itemId}: ${asset.pixelWidth}`);
+    if (![16, 32, 64].includes(asset.pixelHeight)) fail(`Unexpected bush height for ${asset.itemId}: ${asset.pixelHeight}`);
+    if (!asset.tags.includes('plant')) fail(`Bush asset missing plant tag: ${asset.itemId}`);
+  });
+}
+
 function validateAssetReferences(registryIds) {
   const refs = [...catalog.matchAll(/(?:assetId|iconAssetId):\s*'([^']+)'/g)].map(match => match[1]);
   refs.forEach(ref => {
@@ -203,6 +240,17 @@ function validateCrystalMetadata(crystalAssets, catalogItemIds) {
   if (!catalogItemIds.has(parseCrystalShardItemId())) fail('Catalog item ids must include Crystal Shards resource');
 }
 
+function validateBushMetadata(bushAssets) {
+  const foragePlants = bushAssets.filter(asset => asset.tags.includes('forage'));
+  const cacti = bushAssets.filter(asset => asset.tags.includes('cactus'));
+  if (foragePlants.length === 0) fail('Expected forage-tagged bush assets');
+  if (cacti.length === 0) fail('Expected cactus-tagged bush assets');
+  if (!catalog.includes("sourceLabel: 'Bush Archive'")) fail('Bush objects must expose source label metadata');
+  if (!catalog.includes('RPG_BUSH_OBJECT_CATALOG')) fail('Catalog must expose bush object catalog');
+  if (!shop.includes("{ id: 'bush', label: 'Bushes' }")) fail('Shop must expose a bush filter');
+  if (!shop.includes("{ id: 'cactus', label: 'Cacti' }")) fail('Shop must expose a cactus filter');
+}
+
 function validateContentMetadata() {
   if (!catalog.includes("export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';")) {
     fail('Missing RpgItemRarity union type');
@@ -234,17 +282,20 @@ function validateBackpackScalabilityControls() {
 
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
-const objectAssets = [...forestAssets, ...crystalAssets];
+const bushAssets = parseBushAssets();
+const objectAssets = [...forestAssets, ...crystalAssets, ...bushAssets];
 const registryIds = parseRegistryIds(objectAssets);
 const catalogItemIds = parseCatalogItemIds(objectAssets);
 
 validateForestAssets(forestAssets);
 validateCrystalAssets(crystalAssets);
+validateBushAssets(bushAssets);
 validateAssetReferences(registryIds);
 validateDropReferences(catalogItemIds);
 validateSeedReferences(forestAssets, catalogItemIds);
 validatePlaceableMetadata(forestAssets);
 validateCrystalMetadata(crystalAssets, catalogItemIds);
+validateBushMetadata(bushAssets);
 validateContentMetadata();
 validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
@@ -255,4 +306,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${catalogItemIds.size} catalog items).`);
+console.log(`RPG content validation passed (${forestAssets.length} forest assets, ${crystalAssets.length} crystal assets, ${bushAssets.length} bush assets, ${catalogItemIds.size} catalog items).`);

@@ -11,7 +11,7 @@ type OwnedRow = {
   quantity: number;
 };
 
-type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal';
+type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus';
 type ShopSort = 'name' | 'rarity' | 'price';
 
 interface Props {
@@ -33,6 +33,8 @@ const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'mushroom', label: 'Mushrooms' },
   { id: 'structure', label: 'Relics' },
   { id: 'crystal', label: 'Crystals' },
+  { id: 'bush', label: 'Bushes' },
+  { id: 'cactus', label: 'Cacti' },
 ];
 const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'name', label: 'Name' },
@@ -152,7 +154,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.title}>Shop</Text>
-            <Text style={styles.subtitle}>{filteredShopEntries.length} forest items</Text>
+            <Text style={styles.subtitle}>{filteredShopEntries.length} items</Text>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close shop" onPress={onClose} style={styles.closeButton}>
             <Feather name="x" size={18} color="#fff2bb" />
@@ -362,9 +364,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(247,230,165,0.26)',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
   },
   filterButton: {
-    flex: 1,
+    minWidth: 58,
+    flexGrow: 1,
     minHeight: 26,
     borderRadius: 6,
     alignItems: 'center',

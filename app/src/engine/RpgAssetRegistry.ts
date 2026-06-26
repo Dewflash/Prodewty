@@ -32,6 +32,7 @@ export type RpgObjectAsset = {
 };
 
 export type RpgForestObjectAsset = RpgObjectAsset;
+export type RpgBushObjectAsset = RpgObjectAsset;
 
 const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
 const RPG_UI_INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
@@ -125,6 +126,49 @@ export const RPG_CRYSTAL_OBJECT_ASSETS = [
   { itemId: 'Yellow_crystal3', assetId: 'object.crystal.Yellow_crystal3', name: 'Yellow Crystal', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['crystal', 'yellow', 'cave', 'small'] },
   { itemId: 'Yellow_crystal4', assetId: 'object.crystal.Yellow_crystal4', name: 'Yellow Crystal Shard', source: require('../../assets/game/craftpix-net-106469-top-down-crystals-pixel-art/PNG/Assets/Yellow_crystal4.png'), pixelWidth: 16, pixelHeight: 16, tags: ['crystal', 'yellow', 'cave', 'tiny'] },
 ] satisfies readonly RpgObjectAsset[];
+
+export const RPG_BUSH_OBJECT_ASSETS = [
+  { itemId: 'Autumn_bush1', assetId: 'object.bush.Autumn_bush1', name: 'Autumn Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Autumn_bush1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'autumn', 'plant', 'forage'] },
+  { itemId: 'Autumn_bush2', assetId: 'object.bush.Autumn_bush2', name: 'Small Autumn Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Autumn_bush2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'autumn', 'plant', 'small', 'forage'] },
+  { itemId: 'Autumn_bush3', assetId: 'object.bush.Autumn_bush3', name: 'Tiny Autumn Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Autumn_bush3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'autumn', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Broken_tree1', assetId: 'object.bush.Broken_tree1', name: 'Broken Tree Stump', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Broken_tree1.png'), pixelWidth: 16, pixelHeight: 16, tags: ['stump', 'wood', 'plant', 'tiny'] },
+  { itemId: 'Broken_tree2', assetId: 'object.bush.Broken_tree2', name: 'Split Tree Stump', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Broken_tree2.png'), pixelWidth: 16, pixelHeight: 16, tags: ['stump', 'wood', 'plant', 'tiny'] },
+  { itemId: 'Burned_tree1', assetId: 'object.bush.Burned_tree1', name: 'Burned Tree Stump', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Burned_tree1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['stump', 'wood', 'burned', 'plant', 'small'] },
+  { itemId: 'Burned_tree2', assetId: 'object.bush.Burned_tree2', name: 'Scorched Tree Stump', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Burned_tree2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['stump', 'wood', 'burned', 'plant', 'small'] },
+  { itemId: 'Bush_blue_flowers1', assetId: 'object.bush.Bush_blue_flowers1', name: 'Blue Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_blue_flowers1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'flower', 'blue', 'plant', 'forage'] },
+  { itemId: 'Bush_blue_flowers2', assetId: 'object.bush.Bush_blue_flowers2', name: 'Small Blue Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_blue_flowers2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'flower', 'blue', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_blue_flowers3', assetId: 'object.bush.Bush_blue_flowers3', name: 'Tiny Blue Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_blue_flowers3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'flower', 'blue', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Bush_orange_flowers1', assetId: 'object.bush.Bush_orange_flowers1', name: 'Orange Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_orange_flowers1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'flower', 'orange', 'plant', 'forage'] },
+  { itemId: 'Bush_orange_flowers2', assetId: 'object.bush.Bush_orange_flowers2', name: 'Small Orange Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_orange_flowers2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'flower', 'orange', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_orange_flowers3', assetId: 'object.bush.Bush_orange_flowers3', name: 'Tiny Orange Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_orange_flowers3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'flower', 'orange', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Bush_pink_flowers1', assetId: 'object.bush.Bush_pink_flowers1', name: 'Pink Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_pink_flowers1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'flower', 'pink', 'plant', 'forage'] },
+  { itemId: 'Bush_pink_flowers2', assetId: 'object.bush.Bush_pink_flowers2', name: 'Small Pink Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_pink_flowers2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'flower', 'pink', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_pink_flowers3', assetId: 'object.bush.Bush_pink_flowers3', name: 'Tiny Pink Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_pink_flowers3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'flower', 'pink', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Bush_red_flowers1', assetId: 'object.bush.Bush_red_flowers1', name: 'Red Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_red_flowers1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'flower', 'red', 'plant', 'forage'] },
+  { itemId: 'Bush_red_flowers2', assetId: 'object.bush.Bush_red_flowers2', name: 'Small Red Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_red_flowers2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'flower', 'red', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_red_flowers3', assetId: 'object.bush.Bush_red_flowers3', name: 'Tiny Red Flower Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_red_flowers3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'flower', 'red', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Bush_simple1_1', assetId: 'object.bush.Bush_simple1_1', name: 'Round Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple1_1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_simple1_2', assetId: 'object.bush.Bush_simple1_2', name: 'Small Round Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple1_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_simple1_3', assetId: 'object.bush.Bush_simple1_3', name: 'Tiny Round Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple1_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Bush_simple2_1', assetId: 'object.bush.Bush_simple2_1', name: 'Leafy Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple2_1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_simple2_2', assetId: 'object.bush.Bush_simple2_2', name: 'Small Leafy Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple2_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'plant', 'small', 'forage'] },
+  { itemId: 'Bush_simple2_3', assetId: 'object.bush.Bush_simple2_3', name: 'Tiny Leafy Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Bush_simple2_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Cactus1_1', assetId: 'object.bush.Cactus1_1', name: 'Small Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus1_1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['cactus', 'desert', 'plant', 'small'] },
+  { itemId: 'Cactus1_2', assetId: 'object.bush.Cactus1_2', name: 'Round Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus1_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['cactus', 'desert', 'plant', 'small'] },
+  { itemId: 'Cactus1_3', assetId: 'object.bush.Cactus1_3', name: 'Tiny Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus1_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['cactus', 'desert', 'plant', 'tiny'] },
+  { itemId: 'Cactus2_1', assetId: 'object.bush.Cactus2_1', name: 'Tall Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus2_1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['cactus', 'desert', 'plant'] },
+  { itemId: 'Cactus2_2', assetId: 'object.bush.Cactus2_2', name: 'Small Tall Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus2_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['cactus', 'desert', 'plant', 'small'] },
+  { itemId: 'Cactus2_3', assetId: 'object.bush.Cactus2_3', name: 'Tiny Tall Cactus', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Cactus2_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['cactus', 'desert', 'plant', 'tiny'] },
+  { itemId: 'Fern1_1', assetId: 'object.bush.Fern1_1', name: 'Wide Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern1_1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['fern', 'plant', 'forage'] },
+  { itemId: 'Fern1_2', assetId: 'object.bush.Fern1_2', name: 'Small Wide Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern1_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['fern', 'plant', 'small', 'forage'] },
+  { itemId: 'Fern1_3', assetId: 'object.bush.Fern1_3', name: 'Tiny Wide Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern1_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['fern', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Fern2_1', assetId: 'object.bush.Fern2_1', name: 'Forest Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern2_1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['fern', 'plant', 'forage'] },
+  { itemId: 'Fern2_2', assetId: 'object.bush.Fern2_2', name: 'Small Forest Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern2_2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['fern', 'plant', 'small', 'forage'] },
+  { itemId: 'Fern2_3', assetId: 'object.bush.Fern2_3', name: 'Tiny Forest Fern', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Fern2_3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['fern', 'plant', 'tiny', 'forage'] },
+  { itemId: 'Snow_bush1', assetId: 'object.bush.Snow_bush1', name: 'Snow Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Snow_bush1.png'), pixelWidth: 64, pixelHeight: 64, tags: ['bush', 'snow', 'plant', 'forage'] },
+  { itemId: 'Snow_bush2', assetId: 'object.bush.Snow_bush2', name: 'Small Snow Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Snow_bush2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['bush', 'snow', 'plant', 'small', 'forage'] },
+  { itemId: 'Snow_bush3', assetId: 'object.bush.Snow_bush3', name: 'Tiny Snow Bush', source: require('../../assets/game/craftpix-net-141354-free-top-down-bushes-pixel-art/PNG/Assets/Snow_bush3.png'), pixelWidth: 16, pixelHeight: 16, tags: ['bush', 'snow', 'plant', 'tiny', 'forage'] },
+] satisfies readonly RpgBushObjectAsset[];
 
 export function rpgSpriteFrame(
   source: any,
@@ -223,11 +267,11 @@ export const RPG_CROP_STAGE_FRAMES = {
 } satisfies Record<string, Record<0 | 1 | 2, RpgSpriteFrame>>;
 
 export const RPG_OBJECT_SOURCES = Object.fromEntries(
-  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS].map(asset => [asset.itemId, asset.source]),
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS].map(asset => [asset.itemId, asset.source]),
 ) as Record<string, any>;
 
 const RPG_OBJECT_REGISTRY = Object.fromEntries(
-  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS].map(asset => [asset.assetId, {
+  [...RPG_FOREST_OBJECT_ASSETS, ...RPG_CRYSTAL_OBJECT_ASSETS, ...RPG_BUSH_OBJECT_ASSETS].map(asset => [asset.assetId, {
     id: asset.assetId,
     name: asset.name,
     category: 'object',

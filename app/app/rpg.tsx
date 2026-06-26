@@ -951,6 +951,7 @@ export default function RpgScreen() {
   const getForageCooldownText = (tags: string[] | undefined) => {
     if (tags?.includes('crystal')) return 'Crystal is recharging';
     if (tags?.includes('tree')) return 'Tree is resting';
+    if (tags?.some(tag => tag === 'bush' || tag === 'fern')) return 'Brush is resting';
     return 'Object is resting';
   };
 

@@ -79,6 +79,7 @@ These rules must remain true after every phase.
 | 22 | Crystal content pack V1 | Verified | 40 tracked crystal objects, crystal shop filter, Crystal Shards resource, crystal forage drops |
 | 23 | Forage feedback polish | Verified | Object cooldown copy is tag-aware for trees, crystals, and future forage objects |
 | 24 | Backpack search and sorting | Verified | Search across inventory metadata plus sort by kind, name, and quantity |
+| 25 | Bush content pack V1 | Verified | 40 tracked bush/cactus/fern/stump objects mapped into registry/catalog/archive/shop |
 
 ## Required Audit Loop For Every Phase
 
@@ -888,6 +889,41 @@ Manual test checklist:
 - Search `crystal` and confirm only crystal-related inventory remains.
 - Sort by quantity and confirm larger stacks move first.
 - Clear search and confirm placement/planting buttons still work from selected inventory items.
+
+## Phase 25: Bush Content Pack V1
+
+Goal: expand the object catalog with another complete tracked standalone asset pack.
+
+Deliverables:
+
+- Map 40 bush-pack standalone PNGs into `RpgAssetRegistry.ts`.
+- Add Bush Archive catalog metadata, price, rarity, footprint, and shop inclusion.
+- Add shop filters for bushes and cacti while keeping the filter row responsive.
+- Give leafy bushes/ferns light leaf forage behavior and tag-aware cooldown copy.
+- Extend `validate:rpg` to require the bush pack and shop filters.
+
+Acceptance gates:
+
+- `validate:rpg` reports 40 forest assets, 40 crystal assets, 40 bush assets, and 128 catalog items.
+- Bush, fern, cactus, and stump entries appear in archive search and shop pages.
+- Bush/cactus shop filters are visible and tappable without shrinking text into unusable boxes.
+- Bush placement uses 1x1 collision footprints and visual sizes derived from 16/32/64 px source art.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryShop.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-bush-pack-export`
+
+Manual test checklist:
+
+- Open shop, tap `Bushes`, and buy a bush or fern.
+- Open shop, tap `Cacti`, and buy a cactus.
+- Open backpack, search `bush`, `fern`, and `cactus`.
+- Place a 64px bush and confirm it occupies one blocked tile with a 2x2 visual footprint.
+- Interact with a leafy bush twice quickly and confirm leaf/drop feedback plus `Brush is resting`.
 
 ## Manual Regression Script
 
