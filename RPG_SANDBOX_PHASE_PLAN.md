@@ -153,6 +153,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 78 | Economy balance and crafting foundations V2 | Not started | Coherent prices, drops, reward sinks, recipes, station candidates, and resource value tiers |
 | 79 | Seasons/weather and farm loop V2 | Not started | Rain, seasons, growth modifiers, clutter regrowth rules, and daily cozy-life-sim cadence |
 | 80 | Performance and save-state hardening V2 | Not started | Runtime profiling, transactional persistence audits, migration simulations, and device baseline |
+| 81 | Tool terrain art V2 | Verified | Bridge, Path, and Tilled Soil now render tracked sprite frames instead of hand-drawn View fills |
 
 ## Future Development Roadmap
 
@@ -3503,5 +3504,66 @@ Expansion notes saved:
 - Phase 72 still needs better lever/gate/trap link ownership feedback and possibly visible state variants, but without normal-mode debug boxes.
 
 Phase 71/72 slice status:
+
+- Verified.
+
+### Phase 81 Audit
+
+Intended behavior:
+
+- Close the original tool-art gap where Bridge, Path, and Tilled Soil were still hand-drawn placeholder View fills.
+- Render Bridge, Path, and Tilled Soil from tracked sprite frames in `Tiles_exterior.png`.
+- Log the frame coordinates in `RPG_ASSET_ATLAS.md` so the terrain art is inspectable.
+- Update the RPG validator to require sprite-backed terrain tool tiles.
+
+Negative guarantees:
+
+- This phase must not change terrain persistence, tool costs, movement passability, water blocking, crop planting rules, action buttons, or inventory logic.
+- This phase must not stage loose untracked asset folders; it uses tracked assets under `app/assets/game/...`.
+- This phase must not claim final farm-soil art for Tilled Soil; it is sprite-backed candidate ground art until a dedicated soil frame is verified.
+
+Files changed:
+
+- `app/src/engine/TileArt.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_ASSET_ATLAS.md`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated and intentionally not staged by this phase: `app/app/settings.tsx`, `.agents/`, `ORIGINAL_REQUEST.md`, and loose untracked asset folders.
+
+Design attack findings:
+
+- The previous terrain tiles were no longer flat debug colors, but they were still manually drawn View art.
+- A tracked temple exterior tile sheet contains usable terrain frames, so the fastest useful improvement is to frame that sheet rather than inventing new art.
+- Bridge and Path now use true sprite frames; Tilled Soil uses a real ground/dirt candidate frame but still needs a future farm-specific soil verification pass.
+
+Implementation attack findings:
+
+- `frameTile` scales arbitrary source-sheet frames into the existing `TILE_SIZE`, preserving the current map/grid model.
+- `BridgeTile`, `PathTile`, and `TilledTile` remain the public render components used by `rpg.tsx`, so no terrain persistence or tool code changed.
+- Validator now rejects missing terrain frame constants and rejects returning to hand-drawn View fill implementations for these tool tiles.
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_ASSET_ATLAS.md RPG_SANDBOX_PHASE_PLAN.md app/src/engine/TileArt.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Equip Bridge Kit, build a bridge on water, and confirm it shows sprite-backed plank/bridge art.
+- Equip Path, place a path on grass, and confirm it shows sprite-backed path/stone art.
+- Equip Plow, till grass, and confirm it shows sprite-backed ground art instead of flat brown View lines.
+- Confirm terrain tool costs, energy spending, movement passability, and normal `Interact`/`Attack` controls still behave the same.
+
+Expansion notes saved:
+
+- Later replace Tilled Soil with a dedicated verified farm-soil frame during Phase 74.
+- Later add tile variants/auto-tiling for path and bridge adjacency after direct placement UX is stronger.
+
+Phase 81 status:
 
 - Verified.

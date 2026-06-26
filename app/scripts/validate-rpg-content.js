@@ -1054,12 +1054,23 @@ function validateRpgToolEnergyAndCharacterUi() {
   }
 }
 
-function validateRpgTileArtPlaceholders() {
+function validateRpgTerrainTileArtV2() {
   const tileArtPath = path.join(engineDir, 'TileArt.tsx');
   const tileArt = fs.readFileSync(tileArtPath, 'utf8');
-  if (!tileArt.includes('export function PathTile()')) fail('TileArt must expose a path art placeholder');
-  if (!tileArt.includes('export function TilledTile()')) fail('TileArt must expose a tilled-soil art placeholder');
-  if (!tileArt.includes('styled placeholders')) fail('TileArt must document that path/tilled/bridge art is still placeholder art');
+  if (!tileArt.includes('TEMPLE_EXTERIOR_TILES_SHEET')) fail('TileArt must use a tracked terrain tile sheet for RPG terrain tools');
+  if (!tileArt.includes('export const BRIDGE_TILE_FRAME')) fail('TileArt must expose bridge tile frame metadata');
+  if (!tileArt.includes('export const PATH_TILE_FRAME')) fail('TileArt must expose path tile frame metadata');
+  if (!tileArt.includes('export const TILLED_TILE_FRAME')) fail('TileArt must expose tilled-soil tile frame metadata');
+  if (!tileArt.includes('function frameTile(')) fail('TileArt must render arbitrary sprite frames for tool-created terrain');
+  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, BRIDGE_TILE_FRAME);')) {
+    fail('BridgeTile must render a tracked sprite frame instead of hand-drawn View fills');
+  }
+  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, PATH_TILE_FRAME);')) {
+    fail('PathTile must render a tracked sprite frame instead of hand-drawn View fills');
+  }
+  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, TILLED_TILE_FRAME);')) {
+    fail('TilledTile must render a tracked sprite frame instead of hand-drawn View fills');
+  }
   if (!rpgScreen.includes('PathTile')) fail('RPG screen must render path tiles with TileArt instead of flat color');
   if (!rpgScreen.includes('TilledTile')) fail('RPG screen must render tilled soil with TileArt instead of flat color');
 }
@@ -1246,7 +1257,7 @@ validateSanctuaryObjectRelations();
 validateResourceNodeFeedback();
 validateLeverMechanicsV1();
 validateRpgToolEnergyAndCharacterUi();
-validateRpgTileArtPlaceholders();
+validateRpgTerrainTileArtV2();
 validateSanctuaryClutterV1();
 validateRpgCraftingV1();
 validateIconQaAndMechanismReadabilityV2();

@@ -4,13 +4,18 @@ import { TILE_SIZE } from './MapData';
 
 const WALLS_FLOOR_SHEET = require('../../assets/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/walls_floor.png');
 const WATER_SHEET = require('../../assets/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/Water_coasts_animation.png');
+const TEMPLE_EXTERIOR_TILES_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Tiles_exterior.png');
 
 const SHEET_TILE_PX = 16;
 const SCALE = TILE_SIZE / SHEET_TILE_PX;
+const TEMPLE_EXTERIOR_SHEET = { width: 432, height: 256 };
 
 export const FLOOR_TILE_COORD = { col: 1, row: 10 };
 export const WALL_TILE_COORD = { col: 11, row: 20 };
 export const WATER_TILE_COORD = { col: 0, row: 27 };
+export const BRIDGE_TILE_FRAME = { x: 352, y: 0, width: 32, height: 32 };
+export const PATH_TILE_FRAME = { x: 224, y: 32, width: 32, height: 32 };
+export const TILLED_TILE_FRAME = { x: 176, y: 128, width: 32, height: 32 };
 
 function sheetTile(source: any, widthTiles: number, heightTiles: number, col: number, row: number) {
   return (
@@ -39,84 +44,36 @@ export function WaterTile() {
   return sheetTile(WATER_SHEET, 22, 28, WATER_TILE_COORD.col, WATER_TILE_COORD.row);
 }
 
-// No bridge/path/tilled field tile asset has been verified yet, so these are
-// styled placeholders built from Views instead of flat debug colors.
-export function BridgeTile() {
+function frameTile(source: any, sheet: { width: number; height: number }, frame: { x: number; y: number; width: number; height: number }) {
+  const scale = Math.max(TILE_SIZE / frame.width, TILE_SIZE / frame.height);
   return (
-    <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#a9763f', overflow: 'hidden' }}>
-      {[0.2, 0.5, 0.8].map(y => (
-        <View
-          key={y}
-          style={{
-            position: 'absolute',
-            top: y * TILE_SIZE - 1,
-            left: 0,
-            right: 0,
-            height: 2,
-            backgroundColor: '#7a5328',
-          }}
-        />
-      ))}
-      <View style={{ position: 'absolute', left: 2, top: 0, bottom: 0, width: 2, backgroundColor: '#8a5f30' }} />
-      <View style={{ position: 'absolute', right: 2, top: 0, bottom: 0, width: 2, backgroundColor: '#8a5f30' }} />
+    <View style={{ width: TILE_SIZE, height: TILE_SIZE, overflow: 'hidden' }}>
+      <Image
+        source={source}
+        style={{
+          width: sheet.width * scale,
+          height: sheet.height * scale,
+          transform: [
+            { translateX: -frame.x * scale },
+            { translateY: -frame.y * scale },
+          ],
+        }}
+        resizeMode="stretch"
+      />
     </View>
   );
+}
+
+// These use tracked terrain frames instead of hand-drawn debug View fills.
+// Tilled soil is still candidate ground art until a dedicated farm-soil frame is verified.
+export function BridgeTile() {
+  return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, BRIDGE_TILE_FRAME);
 }
 
 export function PathTile() {
-  return (
-    <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#b88c52', overflow: 'hidden' }}>
-      {Array.from({ length: 10 }).map((_, index) => (
-        <View
-          key={index}
-          style={{
-            position: 'absolute',
-            left: (index * 11) % TILE_SIZE,
-            top: (index * 7) % TILE_SIZE,
-            width: 3 + (index % 3),
-            height: 2,
-            borderRadius: 2,
-            backgroundColor: index % 2 === 0 ? '#d2aa69' : '#8c6336',
-            opacity: 0.72,
-          }}
-        />
-      ))}
-      <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: 'rgba(255,242,187,0.18)' }} />
-      <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: 'rgba(45,28,16,0.32)' }} />
-    </View>
-  );
+  return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, PATH_TILE_FRAME);
 }
 
 export function TilledTile() {
-  return (
-    <View style={{ width: TILE_SIZE, height: TILE_SIZE, backgroundColor: '#604126', overflow: 'hidden' }}>
-      {[0.2, 0.42, 0.64, 0.86].map(y => (
-        <View
-          key={y}
-          style={{
-            position: 'absolute',
-            left: 3,
-            right: 3,
-            top: y * TILE_SIZE,
-            height: 2,
-            borderRadius: 2,
-            backgroundColor: '#8a6139',
-          }}
-        />
-      ))}
-      {[0.3, 0.68].map(x => (
-        <View
-          key={x}
-          style={{
-            position: 'absolute',
-            top: 2,
-            bottom: 2,
-            left: x * TILE_SIZE,
-            width: 1,
-            backgroundColor: 'rgba(34,20,12,0.38)',
-          }}
-        />
-      ))}
-    </View>
-  );
+  return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, TILLED_TILE_FRAME);
 }

@@ -83,6 +83,9 @@ RPG_UI_FRAMES.inventoryPanel
 RPG_UI_FRAMES.shopPanel
 RPG_UI_FRAMES.leaves
 RPG_UI_FRAMES.seed
+BRIDGE_TILE_FRAME
+PATH_TILE_FRAME
+TILLED_TILE_FRAME
 RPG_ARCHIVE_FRAMES.closedBook
 RPG_ARCHIVE_FRAMES.openBook
 ```
@@ -137,6 +140,24 @@ Runtime behavior:
 - The plot renderer falls back to the seed icon if a crop has no verified stage frames.
 - `Plants.png` is not imported by runtime crop rendering because its previously chosen frames were visually wrong on device.
 - `Supplies.png` remains a candidate sheet for produce/harvest icons and is not yet used at runtime.
+
+## Tool Terrain Tile Art
+
+`TileArt.tsx` now uses tracked sprite frames from:
+
+`app/assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Tiles_exterior.png`
+
+Runtime terrain mappings:
+
+- `BRIDGE_TILE_FRAME`: x 352, y 0, 32x32. Used by `BridgeTile`.
+- `PATH_TILE_FRAME`: x 224, y 32, 32x32. Used by `PathTile`.
+- `TILLED_TILE_FRAME`: x 176, y 128, 32x32. Used by `TilledTile`.
+
+Notes:
+
+- Bridge and Path are now sprite-backed instead of hand-drawn view fills.
+- Tilled Soil is sprite-backed candidate ground art, but it is not final farm-soil art yet.
+- Future farming art should still replace Tilled Soil with a dedicated verified soil frame if one is found.
 
 ## Farm Animal Pack Mapping
 
