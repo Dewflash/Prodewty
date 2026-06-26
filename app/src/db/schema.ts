@@ -1447,6 +1447,46 @@ function runMigrations() {
     normalizeUserInventoryTable();
     db.execSync('PRAGMA user_version = 56');
   }
+
+  if (version < 57) {
+    normalizeGardenPlotsTable();
+    db.execSync('PRAGMA user_version = 57');
+  }
+
+  if (version < 58) {
+    createRpgDiscoveriesTable();
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT item_id, 'inventory'
+      FROM user_inventory
+      WHERE COALESCE(quantity, 0) > 0
+    `);
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT type, 'place'
+      FROM sanctuary_objects
+      WHERE type IS NOT NULL
+    `);
+    db.execSync(`
+      INSERT OR IGNORE INTO rpg_discoveries (item_id, source)
+      SELECT seed_item_id, 'plant'
+      FROM garden_plots
+      WHERE seed_item_id IS NOT NULL
+    `);
+    db.execSync('PRAGMA user_version = 58');
+  }
+}
+
+function createRpgDiscoveriesTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS rpg_discoveries (
+      item_id TEXT PRIMARY KEY,
+      first_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      last_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      source TEXT NOT NULL DEFAULT 'bootstrap',
+      seen_count INTEGER NOT NULL DEFAULT 1
+    );
+  `);
 }
 
 function normalizeUserInventoryTable() {
@@ -1492,6 +1532,81 @@ function normalizeUserInventoryTable() {
 
   db.execSync('DROP TABLE user_inventory');
   db.execSync('ALTER TABLE user_inventory_normalized RENAME TO user_inventory');
+}
+
+function normalizeGardenPlotsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS garden_plots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL,
+      grid_x INTEGER NOT NULL,
+      grid_y INTEGER NOT NULL,
+      planted_at TEXT NOT NULL,
+      growth_stage INTEGER DEFAULT 0
+    );
+  `);
+
+  const columns = db.getAllSync<{ name: string }>('PRAGMA table_info(garden_plots)');
+  const hasSeedItemId = columns.some(col => col.name === 'seed_item_id');
+  const hasCropId = columns.some(col => col.name === 'crop_id');
+  const hasRow = columns.some(col => col.name === 'row');
+  const hasCol = columns.some(col => col.name === 'col');
+  const hasUpdatedAt = columns.some(col => col.name === 'updated_at');
+
+  if (hasSeedItemId && hasCropId && hasRow && hasCol && !hasUpdatedAt) {
+    try { db.execSync(`ALTER TABLE garden_plots ADD COLUMN updated_at TEXT`); } catch {}
+  }
+
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS garden_plots_normalized (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seed_item_id TEXT NOT NULL,
+      crop_id TEXT NOT NULL,
+      row INTEGER NOT NULL,
+      col INTEGER NOT NULL,
+      planted_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      growth_stage INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(row, col)
+    );
+  `);
+  db.execSync('DELETE FROM garden_plots_normalized');
+
+  if (hasSeedItemId && hasCropId && hasRow && hasCol) {
+    db.execSync(`
+      INSERT OR IGNORE INTO garden_plots_normalized
+        (id, seed_item_id, crop_id, row, col, planted_at, growth_stage, updated_at)
+      SELECT
+        id,
+        seed_item_id,
+        crop_id,
+        row,
+        col,
+        COALESCE(planted_at, datetime('now', 'localtime')),
+        COALESCE(growth_stage, 0),
+        COALESCE(updated_at, datetime('now', 'localtime'))
+      FROM garden_plots
+    `);
+  } else {
+    db.execSync(`
+      INSERT OR IGNORE INTO garden_plots_normalized
+        (id, seed_item_id, crop_id, row, col, planted_at, growth_stage)
+      SELECT
+        id,
+        item_id,
+        item_id || '_crop',
+        grid_y,
+        grid_x,
+        COALESCE(planted_at, datetime('now', 'localtime')),
+        COALESCE(growth_stage, 0)
+      FROM garden_plots
+    `);
+  }
+
+  db.execSync('DROP TABLE garden_plots');
+  db.execSync('ALTER TABLE garden_plots_normalized RENAME TO garden_plots');
+  db.execSync('CREATE INDEX IF NOT EXISTS idx_garden_plots_position ON garden_plots(row, col)');
+  db.execSync('CREATE INDEX IF NOT EXISTS idx_garden_plots_seed ON garden_plots(seed_item_id)');
 }
 
 // Phase B quest phrasing bank — one editable block, same convention as DEFAULT_CATEGORIES
@@ -1553,7 +1668,7 @@ export function performFullReset(archiveHistory: boolean = false, retainCustomiz
     'game_logs', 'dungeon_runs',
     'habit_completions', 'habits',
     'dungeon_unlocks',
-    'garden_plots', 'user_inventory',
+    'garden_plots', 'user_inventory', 'rpg_discoveries',
   ];
   for (const t of wipeTables) {
     try { db.execSync(`DELETE FROM ${t}`); } catch {}
