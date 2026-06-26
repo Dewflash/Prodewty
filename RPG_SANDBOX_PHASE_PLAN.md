@@ -91,6 +91,7 @@ These rules must remain true after every phase.
 | 34 | Temple content pack V1 | Verified | 18 curated temple frame objects mapped into registry/catalog/archive/shop |
 | 35 | Animated temple props V1 | Verified | Shared sprite animation renderer plus fire/chest temple props |
 | 36 | Temple hazard props V1 | Verified | Spike/blade traps plus lever/gate temple props with tighter footprints |
+| 37 | Object inspect feedback V1 | Verified | Interact now gives visible feedback for non-forage placed props |
 
 ## Required Audit Loop For Every Phase
 
@@ -1905,5 +1906,53 @@ Expansion notes saved:
 - Add puzzle-room templates after map/room authoring is stabilized.
 
 Phase 36 status:
+
+- Verified.
+
+### Phase 37 Audit
+
+Intended behavior:
+
+- `Interact` remains the only normal-mode object interaction button.
+- Forage-capable objects still roll their configured drops and cooldown text.
+- Non-forage objects now pulse and show clear inspect feedback instead of feeling inert.
+- Temple hazards, levers, gates, chests, fire, relics, and structures get tag-aware harmless feedback.
+- Missing object catalog data reports a warning toast instead of silently doing nothing.
+
+Negative guarantees:
+
+- Inspect feedback must not add trap damage, lever links, gate toggles, chest loot, puzzle state, combat state, or persistence schema changes.
+- Inspect feedback must not add new normal-mode buttons or change build-mode placement controls.
+- Forage drop probabilities, inventory writes, discovery recording, and cooldown behavior must remain unchanged.
+- Decorative objects must not become gatherable unless their catalog item explicitly defines `forageDrops`.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-object-inspect-export`
+- Passed: source inspection confirmed `Interact` routes all placed objects through one interaction path and only forage-capable objects write inventory.
+
+Manual test checklist:
+
+- Place a tree and confirm `Interact` still can drop leaves/seeds or show the cooldown/resting text.
+- Place a temple spike trap and confirm `Interact` shows dormant trap feedback with a pulse and no damage.
+- Place a temple lever and lattice gate; confirm `Interact` shows not-linked/locked feedback with no puzzle state.
+- Place a chest/fire/relic/structure and confirm feedback is visible but no inventory is granted.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Link lever/gate/trap relationships only after a persisted object-relation schema exists.
+- Add chest loot only after economy balance and chest rarity rules exist.
+- Add trap damage/disable behavior only after health, invulnerability, and safe-path rules are designed.
+
+Phase 37 status:
 
 - Verified.

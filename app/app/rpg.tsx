@@ -957,10 +957,35 @@ export default function RpgScreen() {
     return 'Object is resting';
   };
 
-  const forageObject = (object: MapObject) => {
+  const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string) => {
+    const tags = item?.tags ?? [];
+    if (tags.includes('trap') || tags.includes('hazard')) return 'Dormant trap';
+    if (tags.includes('lever')) return 'Lever is not linked yet';
+    if (tags.includes('gate')) return 'Gate is locked in place';
+    if (tags.includes('mechanism')) return 'Mechanism is not linked yet';
+    if (tags.includes('chest')) return 'Chest is sealed for now';
+    if (tags.includes('fire')) return 'Flame flickers';
+    if (tags.some(tag => ['relic', 'statue', 'idol'].includes(tag))) return 'Ancient relic';
+    if (tags.some(tag => ['structure', 'wall', 'facade'].includes(tag))) return 'Sturdy structure';
+    if (tags.includes('decor')) return 'Decor inspected';
+    return `Inspected ${item?.name ?? fallbackType}`;
+  };
+
+  const interactWithObject = (object: MapObject) => {
     const item = getPlaceableItem(object.type);
-    if (!item?.forageDrops?.length) {
-      showWorldToast({ text: 'Nothing to gather', tone: 'muted' });
+    if (!item) {
+      showWorldToast({ text: 'Object data missing', tone: 'warn' });
+      return;
+    }
+
+    pulseObject(object.id);
+
+    if (!item.forageDrops?.length) {
+      showWorldToast({
+        text: getObjectInspectText(item, object.type),
+        item,
+        tone: 'muted',
+      });
       return;
     }
 
@@ -971,7 +996,6 @@ export default function RpgScreen() {
     }
     forageCooldowns.current[object.id] = now + 1200;
 
-    pulseObject(object.id);
     const drop = rollForageDrop(item.forageDrops);
     if (!drop) {
       showWorldToast({ text: 'Nothing dropped', tone: 'muted' });
@@ -1096,7 +1120,7 @@ export default function RpgScreen() {
     if (activeZone === 'sanctuary') {
       const object = getObjectAtTile(target.row, target.col);
       if (object) {
-        forageObject(object);
+        interactWithObject(object);
         return;
       }
 
