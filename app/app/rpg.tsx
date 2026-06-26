@@ -1642,7 +1642,7 @@ export default function RpgScreen() {
       <View style={styles.actionBtns}>
         <Pressable style={styles.actionBtn} onPress={handleInteract}>
           <Feather name="mouse-pointer" size={20} color="#fff" />
-          <Text style={styles.actionText}>{buildItem ? 'Place' : 'Interact'}</Text>
+          <Text style={styles.actionText}>Interact</Text>
         </Pressable>
         <Pressable
           style={[styles.actionBtn, styles.attackBtn, buildItem && styles.disabledBtn]}

@@ -115,6 +115,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 43 | Gate rattle feedback V1 | Verified | Gate interactions persist locked feedback without opening or collision side effects |
 | 44 | Interaction target prompt V1 | Verified | Show the current Interact target and highlight target objects without adding controls |
 | 45 | Interaction target reticle V1 | Verified | Show the exact world-space target footprint for the current Interact target |
+| 46 | Stable action button labels | Verified | Keep bottom action controls labeled Interact and Attack across normal and build modes |
 
 ## Required Audit Loop For Every Phase
 
@@ -2386,5 +2387,51 @@ Expansion notes saved:
 - Add accessibility haptics only after the visual interaction path is stable.
 
 Phase 45 status:
+
+- Verified.
+
+### Phase 46 Audit
+
+Intended behavior:
+
+- The primary bottom action button is always labeled `Interact`.
+- The secondary bottom action button is always labeled `Attack`.
+- Build mode continues to use the Interact button to confirm placement.
+- Build mode keeps Attack visible but disabled, preserving the two-button control surface.
+- The RPG validator enforces the stable action button label protocol.
+
+Negative guarantees:
+
+- Build mode must not rename the primary action button to `Place`.
+- This phase must not alter placement validity, target reticles, movement, collision, persistence, economy, shop, backpack, archive, or object interactions.
+- This phase must not add any new normal-mode action button.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-action-labels-export`
+- Passed: source inspection confirmed the bottom action buttons remain `Interact` and `Attack`, with Attack still disabled in build mode.
+
+Manual test checklist:
+
+- Enter normal mode; confirm bottom buttons read `Interact` and `Attack`.
+- Start placing an object from the backpack; confirm bottom buttons still read `Interact` and `Attack`.
+- Confirm Interact still confirms valid placement.
+- Confirm Attack remains disabled while build mode is active.
+
+Expansion notes saved:
+
+- Future tools should appear as contextual state around Interact, not as extra permanent buttons.
+- If controller support is added, map confirm/cancel/tool inputs onto the same action protocol.
+
+Phase 46 status:
 
 - Verified.

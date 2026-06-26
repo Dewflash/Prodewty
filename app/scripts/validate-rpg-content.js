@@ -699,6 +699,21 @@ function validateInteractionTargetPrompt() {
   }
 }
 
+function validateActionButtonProtocol() {
+  if (rpgScreen.includes("buildItem ? 'Place' : 'Interact'")) {
+    fail('Primary action button must keep Interact label even in build mode');
+  }
+  if (!rpgScreen.includes('<Text style={styles.actionText}>Interact</Text>')) {
+    fail('Primary action button must render the stable Interact label');
+  }
+  if (!rpgScreen.includes('<Text style={styles.actionText}>Attack</Text>')) {
+    fail('Secondary action button must render the stable Attack label');
+  }
+  if (!rpgScreen.includes('buildItem && styles.disabledBtn')) {
+    fail('Attack button must remain visibly disabled in build mode instead of being replaced');
+  }
+}
+
 function validateSanctuaryObjectRelations() {
   if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
     fail('Schema must create sanctuary_object_relations for future object links');
@@ -769,6 +784,7 @@ validateLeverToggleFeedback();
 validateTrapDisableFeedback();
 validateGateRattleFeedback();
 validateInteractionTargetPrompt();
+validateActionButtonProtocol();
 validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {
