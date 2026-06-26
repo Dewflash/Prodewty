@@ -1058,6 +1058,42 @@ function validateSanctuaryClutterV1() {
   }
 }
 
+function validateRpgCraftingV1() {
+  if (!rpgScreen.includes('const CRAFTING_RECIPES = [')) {
+    fail('RPG screen must define crafting recipes');
+  }
+  ['woodland_planter', 'crystal_lamp', 'temple_chest'].forEach(recipeId => {
+    if (!rpgScreen.includes(`id: '${recipeId}'`)) fail(`Missing crafting recipe: ${recipeId}`);
+  });
+  if (!rpgScreen.includes('const craftRecipe = (recipeId: string) =>')) {
+    fail('RPG screen must expose a crafting transaction handler');
+  }
+  if (!rpgScreen.includes('UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ? AND quantity >= ?')) {
+    fail('Crafting must consume ingredients with quantity guards');
+  }
+  if (!rpgScreen.includes('ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity')) {
+    fail('Crafting must add recipe output through inventory upsert');
+  }
+  if (!rpgScreen.includes("recordRpgDiscovery(recipe.outputItemId, 'inventory')")) {
+    fail('Crafted outputs must record RPG discovery');
+  }
+  if (!rpgScreen.includes('try { db.execSync(\'ROLLBACK\'); } catch {}')) {
+    fail('Crafting must rollback on failure');
+  }
+  if (!rpgScreen.includes('accessibilityLabel="Open crafting"')) {
+    fail('HUD must expose a crafting button');
+  }
+  if (!rpgScreen.includes('styles.craftingPanel')) {
+    fail('RPG screen must render the crafting panel');
+  }
+  if (!rpgScreen.includes('disabled={!canCraft}')) {
+    fail('Craft button must disable when ingredients are missing');
+  }
+  if (!rpgScreen.includes("setIsCraftingOpen(false)")) {
+    fail('Crafting panel must close when other RPG panels/modes take over');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -1107,6 +1143,7 @@ validateLeverMechanicsV1();
 validateRpgToolEnergyAndCharacterUi();
 validateRpgTileArtPlaceholders();
 validateSanctuaryClutterV1();
+validateRpgCraftingV1();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

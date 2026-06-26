@@ -140,6 +140,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 65 | Performance and save-state hardening | Not started | Profile runtime hotspots, persistence transactions, migrations, and recovery paths |
 | 66 | Tool energy, watering, and character panel | Verified | Watering Can action, MP energy costs, character/equipment panel, textured tile placeholders |
 | 67 | Clearable sanctuary clutter V1 | Verified | One-time weeds/twigs/rocks spawn, energy-gated clearing, resource rewards, collision cleanup |
+| 68 | Crafting recipes V1 | Verified | Resource recipes consume materials transactionally and output placeable inventory items |
 
 ## Future Development Roadmap
 
@@ -3055,5 +3056,54 @@ Expansion notes saved:
 - Later add regrowth/new debris events tied to storms or seasons, but only after the one-time cleanup loop is proven.
 
 Phase 67 status:
+
+- Verified.
+
+### Phase 68 Audit
+
+Intended behavior:
+
+- Add a compact Craft HUD panel without adding new normal-world action buttons.
+- Define a small V1 recipe list that turns gathered resources into placeable inventory items.
+- Crafting recipes consume Wood, Leaves, and Crystal Shards so resources are useful beyond selling.
+- Crafting is transactional: all ingredient decrements must succeed before output inventory is granted.
+- Crafted outputs record RPG discovery, refresh inventory UI, and can be placed later through the Backpack.
+- The RPG validator enforces the recipe list, HUD entry, panel rendering, guarded ingredient consumption, inventory output, discovery, disabled craft buttons, and rollback path.
+
+Negative guarantees:
+
+- This phase must not add a separate crafting database table or migration.
+- This phase must not place crafted objects directly into the world; Backpack/build mode remains the placement path.
+- This phase must not allow partial ingredient loss if output insertion fails.
+- This phase must not hide or replace `Interact` and `Attack`.
+- This phase must not claim final crafting balance; recipes are V1 sinks for existing resource loops.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js`
+
+Manual test checklist:
+
+- Open Craft from the HUD and confirm recipe cards show output items and ingredient owned/required counts.
+- With insufficient resources, confirm Craft is disabled and missing ingredients are visibly marked.
+- Gather or grant enough Wood, Leaves, and Crystal Shards, craft an item, and confirm ingredients decrease and output appears in Backpack.
+- Place a crafted output from Backpack and confirm normal placement rules still apply.
+- Confirm Backpack, Archive, Shop, Character, Interact, Attack, Watering Can, and clutter clearing still work.
+
+Expansion notes saved:
+
+- Later extract recipes to a dedicated catalog/module once recipe count grows.
+- Later add station-gated recipes through processors such as ovens, mills, or workbenches.
+- Later add recipe unlocks through Archive discoveries, quests, or dungeon rewards.
+
+Phase 68 status:
 
 - Verified.

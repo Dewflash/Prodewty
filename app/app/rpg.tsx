@@ -143,6 +143,38 @@ const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_rock', row: 8, col: 14 },
   { type: 'rpg_clutter_rock', row: 15, col: 8 },
 ];
+const CRAFTING_RECIPES = [
+  {
+    id: 'woodland_planter',
+    label: 'Woodland Planter',
+    outputItemId: 'Bush_simple1_1',
+    quantity: 1,
+    ingredients: [
+      { itemId: RPG_WOOD_ITEM_ID, quantity: 4 },
+      { itemId: 'rpg_leaves', quantity: 3 },
+    ],
+  },
+  {
+    id: 'crystal_lamp',
+    label: 'Crystal Lamp',
+    outputItemId: 'Blue_crystal4',
+    quantity: 1,
+    ingredients: [
+      { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, quantity: 4 },
+      { itemId: RPG_WOOD_ITEM_ID, quantity: 2 },
+    ],
+  },
+  {
+    id: 'temple_chest',
+    label: 'Temple Chest',
+    outputItemId: 'Temple_animated_chest',
+    quantity: 1,
+    ingredients: [
+      { itemId: RPG_WOOD_ITEM_ID, quantity: 6 },
+      { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, quantity: 2 },
+    ],
+  },
+];
 
 type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
@@ -228,6 +260,7 @@ export default function RpgScreen() {
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
+  const [isCraftingOpen, setIsCraftingOpen] = useState(false);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
@@ -442,6 +475,7 @@ export default function RpgScreen() {
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
+    setIsCraftingOpen(false);
     setInteractionPrompt(null);
     buildActive.value = 0;
     buildColWidth.value = 0;
@@ -513,6 +547,7 @@ export default function RpgScreen() {
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
+    setIsCraftingOpen(false);
   };
 
   const beginPlantMode = (seedItemId: string) => {
@@ -544,6 +579,7 @@ export default function RpgScreen() {
     setIsBackpackOpen(false);
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
+    setIsCraftingOpen(false);
   };
 
   const clearBuildMode = () => {
@@ -1017,6 +1053,54 @@ export default function RpgScreen() {
     db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', total);
     refreshCoins();
     showWorldToast({ text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins`, tone: 'success' });
+  };
+
+  const craftRecipe = (recipeId: string) => {
+    const recipe = CRAFTING_RECIPES.find(item => item.id === recipeId);
+    if (!recipe) return;
+    const outputItem = getRpgItem(recipe.outputItemId);
+    if (!outputItem) {
+      showWorldToast({ text: 'Recipe output missing', tone: 'warn' });
+      return;
+    }
+
+    const missing = recipe.ingredients.find(ingredient => getInventoryQuantity(ingredient.itemId) < ingredient.quantity);
+    if (missing) {
+      const item = getRpgItem(missing.itemId);
+      showWorldToast({ text: `Need ${missing.quantity} ${item?.name ?? missing.itemId}`, item, tone: 'warn' });
+      return;
+    }
+
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      recipe.ingredients.forEach(ingredient => {
+        const result = db.runSync(
+          'UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ? AND quantity >= ?',
+          ingredient.quantity,
+          ingredient.itemId,
+          ingredient.quantity,
+        );
+        if (result.changes <= 0) {
+          throw new Error(`Missing ingredient: ${ingredient.itemId}`);
+        }
+      });
+      db.runSync(
+        `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
+         ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
+        recipe.outputItemId,
+        recipe.quantity,
+      );
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to craft RPG recipe', e);
+      showWorldToast({ text: 'Craft failed', item: outputItem, tone: 'warn' });
+      return;
+    }
+
+    recordRpgDiscovery(recipe.outputItemId, 'inventory');
+    bumpInventoryRevision();
+    showWorldToast({ text: `Crafted ${outputItem.name}`, item: outputItem, tone: 'success' });
   };
 
   useEffect(() => {
@@ -2358,6 +2442,7 @@ export default function RpgScreen() {
                   setIsShopOpen(false);
                   setIsArchiveOpen(false);
                   setIsCharacterOpen(false);
+                  setIsCraftingOpen(false);
                   setIsBackpackOpen(true);
                 }}
               >
@@ -2371,6 +2456,7 @@ export default function RpgScreen() {
                   setIsShopOpen(false);
                   setIsArchiveOpen(false);
                   setIsBackpackOpen(false);
+                  setIsCraftingOpen(false);
                   setIsCharacterOpen(true);
                 }}
               >
@@ -2384,10 +2470,25 @@ export default function RpgScreen() {
                   setIsShopOpen(false);
                   setIsBackpackOpen(false);
                   setIsCharacterOpen(false);
+                  setIsCraftingOpen(false);
                   setIsArchiveOpen(true);
                 }}
               >
                 <RpgSpriteFrameView frame={RPG_ARCHIVE_FRAMES.closedBook} size={24} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open crafting"
+                style={styles.iconHudBtn}
+                onPress={() => {
+                  setIsShopOpen(false);
+                  setIsArchiveOpen(false);
+                  setIsBackpackOpen(false);
+                  setIsCharacterOpen(false);
+                  setIsCraftingOpen(true);
+                }}
+              >
+                <Feather name="tool" size={18} color="#fff2bb" />
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -2397,6 +2498,7 @@ export default function RpgScreen() {
                   setIsBackpackOpen(false);
                   setIsArchiveOpen(false);
                   setIsCharacterOpen(false);
+                  setIsCraftingOpen(false);
                   setIsShopOpen(true);
                 }}
               >
@@ -2499,6 +2601,67 @@ export default function RpgScreen() {
           <View style={styles.interactionPromptTextStack}>
             <Text style={styles.interactionPromptLabel} numberOfLines={1}>{interactionPrompt.label}</Text>
             <Text style={styles.interactionPromptDetail} numberOfLines={1}>{interactionPrompt.detail}</Text>
+          </View>
+        </View>
+      )}
+
+      {isCraftingOpen && !buildItem && (
+        <View style={styles.craftingPanel}>
+          <View style={styles.craftingHeader}>
+            <View>
+              <Text style={styles.craftingTitle}>Craft</Text>
+              <Text style={styles.craftingSubtitle}>Turn gathered resources into placeable items</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close crafting"
+              style={styles.characterCloseButton}
+              onPress={() => setIsCraftingOpen(false)}
+            >
+              <Feather name="x" size={15} color="#fff" />
+            </Pressable>
+          </View>
+          <View style={styles.recipeList}>
+            {CRAFTING_RECIPES.map(recipe => {
+              const outputItem = getRpgItem(recipe.outputItemId);
+              const canCraft = recipe.ingredients.every(ingredient => getInventoryQuantity(ingredient.itemId) >= ingredient.quantity);
+              return (
+                <View key={recipe.id} style={styles.recipeCard}>
+                  <View style={styles.recipeOutput}>
+                    <RpgItemIcon item={outputItem} size={34} fallbackLabel={recipe.outputItemId} />
+                    <View style={styles.recipeTitleStack}>
+                      <Text numberOfLines={1} style={styles.recipeName}>{recipe.label}</Text>
+                      <Text numberOfLines={1} style={styles.recipeOutputText}>{outputItem?.name ?? recipe.outputItemId}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.recipeIngredients}>
+                    {recipe.ingredients.map(ingredient => {
+                      const ingredientItem = getRpgItem(ingredient.itemId);
+                      const owned = getInventoryQuantity(ingredient.itemId);
+                      const enough = owned >= ingredient.quantity;
+                      return (
+                        <View key={`${recipe.id}-${ingredient.itemId}`} style={[styles.ingredientPill, !enough && styles.ingredientPillMissing]}>
+                          <RpgItemIcon item={ingredientItem} size={16} fallbackLabel={ingredient.itemId} />
+                          <Text numberOfLines={1} style={[styles.ingredientText, !enough && styles.ingredientTextMissing]}>
+                            {owned}/{ingredient.quantity}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Craft ${recipe.label}`}
+                    disabled={!canCraft}
+                    style={[styles.craftButton, !canCraft && styles.craftButtonDisabled]}
+                    onPress={() => craftRecipe(recipe.id)}
+                  >
+                    <Feather name="tool" size={14} color="#fff" />
+                    <Text style={styles.craftButtonText}>{canCraft ? 'Craft' : 'Need mats'}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         </View>
       )}
@@ -3185,6 +3348,116 @@ const styles = StyleSheet.create({
     color: 'rgba(112,214,255,0.86)',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  craftingPanel: {
+    position: 'absolute',
+    top: 128,
+    right: 20,
+    width: 292,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: 'rgba(20,18,16,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.32)',
+    zIndex: 115,
+  },
+  craftingHeader: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  craftingTitle: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 16,
+  },
+  craftingSubtitle: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.66)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 10,
+  },
+  recipeList: {
+    gap: 8,
+  },
+  recipeCard: {
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  recipeOutput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recipeTitleStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  recipeName: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+  },
+  recipeOutputText: {
+    marginTop: 1,
+    color: 'rgba(255,242,187,0.66)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 10,
+  },
+  recipeIngredients: {
+    marginTop: 7,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  ingredientPill: {
+    minWidth: 54,
+    height: 24,
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(53,255,112,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(126,217,87,0.38)',
+  },
+  ingredientPillMissing: {
+    backgroundColor: 'rgba(255,59,48,0.13)',
+    borderColor: 'rgba(255,96,86,0.34)',
+  },
+  ingredientText: {
+    color: '#d9ffd2',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  ingredientTextMissing: {
+    color: '#ffb8b0',
+  },
+  craftButton: {
+    marginTop: 8,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#2d6a4f',
+    borderWidth: 1,
+    borderColor: 'rgba(183,255,176,0.5)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  craftButtonDisabled: {
+    opacity: 0.42,
+  },
+  craftButtonText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
   },
   actionBtns: {
     position: 'absolute',
