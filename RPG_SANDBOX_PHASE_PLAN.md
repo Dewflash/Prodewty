@@ -90,6 +90,7 @@ These rules must remain true after every phase.
 | 33 | Framed world art priority | Verified | World art renderer prefers curated sprite frames before whole-image sources |
 | 34 | Temple content pack V1 | Verified | 18 curated temple frame objects mapped into registry/catalog/archive/shop |
 | 35 | Animated temple props V1 | Verified | Shared sprite animation renderer plus fire/chest temple props |
+| 36 | Temple hazard props V1 | Verified | Spike/blade traps plus lever/gate temple props with tighter footprints |
 
 ## Required Audit Loop For Every Phase
 
@@ -1851,5 +1852,58 @@ Expansion notes saved:
 - Add animation preview controls to a future asset atlas screen.
 
 Phase 35 status:
+
+- Verified.
+
+### Phase 36 Audit
+
+Intended behavior:
+
+- Temple Archive gains four verified hazard/mechanism props: spike trap, blade trap, floor lever, and lattice gate.
+- Spike and blade traps use the shared sprite animation pipeline.
+- Lever and lattice gate use explicit verified sprite frames from their sheets.
+- Temple catalog descriptions, rarity, prices, and footprints classify hazards/mechanisms without adding active trap damage.
+- Small temple props, chests, fire, traps, and levers use compact placement footprints instead of relic/statue-sized visuals.
+- Content validation enforces the new trap/mechanism categories, frame bounds, animation grids, and catalog propagation.
+
+Negative guarantees:
+
+- Hazard props must not damage the avatar or add combat/trap state before trap rules exist.
+- Hazard props must not introduce new normal-mode action buttons.
+- Hazard props must not bypass existing build placement, collision, source-pack, archive, backpack, or shop pipelines.
+- Animated trap sheets must not render as full sprite sheets.
+- Phase 36 must not claim puzzle logic, trap toggles, lever links, enemy AI, or dungeon room mechanics are complete.
+
+Files changed:
+
+- `app/src/engine/RpgAssetRegistry.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgAssetRegistry.ts app/src/engine/RpgObjectCatalog.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-temple-hazards-export`
+- Passed: source inspection confirmed hazards/mechanisms use catalog metadata and the normal shared renderer/pipeline.
+
+Manual test checklist:
+
+- Open shop, filter to Temple, and confirm the spike trap, blade trap, floor lever, and lattice gate appear.
+- Buy and place each hazard/mechanism prop; confirm trap art is cropped/animated and lever/gate art is cropped/static.
+- Confirm small hazard/chest/fire/lever placement cells stay compact.
+- Confirm placed hazard props block movement only through normal object footprints and do not damage the avatar.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Link levers to traps/gates after persistence schema for object relations exists.
+- Add trap damage only after combat/health rules are designed.
+- Add trap disabled/enabled animation states after interaction rules exist.
+- Add puzzle-room templates after map/room authoring is stabilized.
+
+Phase 36 status:
 
 - Verified.

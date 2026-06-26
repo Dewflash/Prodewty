@@ -384,6 +384,8 @@ const RPG_CAVE_OBJECT_CATALOG = Object.fromEntries(
 ) as Record<string, RpgPlaceableItem>;
 
 function templeObjectDescription(asset: RpgObjectAsset) {
+  if (asset.tags.includes('trap')) return `${asset.name} from the temple archive. A decorative hazard prop reserved for future trap mechanics.`;
+  if (asset.tags.includes('mechanism')) return `${asset.name} from the temple archive. A mechanism prop reserved for future puzzle and gate rules.`;
   if (asset.tags.includes('structure')) return `${asset.name} from the temple archive. A ruin landmark for sanctuary layouts and future dungeon progression.`;
   if (asset.tags.includes('fire')) return `${asset.name} from the temple archive. An animated flame prop for livelier sanctuary rooms.`;
   if (asset.tags.includes('statue') || asset.tags.includes('relic')) return `${asset.name} from the temple archive. A relic object for future shrine and lore hooks.`;
@@ -397,6 +399,7 @@ function templeObjectPrice(asset: RpgObjectAsset) {
   if (asset.tags.includes('large')) return 640;
   if (asset.tags.includes('structure')) return 420;
   if (asset.tags.includes('relic')) return 340;
+  if (asset.tags.includes('hazard') || asset.tags.includes('mechanism')) return 180;
   if (asset.tags.includes('banner') || asset.tags.includes('decor') || asset.tags.includes('small')) return 70;
   return 140;
 }
@@ -404,6 +407,7 @@ function templeObjectPrice(asset: RpgObjectAsset) {
 function templeObjectRarity(asset: RpgObjectAsset): RpgItemRarity {
   if (asset.tags.includes('large')) return 'epic';
   if (asset.tags.includes('relic') || asset.tags.includes('structure')) return 'rare';
+  if (asset.tags.includes('hazard') || asset.tags.includes('mechanism')) return 'uncommon';
   if (asset.tags.includes('overgrown') || asset.tags.includes('statue')) return 'uncommon';
   return 'common';
 }
@@ -414,6 +418,17 @@ function templeObjectFootprint(asset: RpgObjectAsset) {
   }
   if (asset.tags.includes('sarcophagus') || asset.tags.includes('wall')) {
     return { colWidth: 2, colHeight: 1, visWidth: 3, visHeight: 2 };
+  }
+  if (asset.tags.includes('trap')) {
+    return asset.pixelWidth >= 64
+      ? { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 1 }
+      : { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+  }
+  if (asset.tags.includes('chest') || asset.tags.includes('fire') || asset.tags.includes('small')) {
+    return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
+  }
+  if (asset.tags.includes('gate') || asset.tags.includes('mechanism')) {
+    return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 2 };
   }
   if (asset.tags.includes('statue') || asset.tags.includes('relic')) {
     return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 3 };

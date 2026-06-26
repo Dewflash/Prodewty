@@ -165,7 +165,7 @@ function parseTempleAssets() {
       tags,
     });
   }
-  if (assets.length !== 20) fail(`Expected 20 temple assets, found ${assets.length}`);
+  if (assets.length !== 24) fail(`Expected 24 temple assets, found ${assets.length}`);
   return assets;
 }
 
@@ -311,6 +311,10 @@ function validateTempleAssets(templeAssets) {
     RPG_TEMPLE_INTERIOR_OBJECTS_SHEET: { width: 384, height: 256 },
     RPG_TEMPLE_FIRE_ANIMATION_SHEET: { width: 128, height: 480 },
     RPG_TEMPLE_CHEST_ANIMATION_SHEET: { width: 80, height: 192 },
+    RPG_TEMPLE_SPIKES_ANIMATION_SHEET: { width: 384, height: 64 },
+    RPG_TEMPLE_BLADES_TRAP_ANIMATION_SHEET: { width: 192, height: 144 },
+    RPG_TEMPLE_LEVER_SHEET: { width: 80, height: 256 },
+    RPG_TEMPLE_LATTICE_SHEET: { width: 160, height: 384 },
   };
 
   templeAssets.forEach(asset => {
@@ -340,6 +344,8 @@ function validateTempleAnimations(animations) {
   const expected = {
     'RPG_TEMPLE_ANIMATIONS.fireBowl': { sheet: 'RPG_TEMPLE_FIRE_ANIMATION_SHEET', frameWidth: 32, frameHeight: 32, columns: 4, rows: 15 },
     'RPG_TEMPLE_ANIMATIONS.chest': { sheet: 'RPG_TEMPLE_CHEST_ANIMATION_SHEET', frameWidth: 40, frameHeight: 32, columns: 2, rows: 6 },
+    'RPG_TEMPLE_ANIMATIONS.spikes': { sheet: 'RPG_TEMPLE_SPIKES_ANIMATION_SHEET', frameWidth: 32, frameHeight: 32, columns: 12, rows: 2 },
+    'RPG_TEMPLE_ANIMATIONS.bladeTrap': { sheet: 'RPG_TEMPLE_BLADES_TRAP_ANIMATION_SHEET', frameWidth: 64, frameHeight: 48, columns: 3, rows: 3 },
   };
 
   Object.entries(expected).forEach(([id, expectedConfig]) => {
@@ -431,9 +437,15 @@ function validateTempleMetadata(templeAssets) {
   const structures = templeAssets.filter(asset => asset.tags.includes('structure'));
   const relics = templeAssets.filter(asset => asset.tags.includes('relic') || asset.tags.includes('statue'));
   const decor = templeAssets.filter(asset => asset.tags.includes('decor') || asset.tags.includes('banner'));
+  const hazards = templeAssets.filter(asset => asset.tags.includes('hazard') || asset.tags.includes('trap'));
+  const mechanisms = templeAssets.filter(asset => asset.tags.includes('mechanism'));
   if (structures.length === 0) fail('Expected structure-tagged temple assets');
   if (relics.length === 0) fail('Expected relic/statue-tagged temple assets');
   if (decor.length === 0) fail('Expected decor/banner-tagged temple assets');
+  if (hazards.length === 0) fail('Expected hazard/trap-tagged temple assets');
+  if (mechanisms.length === 0) fail('Expected mechanism-tagged temple assets');
+  if (!catalog.includes("asset.tags.includes('trap')")) fail('Temple object descriptions/footprints must classify trap props');
+  if (!catalog.includes("asset.tags.includes('mechanism')")) fail('Temple object descriptions/footprints must classify mechanism props');
   if (!catalog.includes("sourceLabel: 'Temple Archive'")) fail('Temple objects must expose source label metadata');
   if (!catalog.includes('RPG_TEMPLE_OBJECT_CATALOG')) fail('Catalog must expose temple object catalog');
   if (!catalog.includes("icon: asset.frame")) fail('Temple catalog must use verified sprite frames as icons');

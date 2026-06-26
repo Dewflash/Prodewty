@@ -54,10 +54,16 @@ const RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-ne
 const RPG_TEMPLE_INTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Objects_interior.png');
 const RPG_TEMPLE_FIRE_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Fire_animation.png');
 const RPG_TEMPLE_CHEST_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Сhest.png');
+const RPG_TEMPLE_SPIKES_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Spikes.png');
+const RPG_TEMPLE_BLADES_TRAP_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/blades_trap.png');
+const RPG_TEMPLE_LEVER_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Lever.png');
+const RPG_TEMPLE_LATTICE_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/lattice.png');
 
 export const RPG_TEMPLE_ANIMATIONS = {
   fireBowl: rpgSpriteAnimationGrid(RPG_TEMPLE_FIRE_ANIMATION_SHEET, 32, 32, 4, 15, 10),
   chest: rpgSpriteAnimationGrid(RPG_TEMPLE_CHEST_ANIMATION_SHEET, 40, 32, 2, 6, 8),
+  spikes: rpgSpriteAnimationGrid(RPG_TEMPLE_SPIKES_ANIMATION_SHEET, 32, 32, 12, 2, 12),
+  bladeTrap: rpgSpriteAnimationGrid(RPG_TEMPLE_BLADES_TRAP_ANIMATION_SHEET, 64, 48, 3, 3, 8),
 } satisfies Record<string, RpgSpriteAnimation>;
 
 export const RPG_FOREST_OBJECT_ASSETS = [
@@ -239,6 +245,10 @@ export const RPG_TEMPLE_OBJECT_ASSETS = [
   { itemId: 'Temple_gold_pile', assetId: 'object.temple.Gold_pile', name: 'Temple Gold Pile', frame: rpgSpriteFrame(RPG_TEMPLE_INTERIOR_OBJECTS_SHEET, 128, 144, 48, 16, 384, 256), pixelWidth: 48, pixelHeight: 16, tags: ['temple', 'treasure', 'decor', 'small'] },
   { itemId: 'Temple_fire_bowl', assetId: 'object.temple.Fire_bowl', name: 'Temple Fire Bowl', frame: RPG_TEMPLE_ANIMATIONS.fireBowl.frames[0], animation: RPG_TEMPLE_ANIMATIONS.fireBowl, pixelWidth: 32, pixelHeight: 32, tags: ['temple', 'fire', 'decor', 'small', 'animated'] },
   { itemId: 'Temple_animated_chest', assetId: 'object.temple.Animated_chest', name: 'Animated Temple Chest', frame: RPG_TEMPLE_ANIMATIONS.chest.frames[0], animation: RPG_TEMPLE_ANIMATIONS.chest, pixelWidth: 40, pixelHeight: 32, tags: ['temple', 'chest', 'relic', 'animated'] },
+  { itemId: 'Temple_spike_trap', assetId: 'object.temple.Spike_trap', name: 'Temple Spike Trap', frame: RPG_TEMPLE_ANIMATIONS.spikes.frames[0], animation: RPG_TEMPLE_ANIMATIONS.spikes, pixelWidth: 32, pixelHeight: 32, tags: ['temple', 'trap', 'spike', 'hazard', 'animated', 'small'] },
+  { itemId: 'Temple_blade_trap', assetId: 'object.temple.Blade_trap', name: 'Temple Blade Trap', frame: RPG_TEMPLE_ANIMATIONS.bladeTrap.frames[0], animation: RPG_TEMPLE_ANIMATIONS.bladeTrap, pixelWidth: 64, pixelHeight: 48, tags: ['temple', 'trap', 'blade', 'hazard', 'animated'] },
+  { itemId: 'Temple_floor_lever', assetId: 'object.temple.Floor_lever', name: 'Temple Floor Lever', frame: rpgSpriteFrame(RPG_TEMPLE_LEVER_SHEET, 0, 0, 40, 32, 80, 256), pixelWidth: 40, pixelHeight: 32, tags: ['temple', 'lever', 'mechanism', 'decor'] },
+  { itemId: 'Temple_lattice_gate', assetId: 'object.temple.Lattice_gate', name: 'Temple Lattice Gate', frame: rpgSpriteFrame(RPG_TEMPLE_LATTICE_SHEET, 0, 128, 40, 64, 160, 384), pixelWidth: 40, pixelHeight: 64, tags: ['temple', 'gate', 'lattice', 'mechanism', 'structure'] },
   { itemId: 'Temple_overgrown_facade', assetId: 'object.temple.Overgrown_facade', name: 'Overgrown Temple Facade', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 0, 0, 160, 160, 352, 656), pixelWidth: 160, pixelHeight: 160, tags: ['temple', 'structure', 'ruin', 'overgrown', 'large'] },
   { itemId: 'Temple_stone_facade', assetId: 'object.temple.Stone_facade', name: 'Stone Temple Facade', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 176, 0, 160, 160, 352, 656), pixelWidth: 160, pixelHeight: 160, tags: ['temple', 'structure', 'ruin', 'large'] },
   { itemId: 'Temple_overgrown_wall', assetId: 'object.temple.Overgrown_wall', name: 'Overgrown Temple Wall', frame: rpgSpriteFrame(RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET, 0, 160, 160, 64, 352, 656), pixelWidth: 160, pixelHeight: 64, tags: ['temple', 'wall', 'ruin', 'overgrown', 'structure'] },
