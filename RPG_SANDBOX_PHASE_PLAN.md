@@ -92,6 +92,7 @@ These rules must remain true after every phase.
 | 35 | Animated temple props V1 | Verified | Shared sprite animation renderer plus fire/chest temple props |
 | 36 | Temple hazard props V1 | Verified | Spike/blade traps plus lever/gate temple props with tighter footprints |
 | 37 | Object inspect feedback V1 | Verified | Interact now gives visible feedback for non-forage placed props |
+| 38 | Object interaction memory V1 | Verified | Persist first/repeat object inspect state for future chest, lever, and trap rules |
 
 ## Required Audit Loop For Every Phase
 
@@ -1954,5 +1955,59 @@ Expansion notes saved:
 - Add trap damage/disable behavior only after health, invulnerability, and safe-path rules are designed.
 
 Phase 37 status:
+
+- Verified.
+
+### Phase 38 Audit
+
+Intended behavior:
+
+- Add a persisted `sanctuary_object_interactions` table keyed by object instance and interaction kind.
+- Add a small helper for marking object interactions and cleaning them up when an object is stashed/deleted.
+- `Interact` records `inspect` memory for placed objects before deciding whether the object is forage-capable.
+- First inspection of a non-forage object shows explicit `Examined:` feedback; repeat inspections use the normal object-specific feedback.
+- First inspections record RPG discovery with source `inspect`.
+- Stashing a placed object deletes its interaction-memory rows in the same transaction.
+- The RPG validator now enforces the table, helper, inspect recording, and stash cleanup wiring.
+
+Negative guarantees:
+
+- Interaction memory must not grant coins, items, chest loot, trap damage, lever links, gate toggles, puzzle state, or combat state.
+- Forage-capable objects must keep their existing drop probabilities, cooldown behavior, inventory writes, and discovery source for drops.
+- Stashing must not leave stale interaction rows for the deleted placed object.
+- The new table must not become a second collision, placement, inventory, or archive source of truth.
+
+Files changed:
+
+- `app/src/db/schema.ts`
+- `app/src/db/sanctuaryInteractions.ts`
+- `app/src/db/rpgDiscovery.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/db/schema.ts app/src/db/sanctuaryInteractions.ts app/src/db/rpgDiscovery.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-object-memory-export`
+- Passed: source inspection confirmed object inspection memory is separate from inventory, placement, collision, and chest/lever/trap reward mechanics.
+
+Manual test checklist:
+
+- Interact with a placed non-forage object once and confirm the toast starts with `Examined:`.
+- Interact with the same object again and confirm the normal tag-specific feedback appears.
+- Interact with a forage-capable tree/crystal/bush and confirm drops/cooldowns still work normally.
+- Long-press/stash an inspected object, place it again, and confirm the old placed-object interaction memory was cleared.
+- Confirm no new normal-mode buttons appear beyond `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Use `interaction_kind` values for future `open_chest`, `toggle_lever`, `disable_trap`, and `read_lore` mechanics.
+- Add object relation tables before lever/gate/trap links so linked mechanics do not depend on names or screen position.
+- Add chest loot only after economy balance decides whether rewards are per object instance, per item type, or time-gated.
+
+Phase 38 status:
 
 - Verified.

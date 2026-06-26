@@ -14,6 +14,8 @@ const shopPath = path.join(engineDir, 'SanctuaryShop.tsx');
 const itemIconPath = path.join(engineDir, 'RpgItemIcon.tsx');
 const sanctuaryObjectPath = path.join(engineDir, 'SanctuaryObject.tsx');
 const rpgScreenPath = path.join(appRoot, 'app', 'rpg.tsx');
+const schemaPath = path.join(appRoot, 'src', 'db', 'schema.ts');
+const sanctuaryInteractionsPath = path.join(appRoot, 'src', 'db', 'sanctuaryInteractions.ts');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
@@ -24,6 +26,8 @@ const shop = fs.readFileSync(shopPath, 'utf8');
 const itemIcon = fs.readFileSync(itemIconPath, 'utf8');
 const sanctuaryObject = fs.readFileSync(sanctuaryObjectPath, 'utf8');
 const rpgScreen = fs.readFileSync(rpgScreenPath, 'utf8');
+const schema = fs.readFileSync(schemaPath, 'utf8');
+const sanctuaryInteractions = fs.readFileSync(sanctuaryInteractionsPath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -525,6 +529,33 @@ function validateWorldArtRenderer() {
   if (!rpgScreen.includes('RpgItemWorldArt')) fail('Build ghost must use shared item art rendering');
 }
 
+function validateSanctuaryInteractionMemory() {
+  if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_interactions')) {
+    fail('Schema must create sanctuary_object_interactions for object interaction memory');
+  }
+  if (!schema.includes('PRIMARY KEY (object_id, interaction_kind)')) {
+    fail('Object interaction memory must be unique per object and interaction kind');
+  }
+  if (!sanctuaryInteractions.includes('export function markSanctuaryObjectInteraction')) {
+    fail('Object interaction memory must expose a mark helper');
+  }
+  if (!sanctuaryInteractions.includes('ON CONFLICT(object_id, interaction_kind) DO UPDATE')) {
+    fail('Object interaction memory mark helper must increment repeated interactions');
+  }
+  if (!sanctuaryInteractions.includes('export function deleteSanctuaryObjectInteractions')) {
+    fail('Object interaction memory must expose cleanup for stashed/deleted objects');
+  }
+  if (!rpgScreen.includes('markSanctuaryObjectInteraction(object.id, object.type, \'inspect\')')) {
+    fail('RPG object interactions must record inspect memory');
+  }
+  if (!rpgScreen.includes('recordRpgDiscovery(object.type, \'inspect\')')) {
+    fail('First object inspections must record RPG discovery');
+  }
+  if (!rpgScreen.includes('deleteSanctuaryObjectInteractions(selectedObject.id)')) {
+    fail('Stashing an object must clear its interaction memory');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -556,6 +587,7 @@ validateArchiveScalabilityControls();
 validateBackpackScalabilityControls();
 validateShopScalabilityControls();
 validateWorldArtRenderer();
+validateSanctuaryInteractionMemory();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

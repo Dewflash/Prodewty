@@ -40,6 +40,10 @@ import {
   type GrowthStage,
 } from '../src/db/garden';
 import { recordRpgDiscovery, type RpgDiscoverySource } from '../src/db/rpgDiscovery';
+import {
+  deleteSanctuaryObjectInteractions,
+  markSanctuaryObjectInteraction,
+} from '../src/db/sanctuaryInteractions';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
 import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
 
@@ -680,6 +684,9 @@ export default function RpgScreen() {
 
     try {
       db.execSync('BEGIN TRANSACTION');
+      if (!deleteSanctuaryObjectInteractions(selectedObject.id)) {
+        throw new Error('Failed to clean object interactions');
+      }
       db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', selectedObject.id);
       db.runSync(
         `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
@@ -957,18 +964,21 @@ export default function RpgScreen() {
     return 'Object is resting';
   };
 
-  const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string) => {
+  const getObjectInspectText = (item: ShopCatalogItem | null, fallbackType: string, isFirstInspect: boolean) => {
     const tags = item?.tags ?? [];
-    if (tags.includes('trap') || tags.includes('hazard')) return 'Dormant trap';
-    if (tags.includes('lever')) return 'Lever is not linked yet';
-    if (tags.includes('gate')) return 'Gate is locked in place';
-    if (tags.includes('mechanism')) return 'Mechanism is not linked yet';
-    if (tags.includes('chest')) return 'Chest is sealed for now';
-    if (tags.includes('fire')) return 'Flame flickers';
-    if (tags.some(tag => ['relic', 'statue', 'idol'].includes(tag))) return 'Ancient relic';
-    if (tags.some(tag => ['structure', 'wall', 'facade'].includes(tag))) return 'Sturdy structure';
-    if (tags.includes('decor')) return 'Decor inspected';
-    return `Inspected ${item?.name ?? fallbackType}`;
+    const detail = (() => {
+      if (tags.includes('trap') || tags.includes('hazard')) return 'Dormant trap';
+      if (tags.includes('lever')) return 'Lever is not linked yet';
+      if (tags.includes('gate')) return 'Gate is locked in place';
+      if (tags.includes('mechanism')) return 'Mechanism is not linked yet';
+      if (tags.includes('chest')) return 'Chest is sealed for now';
+      if (tags.includes('fire')) return 'Flame flickers';
+      if (tags.some(tag => ['relic', 'statue', 'idol'].includes(tag))) return 'Ancient relic';
+      if (tags.some(tag => ['structure', 'wall', 'facade'].includes(tag))) return 'Sturdy structure';
+      if (tags.includes('decor')) return 'Decor inspected';
+      return `Inspected ${item?.name ?? fallbackType}`;
+    })();
+    return isFirstInspect ? `Examined: ${detail}` : detail;
   };
 
   const interactWithObject = (object: MapObject) => {
@@ -979,12 +989,16 @@ export default function RpgScreen() {
     }
 
     pulseObject(object.id);
+    const interactionResult = markSanctuaryObjectInteraction(object.id, object.type, 'inspect');
+    if (interactionResult.ok && interactionResult.isFirst) {
+      recordRpgDiscovery(object.type, 'inspect');
+    }
 
     if (!item.forageDrops?.length) {
       showWorldToast({
-        text: getObjectInspectText(item, object.type),
+        text: getObjectInspectText(item, object.type, interactionResult.ok && interactionResult.isFirst),
         item,
-        tone: 'muted',
+        tone: interactionResult.ok ? 'muted' : 'warn',
       });
       return;
     }

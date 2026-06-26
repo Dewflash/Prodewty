@@ -1475,6 +1475,11 @@ function runMigrations() {
     `);
     db.execSync('PRAGMA user_version = 58');
   }
+
+  if (version < 59) {
+    createSanctuaryObjectInteractionsTable();
+    db.execSync('PRAGMA user_version = 59');
+  }
 }
 
 function createRpgDiscoveriesTable() {
@@ -1485,6 +1490,20 @@ function createRpgDiscoveriesTable() {
       last_seen_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       source TEXT NOT NULL DEFAULT 'bootstrap',
       seen_count INTEGER NOT NULL DEFAULT 1
+    );
+  `);
+}
+
+function createSanctuaryObjectInteractionsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_object_interactions (
+      object_id INTEGER NOT NULL,
+      interaction_kind TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      PRIMARY KEY (object_id, interaction_kind)
     );
   `);
 }

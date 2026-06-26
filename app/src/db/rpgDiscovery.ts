@@ -6,6 +6,7 @@ export type RpgDiscoverySource =
   | 'buy'
   | 'forage'
   | 'harvest'
+  | 'inspect'
   | 'inventory'
   | 'plant'
   | 'place';
