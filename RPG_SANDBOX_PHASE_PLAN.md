@@ -93,6 +93,7 @@ These rules must remain true after every phase.
 | 36 | Temple hazard props V1 | Verified | Spike/blade traps plus lever/gate temple props with tighter footprints |
 | 37 | Object inspect feedback V1 | Verified | Interact now gives visible feedback for non-forage placed props |
 | 38 | Object interaction memory V1 | Verified | Persist first/repeat object inspect state for future chest, lever, and trap rules |
+| 39 | Safe chest rewards V1 | Verified | Temple chests grant once-per-type rewards through a reward-claim ledger |
 
 ## Required Audit Loop For Every Phase
 
@@ -2009,5 +2010,61 @@ Expansion notes saved:
 - Add chest loot only after economy balance decides whether rewards are per object instance, per item type, or time-gated.
 
 Phase 38 status:
+
+- Verified.
+
+### Phase 39 Audit
+
+Intended behavior:
+
+- Temple chest catalog entries now define explicit interaction loot metadata.
+- Chest rewards use stable `sanctuary_chest:{itemId}` claim keys so rewards are once per chest type, not once per placement.
+- `Interact` on an unclaimed chest grants coins plus rolled loot drops through an atomic DB helper.
+- Claimed chests show `Chest is empty` and do not grant repeat coins/items.
+- Reward drops record RPG discovery with source `loot`.
+- Archive facts expose once-only interaction loot for placeable items that define it.
+- The RPG validator enforces the reward claim table, helper, catalog metadata, and screen wiring.
+
+Negative guarantees:
+
+- Stashing/re-placing the same chest type must not reset the reward claim.
+- Chest rewards must not use object instance IDs as the only anti-repeat protection.
+- Chest rewards must not affect tree/crystal/bush forage probabilities or cooldowns.
+- Chest rewards must not add new normal-mode buttons, trap damage, lever links, gate toggles, or puzzle state.
+- Failed/already-claimed reward claims must not partially grant coins or inventory.
+
+Files changed:
+
+- `app/src/db/schema.ts`
+- `app/src/db/sanctuaryRewards.ts`
+- `app/src/db/rpgDiscovery.ts`
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --cached --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-safe-chest-export`
+- Passed: source inspection confirmed reward claims are keyed by stable chest item type and granted in one transaction.
+
+Manual test checklist:
+
+- Place a Temple Wooden Chest, interact, and confirm coins plus possible Crystal Shards are granted once.
+- Interact with the same chest again and confirm `Chest is empty`.
+- Stash and re-place the same chest type, interact again, and confirm `Chest is empty`.
+- Place the Animated Temple Chest and confirm it has its own one-time reward.
+- Confirm forage objects still drop/cool down normally and normal mode still only shows `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Add per-instance chest rewards only after inventory supports durable object instance IDs.
+- Add chest rarity tables and biome-specific loot after economy balance is designed.
+- Add chest opening animation states after the renderer can freeze an animation on a terminal frame.
+
+Phase 39 status:
 
 - Verified.

@@ -1480,6 +1480,11 @@ function runMigrations() {
     createSanctuaryObjectInteractionsTable();
     db.execSync('PRAGMA user_version = 59');
   }
+
+  if (version < 60) {
+    createSanctuaryRewardClaimsTable();
+    db.execSync('PRAGMA user_version = 60');
+  }
 }
 
 function createRpgDiscoveriesTable() {
@@ -1504,6 +1509,17 @@ function createSanctuaryObjectInteractionsTable() {
       created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       PRIMARY KEY (object_id, interaction_kind)
+    );
+  `);
+}
+
+function createSanctuaryRewardClaimsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_reward_claims (
+      claim_key TEXT PRIMARY KEY,
+      item_id TEXT NOT NULL,
+      reward_kind TEXT NOT NULL,
+      claimed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
   `);
 }

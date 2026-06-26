@@ -8,6 +8,7 @@ export type RpgDiscoverySource =
   | 'harvest'
   | 'inspect'
   | 'inventory'
+  | 'loot'
   | 'plant'
   | 'place';
 

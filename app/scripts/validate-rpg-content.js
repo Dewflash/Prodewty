@@ -16,6 +16,7 @@ const sanctuaryObjectPath = path.join(engineDir, 'SanctuaryObject.tsx');
 const rpgScreenPath = path.join(appRoot, 'app', 'rpg.tsx');
 const schemaPath = path.join(appRoot, 'src', 'db', 'schema.ts');
 const sanctuaryInteractionsPath = path.join(appRoot, 'src', 'db', 'sanctuaryInteractions.ts');
+const sanctuaryRewardsPath = path.join(appRoot, 'src', 'db', 'sanctuaryRewards.ts');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
@@ -28,6 +29,7 @@ const sanctuaryObject = fs.readFileSync(sanctuaryObjectPath, 'utf8');
 const rpgScreen = fs.readFileSync(rpgScreenPath, 'utf8');
 const schema = fs.readFileSync(schemaPath, 'utf8');
 const sanctuaryInteractions = fs.readFileSync(sanctuaryInteractionsPath, 'utf8');
+const sanctuaryRewards = fs.readFileSync(sanctuaryRewardsPath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -556,6 +558,39 @@ function validateSanctuaryInteractionMemory() {
   }
 }
 
+function validateSanctuaryRewardClaims() {
+  if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_reward_claims')) {
+    fail('Schema must create sanctuary_reward_claims for once-only object rewards');
+  }
+  if (!schema.includes('claim_key TEXT PRIMARY KEY')) {
+    fail('Reward claims must be keyed by a stable claim_key');
+  }
+  if (!catalog.includes('export type RpgInteractionLoot')) {
+    fail('Catalog must expose typed interaction loot metadata');
+  }
+  if (!catalog.includes('interactLoot?: RpgInteractionLoot')) {
+    fail('Placeable catalog items must optionally expose interaction loot');
+  }
+  if (!catalog.includes('claimKey: `sanctuary_chest:${asset.itemId}`')) {
+    fail('Temple chest loot must use stable per-item claim keys');
+  }
+  if (!sanctuaryRewards.includes('export function claimSanctuaryReward')) {
+    fail('Reward claims must expose an atomic claim helper');
+  }
+  if (!sanctuaryRewards.includes('INSERT OR IGNORE INTO sanctuary_reward_claims')) {
+    fail('Reward claim helper must prevent duplicate reward grants');
+  }
+  if (!sanctuaryRewards.includes("recordRpgDiscovery(drop.itemId, 'loot')")) {
+    fail('Reward drops must record RPG discovery with loot source');
+  }
+  if (!rpgScreen.includes('claimSanctuaryReward(')) {
+    fail('RPG object interaction must route chest rewards through claimSanctuaryReward');
+  }
+  if (!rpgScreen.includes("result.reason === 'already_claimed' ? 'Chest is empty'")) {
+    fail('Claimed chests must report an empty state instead of granting repeat rewards');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -588,6 +623,7 @@ validateBackpackScalabilityControls();
 validateShopScalabilityControls();
 validateWorldArtRenderer();
 validateSanctuaryInteractionMemory();
+validateSanctuaryRewardClaims();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

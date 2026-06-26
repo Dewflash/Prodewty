@@ -44,6 +44,7 @@ import {
   deleteSanctuaryObjectInteractions,
   markSanctuaryObjectInteraction,
 } from '../src/db/sanctuaryInteractions';
+import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
 import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
 
@@ -957,6 +958,17 @@ export default function RpgScreen() {
     return results;
   };
 
+  const getRewardText = (coins: number, drops: HarvestDrop[]) => {
+    const coinText = coins > 0 ? `+${coins} coins` : '';
+    const dropText = drops
+      .map(drop => {
+        const item = getRpgItem(drop.itemId);
+        return `+${drop.quantity} ${item?.name ?? drop.itemId}`;
+      })
+      .join(', ');
+    return [coinText, dropText].filter(Boolean).join(', ');
+  };
+
   const getForageCooldownText = (tags: string[] | undefined) => {
     if (tags?.includes('crystal')) return 'Crystal is recharging';
     if (tags?.includes('tree')) return 'Tree is resting';
@@ -992,6 +1004,34 @@ export default function RpgScreen() {
     const interactionResult = markSanctuaryObjectInteraction(object.id, object.type, 'inspect');
     if (interactionResult.ok && interactionResult.isFirst) {
       recordRpgDiscovery(object.type, 'inspect');
+    }
+
+    if (item.interactLoot) {
+      const drops = rollHarvestDrops(item.interactLoot.drops);
+      const result = claimSanctuaryReward(
+        item.interactLoot.claimKey,
+        object.type,
+        'chest',
+        item.interactLoot.coins,
+        drops,
+      );
+      if (result.ok) {
+        refreshCoins();
+        bumpInventoryRevision();
+        const firstDrop = result.drops[0];
+        showWorldToast({
+          text: `Opened ${getRewardText(result.coins, result.drops)}`,
+          item: firstDrop ? getRpgItem(firstDrop.itemId) : item,
+          tone: 'success',
+        });
+      } else {
+        showWorldToast({
+          text: result.reason === 'already_claimed' ? 'Chest is empty' : 'Chest jammed',
+          item,
+          tone: result.reason === 'already_claimed' ? 'muted' : 'warn',
+        });
+      }
+      return;
     }
 
     if (!item.forageDrops?.length) {

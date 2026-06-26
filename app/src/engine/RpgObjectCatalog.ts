@@ -23,6 +23,12 @@ export type RpgDrop = {
   max: number;
 };
 
+export type RpgInteractionLoot = {
+  claimKey: string;
+  coins: number;
+  drops: RpgDrop[];
+};
+
 export type RpgItemRarity = 'common' | 'uncommon' | 'rare' | 'epic';
 export type RpgSourcePackId = 'all' | 'forest' | 'crystal' | 'bush' | 'cave' | 'temple';
 
@@ -86,6 +92,7 @@ export type RpgPlaceableItem = RpgInventoryItem & {
   visWidth: number;
   visHeight: number;
   forageDrops?: RpgDrop[];
+  interactLoot?: RpgInteractionLoot;
 };
 
 export type RpgItemDefinition = RpgInventoryItem | RpgPlaceableItem;
@@ -439,6 +446,23 @@ function templeObjectFootprint(asset: RpgObjectAsset) {
   return { colWidth: 1, colHeight: 1, visWidth: 1, visHeight: 1 };
 }
 
+function templeObjectLoot(asset: RpgObjectAsset): RpgInteractionLoot | undefined {
+  if (!asset.tags.includes('chest')) return undefined;
+  const isAnimatedChest = asset.itemId === 'Temple_animated_chest';
+  return {
+    claimKey: `sanctuary_chest:${asset.itemId}`,
+    coins: isAnimatedChest ? 55 : 30,
+    drops: [
+      {
+        itemId: RPG_CRYSTAL_SHARDS_ITEM_ID,
+        chance: isAnimatedChest ? 0.9 : 0.65,
+        min: isAnimatedChest ? 2 : 1,
+        max: isAnimatedChest ? 4 : 2,
+      },
+    ],
+  };
+}
+
 function makeTempleObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
   return {
     name: asset.name,
@@ -452,6 +476,7 @@ function makeTempleObjectItem(asset: RpgObjectAsset): RpgPlaceableItem {
     rarity: templeObjectRarity(asset),
     sourceLabel: 'Temple Archive',
     description: templeObjectDescription(asset),
+    interactLoot: templeObjectLoot(asset),
   };
 }
 
@@ -622,6 +647,9 @@ function getRpgItemFacts(item: RpgItemDefinition, catalog: Record<string, RpgIte
     } else {
       facts.push('Forage: none');
     }
+    if (item.interactLoot) {
+      facts.push(`Interact: once, ${formatLoot(item.interactLoot, catalog)}`);
+    }
   }
 
   if (item.kind === 'seed' && item.crop) {
@@ -647,4 +675,11 @@ function formatDrop(drop: RpgDrop, catalog: Record<string, RpgItemDefinition>) {
   const itemName = catalog[drop.itemId]?.name ?? drop.itemId;
   const amount = drop.min === drop.max ? `x${drop.min}` : `x${drop.min}-${drop.max}`;
   return `${Math.round(drop.chance * 100)}% ${itemName} ${amount}`;
+}
+
+function formatLoot(loot: RpgInteractionLoot, catalog: Record<string, RpgItemDefinition>) {
+  const rewards: string[] = [];
+  if (loot.coins > 0) rewards.push(`${loot.coins} coins`);
+  rewards.push(...loot.drops.map(drop => formatDrop(drop, catalog)));
+  return rewards.join(', ');
 }
