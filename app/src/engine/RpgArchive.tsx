@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
@@ -21,6 +21,7 @@ type CountRow = {
 
 type ArchiveFilter = 'all' | RpgArchiveCategory;
 type ArchiveScope = 'all' | 'discovered' | 'known' | 'locked';
+type ArchiveSort = 'name' | 'rarity' | 'status';
 
 type ArchiveEntryState = RpgArchiveEntry & {
   quantity: number;
@@ -49,6 +50,11 @@ const SCOPE_FILTERS: { id: ArchiveScope; label: string }[] = [
   { id: 'discovered', label: 'Seen' },
   { id: 'known', label: 'Known' },
   { id: 'locked', label: 'Locked' },
+];
+const SORTS: { id: ArchiveSort; label: string }[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'rarity', label: 'Rarity' },
+  { id: 'status', label: 'Status' },
 ];
 const SLOT_POSITIONS = [
   { x: 38, y: 102 },
@@ -99,6 +105,34 @@ function rarityColor(rarity: RpgItemRarity | undefined) {
   return '#f7e6a5';
 }
 
+function rarityRank(rarity: RpgItemRarity | undefined) {
+  if (rarity === 'epic') return 0;
+  if (rarity === 'rare') return 1;
+  if (rarity === 'uncommon') return 2;
+  return 3;
+}
+
+function statusRank(entry: ArchiveEntryState) {
+  if (entry.discovered) return 0;
+  if (entry.known) return 1;
+  return 2;
+}
+
+function archiveEntryMatchesQuery(entry: ArchiveEntryState, query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    entry.name,
+    entry.itemId,
+    entry.category,
+    entry.rarity,
+    entry.sourceLabel,
+    entry.description,
+    ...entry.tags,
+    ...entry.facts,
+  ].some(value => value.toLowerCase().includes(normalized));
+}
+
 function discoverySourceLabel(source: string) {
   if (source === 'buy') return 'Bought';
   if (source === 'forage') return 'Foraged';
@@ -139,13 +173,15 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
   const { width, height } = useWindowDimensions();
   const [filter, setFilter] = useState<ArchiveFilter>('all');
   const [scope, setScope] = useState<ArchiveScope>('all');
+  const [sort, setSort] = useState<ArchiveSort>('name');
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const [entries, setEntries] = useState<ArchiveEntryState[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const scale = Math.max(
     1.05,
-    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 230) / RPG_ARCHIVE_FRAMES.openBook.height),
+    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 300) / RPG_ARCHIVE_FRAMES.openBook.height),
   );
   const bookWidth = RPG_ARCHIVE_FRAMES.openBook.width * scale;
   const bookHeight = RPG_ARCHIVE_FRAMES.openBook.height * scale;
@@ -184,11 +220,22 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
   }, [isOpen, refreshKey]);
 
   const filteredEntries = useMemo(
-    () => entries.filter(entry => (
-      (filter === 'all' || entry.category === filter) &&
-      archiveScopeMatches(entry, scope)
-    )),
-    [entries, filter, scope],
+    () => entries
+      .filter(entry => (
+        (filter === 'all' || entry.category === filter) &&
+        archiveScopeMatches(entry, scope) &&
+        archiveEntryMatchesQuery(entry, query)
+      ))
+      .sort((a, b) => {
+        if (sort === 'rarity') {
+          return rarityRank(a.rarity) - rarityRank(b.rarity) || a.name.localeCompare(b.name);
+        }
+        if (sort === 'status') {
+          return statusRank(a) - statusRank(b) || a.name.localeCompare(b.name);
+        }
+        return a.name.localeCompare(b.name);
+      }),
+    [entries, filter, query, scope, sort],
   );
   const archiveCounts = useMemo(() => ({
     total: entries.length,
@@ -208,7 +255,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         ? current
         : filteredEntries[0]?.itemId ?? null
     ));
-  }, [filter, filteredEntries, isOpen, scope]);
+  }, [filter, filteredEntries, isOpen, query, scope, sort]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);
@@ -255,8 +302,44 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           })}
         </View>
 
+        <View style={styles.searchRow}>
+          <Feather name="search" size={13} color="rgba(255,242,187,0.72)" />
+          <TextInput
+            accessibilityLabel="Search archive"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search archive"
+            placeholderTextColor="rgba(255,242,187,0.44)"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.searchInput}
+          />
+          {query.length > 0 && (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear archive search" onPress={() => setQuery('')} style={styles.clearSearchButton}>
+              <Feather name="x" size={13} color="#fff2bb" />
+            </Pressable>
+          )}
+        </View>
+
+        <View style={styles.sortBar}>
+          {SORTS.map(item => {
+            const active = sort === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort archive by ${item.label}`}
+                onPress={() => setSort(item.id)}
+                style={[styles.sortButton, active && styles.sortButtonActive]}
+              >
+                <Text style={[styles.sortText, active && styles.sortTextActive]}>{item.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <Text numberOfLines={1} style={styles.summaryText}>
-          Seen {archiveCounts.discovered}/{archiveCounts.total}  Known {archiveCounts.known}  Locked {archiveCounts.locked}
+          Seen {archiveCounts.discovered}/{archiveCounts.total}  Known {archiveCounts.known}  Locked {archiveCounts.locked}  Showing {filteredEntries.length}
         </Text>
 
         <View style={[styles.book, { width: bookWidth, height: bookHeight }]}>
@@ -448,6 +531,62 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   scopeTextActive: {
+    color: '#fff2bb',
+  },
+  searchRow: {
+    width: '100%',
+    minHeight: 32,
+    marginBottom: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    backgroundColor: 'rgba(27,18,14,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.26)',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 30,
+    marginLeft: 7,
+    paddingVertical: 0,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  clearSearchButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortBar: {
+    width: '100%',
+    minHeight: 30,
+    marginBottom: 4,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(27,18,14,0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.2)',
+    flexDirection: 'row',
+  },
+  sortButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortButtonActive: {
+    backgroundColor: 'rgba(247,230,165,0.18)',
+  },
+  sortText: {
+    color: 'rgba(247,230,165,0.66)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  sortTextActive: {
     color: '#fff2bb',
   },
   summaryText: {

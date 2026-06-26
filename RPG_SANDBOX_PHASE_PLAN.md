@@ -75,6 +75,7 @@ These rules must remain true after every phase.
 | 18 | Shop catalog sorting | Verified | Shop sort controls for name, rarity, and price over the forest catalog |
 | 19 | Shop/backpack interaction repair | Verified | Larger tappable shop/backpack surfaces, inline buy feedback, farm-sheet seed/crop art |
 | 20 | Catalog detail facts | Verified | Archive/backpack facts derive price, footprint, forage, harvest, and growth data from catalog metadata |
+| 21 | Archive search and sorting | Draft complete | Search across catalog metadata plus sort by name, rarity, and discovery status |
 
 ## Required Audit Loop For Every Phase
 
@@ -747,6 +748,43 @@ Manual test checklist:
 - Select a seed and confirm harvest/maturity/yield facts appear.
 - Open backpack and confirm held objects/seeds show the same gameplay facts before Place/Plant.
 - Filter archive to Locked and confirm locked items still show unlock guidance rather than full facts.
+
+## Phase 21: Archive Search And Sorting
+
+Goal: make the archive scale before additional asset packs are mapped.
+
+Deliverables:
+
+- Add archive search over name, item id, category, rarity, source, description, tags, and catalog-derived facts.
+- Add archive sort controls for name, rarity, and discovery status.
+- Reset page and selected entry when search, filter, scope, or sort changes.
+- Include filtered result count in the archive summary.
+- Reserve additional vertical space in the book scale calculation for the new controls.
+- Extend `validate:rpg` to guard archive search/sort wiring.
+
+Acceptance gates:
+
+- Search narrows visible entries without changing catalog data or discovery state.
+- Rarity sort puts higher rarity first, then name.
+- Status sort groups discovered entries before known entries before locked entries.
+- Locked entries remain read-only and keep unlock guidance.
+- Normal world mode still only exposes `Interact` and `Attack`.
+- Validator, TypeScript, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgArchive.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-archive-search-export`
+
+Manual test checklist:
+
+- Open archive and search for `tree`; confirm only matching names/tags/facts remain.
+- Search for `footprint` and confirm catalog fact search works.
+- Clear search and confirm the full filtered list returns.
+- Sort by rarity and confirm rare/epic items move ahead of common items.
+- Sort by status and confirm discovered/known/locked grouping.
 
 ## Manual Regression Script
 

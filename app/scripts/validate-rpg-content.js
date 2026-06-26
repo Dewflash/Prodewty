@@ -8,10 +8,12 @@ const engineDir = path.join(appRoot, 'src', 'engine');
 const assetRegistryPath = path.join(engineDir, 'RpgAssetRegistry.ts');
 const catalogPath = path.join(engineDir, 'RpgObjectCatalog.ts');
 const itemIdsPath = path.join(engineDir, 'RpgItemIds.ts');
+const archivePath = path.join(engineDir, 'RpgArchive.tsx');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
 const catalog = fs.readFileSync(catalogPath, 'utf8');
 const itemIds = fs.readFileSync(itemIdsPath, 'utf8');
+const archive = fs.readFileSync(archivePath, 'utf8');
 const failures = [];
 
 function fail(message) {
@@ -160,6 +162,13 @@ function validateContentMetadata() {
   if (!catalog.includes('Harvest:')) fail('Seed facts must expose harvest metadata');
 }
 
+function validateArchiveScalabilityControls() {
+  if (!archive.includes("type ArchiveSort = 'name' | 'rarity' | 'status';")) fail('Archive must expose stable sort modes');
+  if (!archive.includes('TextInput')) fail('Archive must include search input for large catalogs');
+  if (!archive.includes('archiveEntryMatchesQuery')) fail('Archive search must use catalog-derived entry data');
+  if (!archive.includes('Showing {filteredEntries.length}')) fail('Archive summary must expose filtered result count');
+}
+
 const forestAssets = parseForestAssets();
 const registryIds = parseRegistryIds(forestAssets);
 const catalogItemIds = parseCatalogItemIds(forestAssets);
@@ -170,6 +179,7 @@ validateDropReferences(catalogItemIds);
 validateSeedReferences(forestAssets, catalogItemIds);
 validatePlaceableMetadata(forestAssets);
 validateContentMetadata();
+validateArchiveScalabilityControls();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');
