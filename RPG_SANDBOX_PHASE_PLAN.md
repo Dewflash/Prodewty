@@ -96,6 +96,7 @@ These rules must remain true after every phase.
 | 39 | Safe chest rewards V1 | Verified | Temple chests grant once-per-type rewards through a reward-claim ledger |
 | 40 | Lever toggle feedback V1 | Verified | Temple levers persist on/off toggle feedback without puzzle side effects |
 | 41 | Trap disable feedback V1 | Verified | Temple traps persist disarm/re-arm feedback without damage or collision side effects |
+| 42 | Object relation foundation V1 | Verified | Persist source-target object links for future lever, gate, and trap mechanics |
 
 ## Required Audit Loop For Every Phase
 
@@ -2168,5 +2169,56 @@ Expansion notes saved:
 - Link lever-disarm behavior only after an object relation table exists.
 
 Phase 41 status:
+
+- Verified.
+
+### Phase 42 Audit
+
+Intended behavior:
+
+- Add a persisted `sanctuary_object_relations` table that can link one placed object to another placed object by relation kind.
+- Support typed future relation kinds for `lever_opens_gate` and `lever_disarms_trap`.
+- Reject self-links at the helper layer so one placed object cannot target itself.
+- Upsert relation rows by source object, target object, and relation kind instead of creating duplicates.
+- Clean all source and target relation rows when a placed object is stashed.
+- The RPG validator enforces schema shape, typed helpers, self-link rejection, upsert semantics, cleanup, and no runtime side effects.
+
+Negative guarantees:
+
+- Relation persistence must not make levers open gates, disarm traps, mutate collision, mutate object placement, damage/heal the avatar, grant loot, or add new normal-mode controls.
+- Relation cleanup must not block the existing interaction-memory cleanup or stash inventory return transaction.
+- Relation helpers must not interpolate object ids or item ids into SQL strings.
+- Relation rows must not be keyed by item type alone; they must be tied to placed object ids so moving or replacing objects keeps links explicit.
+
+Files changed:
+
+- `app/src/db/schema.ts`
+- `app/src/db/sanctuaryObjectRelations.ts`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Verification evidence:
+
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run validate:rpg`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-object-relations-export`
+- Passed: source inspection confirmed relation helpers only write/read/delete relation rows and do not mutate health, collision, placement, inventory, rewards, or lever/trap behavior.
+
+Manual test checklist:
+
+- Stash a placed lever; confirm no crash and inventory return still works.
+- Stash a placed gate or trap; confirm no crash and map refresh still works.
+- Confirm lever and trap interactions still only show feedback and do not affect gates, traps, collision, HP, or loot.
+- Confirm normal mode still only exposes `Interact` and `Attack`.
+
+Expansion notes saved:
+
+- Build an authoring flow later that lets the user select a lever, choose a nearby gate/trap target, and create a relation row.
+- Only apply relation side effects after safe-path, locked-gate, trap-cooldown, and visual state rules exist.
+- Consider target lookup helpers once reverse relation gameplay becomes real.
+
+Phase 42 status:
 
 - Verified.

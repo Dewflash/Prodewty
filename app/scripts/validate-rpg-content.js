@@ -16,6 +16,7 @@ const sanctuaryObjectPath = path.join(engineDir, 'SanctuaryObject.tsx');
 const rpgScreenPath = path.join(appRoot, 'app', 'rpg.tsx');
 const schemaPath = path.join(appRoot, 'src', 'db', 'schema.ts');
 const sanctuaryInteractionsPath = path.join(appRoot, 'src', 'db', 'sanctuaryInteractions.ts');
+const sanctuaryObjectRelationsPath = path.join(appRoot, 'src', 'db', 'sanctuaryObjectRelations.ts');
 const sanctuaryRewardsPath = path.join(appRoot, 'src', 'db', 'sanctuaryRewards.ts');
 
 const assetRegistry = fs.readFileSync(assetRegistryPath, 'utf8');
@@ -29,6 +30,7 @@ const sanctuaryObject = fs.readFileSync(sanctuaryObjectPath, 'utf8');
 const rpgScreen = fs.readFileSync(rpgScreenPath, 'utf8');
 const schema = fs.readFileSync(schemaPath, 'utf8');
 const sanctuaryInteractions = fs.readFileSync(sanctuaryInteractionsPath, 'utf8');
+const sanctuaryObjectRelations = fs.readFileSync(sanctuaryObjectRelationsPath, 'utf8');
 const sanctuaryRewards = fs.readFileSync(sanctuaryRewardsPath, 'utf8');
 const failures = [];
 
@@ -631,6 +633,39 @@ function validateTrapDisableFeedback() {
   if (rpgScreen.includes('disable_trap_collision')) fail('Trap feedback must not mutate movement collision state');
 }
 
+function validateSanctuaryObjectRelations() {
+  if (!schema.includes('CREATE TABLE IF NOT EXISTS sanctuary_object_relations')) {
+    fail('Schema must create sanctuary_object_relations for future object links');
+  }
+  if (!schema.includes('PRIMARY KEY (source_object_id, target_object_id, relation_kind)')) {
+    fail('Object relations must be unique per source, target, and relation kind');
+  }
+  if (!schema.includes('idx_sanctuary_object_relations_target')) {
+    fail('Object relations must index target lookups for cleanup and future reverse links');
+  }
+  if (!sanctuaryObjectRelations.includes("export type SanctuaryObjectRelationKind = 'lever_opens_gate' | 'lever_disarms_trap';")) {
+    fail('Object relations must expose typed lever gate/trap relation kinds');
+  }
+  if (!sanctuaryObjectRelations.includes('sourceObjectId === targetObjectId')) {
+    fail('Object relations must reject self-links');
+  }
+  if (!sanctuaryObjectRelations.includes('ON CONFLICT(source_object_id, target_object_id, relation_kind) DO UPDATE')) {
+    fail('Object relations must upsert stable links instead of duplicating them');
+  }
+  if (!sanctuaryObjectRelations.includes('export function getSanctuaryObjectRelations')) {
+    fail('Object relations must expose source lookup helper');
+  }
+  if (!sanctuaryObjectRelations.includes('export function deleteSanctuaryObjectRelationsForObject')) {
+    fail('Object relations must expose cleanup helper for deleted objects');
+  }
+  if (!rpgScreen.includes('deleteSanctuaryObjectRelationsForObject(selectedObject.id)')) {
+    fail('Stashing an object must clear source and target object relations');
+  }
+  if (rpgScreen.includes('lever_opens_gate') || rpgScreen.includes('lever_disarms_trap')) {
+    fail('Relation foundation phase must not wire lever relation side effects into the RPG screen');
+  }
+}
+
 const forestAssets = parseForestAssets();
 const crystalAssets = parseCrystalAssets();
 const bushAssets = parseBushAssets();
@@ -666,6 +701,7 @@ validateSanctuaryInteractionMemory();
 validateSanctuaryRewardClaims();
 validateLeverToggleFeedback();
 validateTrapDisableFeedback();
+validateSanctuaryObjectRelations();
 
 if (failures.length > 0) {
   console.error('RPG content validation failed:');

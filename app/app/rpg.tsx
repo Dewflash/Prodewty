@@ -44,6 +44,7 @@ import {
   deleteSanctuaryObjectInteractions,
   markSanctuaryObjectInteraction,
 } from '../src/db/sanctuaryInteractions';
+import { deleteSanctuaryObjectRelationsForObject } from '../src/db/sanctuaryObjectRelations';
 import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
 import { RPG_WATER_DROPS_ITEM_ID } from '../src/engine/RpgItemIds';
@@ -687,6 +688,9 @@ export default function RpgScreen() {
       db.execSync('BEGIN TRANSACTION');
       if (!deleteSanctuaryObjectInteractions(selectedObject.id)) {
         throw new Error('Failed to clean object interactions');
+      }
+      if (!deleteSanctuaryObjectRelationsForObject(selectedObject.id)) {
+        throw new Error('Failed to clean object relations');
       }
       db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', selectedObject.id);
       db.runSync(
