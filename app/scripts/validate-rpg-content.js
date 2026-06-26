@@ -360,6 +360,12 @@ function validateShopScalabilityControls() {
 function validateWorldArtRenderer() {
   if (!itemIcon.includes('export function RpgItemWorldArt')) fail('Shared item art renderer must expose RpgItemWorldArt');
   if (!itemIcon.includes('item?.icon')) fail('Shared item art renderer must support sprite-frame icons');
+  const worldArtStart = itemIcon.indexOf('export function RpgItemWorldArt');
+  const iconBranch = itemIcon.indexOf('if (item?.icon)', worldArtStart);
+  const sourceBranch = itemIcon.indexOf('if (item?.source)', worldArtStart);
+  if (iconBranch === -1 || sourceBranch === -1 || iconBranch > sourceBranch) {
+    fail('Shared item world art renderer must prefer sprite frames before whole-image sources');
+  }
   if (!sanctuaryObject.includes('RpgItemWorldArt')) fail('Placed sanctuary objects must use shared item art rendering');
   if (!rpgScreen.includes('RpgItemWorldArt')) fail('Build ghost must use shared item art rendering');
 }

@@ -64,19 +64,19 @@ type ItemWorldArtProps = {
 };
 
 export function RpgItemWorldArt({ item, width, height, fallbackLabel = '?', style }: ItemWorldArtProps) {
-  if (item?.source) {
-    return (
-      <View style={[styles.worldArtFrame, { width, height }, style]}>
-        <Image source={item.source} resizeMode="contain" style={styles.worldArtImage} />
-      </View>
-    );
-  }
-
   if (item?.icon) {
     const frameScale = Math.min(width / item.icon.width, height / item.icon.height);
     return (
       <View style={[styles.worldArtFrame, { width, height }, style]}>
         <RpgSpriteFrameView frame={item.icon} scale={frameScale} />
+      </View>
+    );
+  }
+
+  if (item?.source) {
+    return (
+      <View style={[styles.worldArtFrame, { width, height }, style]}>
+        <Image source={item.source} resizeMode="contain" style={styles.worldArtImage} />
       </View>
     );
   }

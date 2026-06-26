@@ -87,6 +87,7 @@ These rules must remain true after every phase.
 | 30 | Backpack source-pack filters | Verified | Backpack inventory source filters share Forest/Crystal/Bush/Cave catalog labels |
 | 31 | Shared source-pack metadata | Verified | Source-pack filter definitions are centralized in the gameplay catalog |
 | 32 | Source-pack filter counts | Verified | Archive, shop, and backpack source filters show catalog/inventory counts |
+| 33 | Framed world art priority | Verified | World art renderer prefers curated sprite frames before whole-image sources |
 
 ## Required Audit Loop For Every Phase
 
@@ -1158,6 +1159,35 @@ Manual test checklist:
 - Open shop and confirm Forest/Crystal/Bush/Cave counts are visible.
 - Buy a few source-pack items and confirm backpack source counts update by owned stack.
 - Confirm counts do not hide or shift source filter labels on phone.
+
+## Phase 33: Framed World Art Priority
+
+Goal: make sheet-based placeables safe by ensuring curated sprite frames render before whole-sheet image sources.
+
+Deliverables:
+
+- Update `RpgItemWorldArt` to prefer `item.icon` frames before `item.source`.
+- Keep standalone PNG objects working through the existing `source` fallback.
+- Extend `validate:rpg` to guard this branch order.
+
+Acceptance gates:
+
+- Existing standalone object sources still render.
+- Future items with both an icon frame and a source do not accidentally display the entire source sheet in-world.
+- Placed objects and build ghosts still share the same renderer.
+- TypeScript, RPG content validation, whitespace check, and Expo export pass.
+
+Current verification evidence:
+
+- `npx tsc --noEmit`
+- `npm run validate:rpg`
+- `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/scripts/validate-rpg-content.js app/src/engine/RpgItemIcon.tsx`
+- `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-framed-world-art-export`
+
+Manual test checklist:
+
+- Place an existing standalone forest/cave object and confirm it still renders.
+- Place a seed/crop-style framed item when available and confirm it renders as the frame, not the full sheet.
 
 ## Manual Regression Script
 
