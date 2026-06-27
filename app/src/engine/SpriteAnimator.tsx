@@ -3,9 +3,24 @@ import { View, StyleSheet, ImageSourcePropType } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useDerivedValue,
   useFrameCallback,
+  makeMutable,
   type SharedValue,
 } from 'react-native-reanimated';
+
+// Global shared value containing the total running time in milliseconds.
+export const globalTime = makeMutable(0);
+
+// Component to drive the global time ticker using a single useFrameCallback.
+export function GlobalTicker() {
+  useFrameCallback((frameInfo) => {
+    if (frameInfo.timeSincePreviousFrame) {
+      globalTime.value += frameInfo.timeSincePreviousFrame;
+    }
+  });
+  return null;
+}
 
 interface SpriteAnimatorProps {
   source: ImageSourcePropType;
@@ -26,30 +41,31 @@ export function SpriteAnimator({
   directionRow,
   isPlaying,
 }: SpriteAnimatorProps) {
-  const frameIndex = useSharedValue(0);
-  const timeElapsed = useSharedValue(0);
+  const accumulatedTime = useSharedValue(0);
+  const lastGlobalTime = useSharedValue(globalTime.value);
 
   const frameDuration = 1000 / fps;
 
   useEffect(() => {
-    frameIndex.value = 0;
-    timeElapsed.value = 0;
+    accumulatedTime.value = 0;
+    lastGlobalTime.value = globalTime.value;
   }, [source, frameCount]);
 
-  useFrameCallback((frameInfo) => {
+  const frameIndex = useDerivedValue(() => {
+    const currentGlobal = globalTime.value;
+    const delta = currentGlobal - lastGlobalTime.value;
+    lastGlobalTime.value = currentGlobal;
+
     if (isPlaying && !isPlaying.value) {
-      frameIndex.value = 0;
-      timeElapsed.value = 0;
-      return;
+      accumulatedTime.value = 0;
+      return 0;
     }
 
-    if (frameInfo.timeSincePreviousFrame) {
-      timeElapsed.value += frameInfo.timeSincePreviousFrame;
-      if (timeElapsed.value >= frameDuration) {
-        timeElapsed.value = 0;
-        frameIndex.value = (frameIndex.value + 1) % frameCount;
-      }
+    if (delta > 0) {
+      accumulatedTime.value += delta;
     }
+
+    return Math.floor(accumulatedTime.value / frameDuration) % frameCount;
   });
 
   const animatedStyle = useAnimatedStyle(() => {

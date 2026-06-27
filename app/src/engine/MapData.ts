@@ -1,5 +1,9 @@
 export const TILE_SIZE = 32;
 
+export function getResponsiveTileSize(viewportWidth: number): number {
+  return Math.max(TILE_SIZE, Math.min(64, Math.floor(viewportWidth / 12)));
+}
+
 export enum TileType {
   GRASS = 0,
   WALL = 1,
@@ -69,9 +73,9 @@ export const DungeonMap = makeMap(20, 20, {
   { row: 16, col: 8 },
 ]);
 
-export function isBlocked(map: number[][], x: number, y: number): boolean {
-  const col = Math.floor(x / TILE_SIZE);
-  const row = Math.floor(y / TILE_SIZE);
+export function isBlocked(map: number[][], x: number, y: number, tileSize: number = TILE_SIZE): boolean {
+  const col = Math.floor(x / tileSize);
+  const row = Math.floor(y / tileSize);
 
   if (row < 0 || row >= map.length || col < 0 || col >= map[0].length) {
     return true; // Out of bounds is blocked

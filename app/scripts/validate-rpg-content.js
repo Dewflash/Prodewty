@@ -259,6 +259,13 @@ function parseCrystalShardItemId() {
   return match[1];
 }
 
+function parseItemIdConstants() {
+  return Object.fromEntries(
+    [...itemIds.matchAll(/\b(RPG_[A-Z0-9_]+_ITEM_ID)\s*=\s*'([^']+)'/g)]
+      .map(match => [match[1], match[2]]),
+  );
+}
+
 function parseCatalogItemIds(objectAssets) {
   const block = extractBlock(catalog, 'export const RPG_ITEM_CATALOG = {', '} satisfies Record<string, RpgItemDefinition>;');
   const ids = new Set(objectAssets.map(asset => asset.itemId));
@@ -266,6 +273,10 @@ function parseCatalogItemIds(objectAssets) {
   const crystalShardId = parseCrystalShardItemId();
   if (block.includes('[RPG_WATER_DROPS_ITEM_ID]')) ids.add(waterDropId);
   if (block.includes('[RPG_CRYSTAL_SHARDS_ITEM_ID]')) ids.add(crystalShardId);
+  const itemIdConstants = parseItemIdConstants();
+  for (const match of block.matchAll(/\[(RPG_[A-Z0-9_]+_ITEM_ID)\]\s*:\s*\{/g)) {
+    if (itemIdConstants[match[1]]) ids.add(itemIdConstants[match[1]]);
+  }
 
   for (const match of block.matchAll(/\n\s*([A-Za-z0-9_]+):\s*\{/g)) {
     ids.add(match[1]);

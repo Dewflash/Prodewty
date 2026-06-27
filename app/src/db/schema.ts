@@ -1500,6 +1500,272 @@ function runMigrations() {
     createSanctuaryTerrainOverridesTable();
     db.execSync('PRAGMA user_version = 63');
   }
+
+  // ─── Living Sandbox Expansion (v64–v69) ─────────────────────────────────────
+
+  if (version < 64) {
+    createSanctuaryConstructionsTable();
+    db.execSync('PRAGMA user_version = 64');
+  }
+
+  if (version < 65) {
+    createSanctuaryLivestockTable();
+    db.execSync('PRAGMA user_version = 65');
+  }
+
+  if (version < 66) {
+    createVillagerTables();
+    db.execSync('PRAGMA user_version = 66');
+  }
+
+  if (version < 67) {
+    createExplorationTables();
+    db.execSync('PRAGMA user_version = 67');
+  }
+
+  if (version < 68) {
+    createSanctuaryProcessorsTable();
+    db.execSync('PRAGMA user_version = 68');
+  }
+
+  if (version < 69) {
+    createPlayerEquipmentTable();
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN base_attack INTEGER NOT NULL DEFAULT 5'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN base_defense INTEGER NOT NULL DEFAULT 3'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN crit_chance REAL NOT NULL DEFAULT 0.05'); } catch {}
+    db.execSync('PRAGMA user_version = 69');
+  }
+
+  if (version < 70) {
+    try { db.runSync('ALTER TABLE sanctuary_objects ADD COLUMN level INTEGER NOT NULL DEFAULT 1'); } catch {}
+    db.execSync('PRAGMA user_version = 70');
+  }
+
+  if (version < 71) {
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN energy INTEGER NOT NULL DEFAULT 100'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN energy_max INTEGER NOT NULL DEFAULT 100'); } catch {}
+    db.execSync('PRAGMA user_version = 71');
+  }
+
+  if (version < 72) {
+    try { db.runSync('ALTER TABLE zone_progress ADD COLUMN combat_state TEXT'); } catch {}
+    db.execSync('PRAGMA user_version = 72');
+  }
+
+  if (version < 73) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sanctuary_generators (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        object_id INTEGER NOT NULL UNIQUE,
+        generator_type TEXT NOT NULL,
+        last_collected_at TEXT NOT NULL,
+        accumulated_quantity INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 73');
+  }
+
+  if (version < 74) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS shipping_bin (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        added_at TEXT NOT NULL,
+        sold INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 74');
+  }
+
+  if (version < 75) {
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN farming_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN mining_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN combat_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN foraging_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+    db.execSync('PRAGMA user_version = 75');
+  }
+
+  if (version < 76) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS bounties (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        villager_type TEXT NOT NULL,
+        required_item_id TEXT NOT NULL,
+        required_quantity INTEGER NOT NULL,
+        reward_coins INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL
+      );
+    `);
+    db.execSync('PRAGMA user_version = 76');
+  }
+
+  if (version < 77) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS resource_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        row INTEGER NOT NULL,
+        col INTEGER NOT NULL,
+        health INTEGER NOT NULL,
+        max_health INTEGER NOT NULL
+      );
+    `);
+    db.execSync('PRAGMA user_version = 77');
+  }
+
+  if (version < 78) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS farming_plots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        row INTEGER NOT NULL,
+        col INTEGER NOT NULL,
+        is_watered INTEGER NOT NULL DEFAULT 0,
+        planted_seed_id TEXT,
+        growth_stage INTEGER NOT NULL DEFAULT 0,
+        planted_at TEXT
+      );
+    `);
+    db.execSync('PRAGMA user_version = 78');
+  }
+
+  if (version < 79) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_quests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        objective_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        target_amount INTEGER NOT NULL,
+        current_amount INTEGER NOT NULL DEFAULT 0,
+        reward_coins INTEGER NOT NULL,
+        reward_item_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active'
+      );
+    `);
+    db.execSync('PRAGMA user_version = 79');
+  }
+
+  if (version < 80) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS crafting_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipe_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completes_at TEXT NOT NULL,
+        building_object_id INTEGER,
+        is_claimed INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 80');
+  }
+
+  if (version < 81) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_animals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        building_object_id INTEGER NOT NULL,
+        days_old INTEGER NOT NULL DEFAULT 0,
+        friendship_points INTEGER NOT NULL DEFAULT 0,
+        is_fed_today INTEGER NOT NULL DEFAULT 0,
+        is_petted_today INTEGER NOT NULL DEFAULT 0,
+        has_produce INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 81');
+  }
+
+  if (version < 82) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_relationships (
+        villager_id TEXT PRIMARY KEY,
+        friendship_points INTEGER NOT NULL DEFAULT 0,
+        gifts_given_this_week INTEGER NOT NULL DEFAULT 0,
+        last_gift_given_at TEXT
+      );
+    `);
+    db.execSync('PRAGMA user_version = 82');
+  }
+
+  if (version < 83) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS mine_floors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        level INTEGER NOT NULL UNIQUE,
+        ladder_found INTEGER NOT NULL DEFAULT 0,
+        generated_at TEXT NOT NULL
+      );
+      
+      CREATE TABLE IF NOT EXISTS mine_entities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        floor_level INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        row INTEGER NOT NULL,
+        col INTEGER NOT NULL,
+        health INTEGER NOT NULL,
+        max_health INTEGER NOT NULL,
+        state TEXT NOT NULL DEFAULT 'idle'
+      );
+    `);
+    db.execSync('PRAGMA user_version = 83');
+  }
+
+  if (version < 84) {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_museum_donations (
+        item_id TEXT PRIMARY KEY,
+        donated_at TEXT NOT NULL
+      );
+    `);
+    db.execSync('PRAGMA user_version = 84');
+  }
+
+  if (version < 85) {
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN fishing_points INTEGER NOT NULL DEFAULT 0'); } catch {}
+    db.execSync('PRAGMA user_version = 85');
+  }
+
+  if (version < 86) {
+    try { db.runSync("ALTER TABLE rpg_state ADD COLUMN current_season TEXT NOT NULL DEFAULT 'spring'"); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN current_day INTEGER NOT NULL DEFAULT 1'); } catch {}
+    try { db.runSync('ALTER TABLE rpg_state ADD COLUMN current_year INTEGER NOT NULL DEFAULT 1'); } catch {}
+    db.execSync('PRAGMA user_version = 86');
+  }
+
+  if (version < 87) {
+    try { db.runSync("ALTER TABLE rpg_state ADD COLUMN current_zone TEXT NOT NULL DEFAULT 'farm'"); } catch {}
+    db.execSync('PRAGMA user_version = 87');
+  }
+
+  if (version < 88) {
+    migrateSkillPointsColumns();
+    db.execSync('PRAGMA user_version = 88');
+  }
+}
+
+function migrateSkillPointsColumns() {
+  const columns = [
+    ['farming_points', 'farming_xp'],
+    ['mining_points', 'mining_xp'],
+    ['combat_points', 'combat_xp'],
+    ['foraging_points', 'foraging_xp'],
+    ['fishing_points', 'fishing_xp'],
+  ] as const;
+
+  for (const [pointsCol, legacyCol] of columns) {
+    try { db.runSync(`ALTER TABLE rpg_state ADD COLUMN ${pointsCol} INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try {
+      db.runSync(
+        `UPDATE rpg_state
+         SET ${pointsCol} = MAX(COALESCE(${pointsCol}, 0), COALESCE(${legacyCol}, 0))
+         WHERE id = 1`,
+      );
+    } catch {}
+  }
 }
 
 function createRpgDiscoveriesTable() {
@@ -1575,6 +1841,164 @@ function createSanctuaryTerrainOverridesTable() {
       tile_type INTEGER NOT NULL,
       PRIMARY KEY (row, col)
     );
+  `);
+}
+
+// ─── Living Sandbox Expansion Tables ──────────────────────────────────────────
+
+function createSanctuaryConstructionsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_constructions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      object_id INTEGER NOT NULL UNIQUE,
+      item_type TEXT NOT NULL,
+      started_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      finish_at TEXT NOT NULL,
+      is_complete INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.execSync(`
+    CREATE INDEX IF NOT EXISTS idx_sanctuary_constructions_finish
+    ON sanctuary_constructions (is_complete, finish_at);
+  `);
+}
+
+function createSanctuaryLivestockTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_livestock (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      object_id INTEGER NOT NULL UNIQUE,
+      animal_type TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      happiness INTEGER NOT NULL DEFAULT 50,
+      last_fed_at TEXT,
+      fed_until TEXT,
+      last_yield_at TEXT,
+      yield_ready INTEGER NOT NULL DEFAULT 0,
+      times_fed INTEGER NOT NULL DEFAULT 0,
+      times_yielded INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+}
+
+function createVillagerTables() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS villagers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      villager_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      house_object_id INTEGER,
+      home_row INTEGER NOT NULL DEFAULT 0,
+      home_col INTEGER NOT NULL DEFAULT 0,
+      current_row INTEGER NOT NULL DEFAULT 0,
+      current_col INTEGER NOT NULL DEFAULT 0,
+      schedule TEXT NOT NULL DEFAULT 'idle',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      spawned_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS villager_relationships (
+      villager_id INTEGER NOT NULL PRIMARY KEY,
+      friendship_points INTEGER NOT NULL DEFAULT 0,
+      friendship_level INTEGER NOT NULL DEFAULT 0,
+      last_gift_at TEXT,
+      gifts_today INTEGER NOT NULL DEFAULT 0,
+      last_gift_reset TEXT,
+      total_gifts_given INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS villager_dialogue_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      villager_id INTEGER NOT NULL,
+      dialogue_key TEXT NOT NULL,
+      shown_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  db.execSync(`
+    CREATE INDEX IF NOT EXISTS idx_villager_dialogue_log_villager
+    ON villager_dialogue_log (villager_id, shown_at);
+  `);
+}
+
+function createExplorationTables() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS exploration_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      zone_type TEXT NOT NULL,
+      seed INTEGER NOT NULL,
+      layout TEXT NOT NULL DEFAULT '[]',
+      discovered_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      status TEXT NOT NULL DEFAULT 'active',
+      floor_number INTEGER NOT NULL DEFAULT 1,
+      difficulty INTEGER NOT NULL DEFAULT 1
+    );
+  `);
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS zone_progress (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      zone_id INTEGER NOT NULL UNIQUE,
+      rooms_cleared INTEGER NOT NULL DEFAULT 0,
+      enemies_killed INTEGER NOT NULL DEFAULT 0,
+      chests_opened INTEGER NOT NULL DEFAULT 0,
+      total_coins INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS zone_loot_claims (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      zone_id INTEGER NOT NULL,
+      loot_key TEXT NOT NULL,
+      claimed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(zone_id, loot_key)
+    );
+  `);
+  db.execSync(`
+    CREATE INDEX IF NOT EXISTS idx_exploration_zones_status
+    ON exploration_zones (status, zone_type);
+  `);
+}
+
+function createSanctuaryProcessorsTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS sanctuary_processors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      object_id INTEGER NOT NULL UNIQUE,
+      processor_type TEXT NOT NULL,
+      input_item_id TEXT,
+      input_quantity INTEGER NOT NULL DEFAULT 0,
+      output_item_id TEXT,
+      output_quantity INTEGER NOT NULL DEFAULT 0,
+      started_at TEXT,
+      finish_at TEXT,
+      is_processing INTEGER NOT NULL DEFAULT 0,
+      is_ready INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.execSync(`
+    CREATE INDEX IF NOT EXISTS idx_sanctuary_processors_status
+    ON sanctuary_processors (is_processing, is_ready);
+  `);
+}
+
+function createPlayerEquipmentTable() {
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS player_equipment (
+      slot TEXT PRIMARY KEY NOT NULL,
+      item_id TEXT,
+      equipped_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+  // Seed default empty equipment slots
+  db.execSync(`
+    INSERT OR IGNORE INTO player_equipment (slot, item_id) VALUES ('weapon', NULL);
+    INSERT OR IGNORE INTO player_equipment (slot, item_id) VALUES ('armor', NULL);
+    INSERT OR IGNORE INTO player_equipment (slot, item_id) VALUES ('accessory', NULL);
+    INSERT OR IGNORE INTO player_equipment (slot, item_id) VALUES ('tool', NULL);
   `);
 }
 

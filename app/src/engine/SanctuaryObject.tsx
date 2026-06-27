@@ -1,5 +1,5 @@
-import React from 'react';
-import Animated, { runOnJS, useAnimatedStyle, type SharedValue, withTiming } from 'react-native-reanimated';
+import React, { useEffect } from 'react';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, type SharedValue, withTiming } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TILE_SIZE } from './MapData';
 import { getPlaceableItem } from './RpgObjectCatalog';
@@ -15,12 +15,13 @@ interface Props {
   isInteracting?: boolean;
   isTargeted?: boolean;
   mechanicState?: 'open_gate' | 'disabled_trap' | null;
+  tileSize?: number;
   onMoveRequest?: (id: number) => void;
 }
 
 const AVATAR_SIZE = 64;
 
-export function SanctuaryObject({
+export const SanctuaryObject = React.memo(function SanctuaryObject({
   id,
   type,
   row,
@@ -30,6 +31,7 @@ export function SanctuaryObject({
   isInteracting = false,
   isTargeted = false,
   mechanicState = null,
+  tileSize = TILE_SIZE,
   onMoveRequest,
 }: Props) {
   const catalogItem = getPlaceableItem(type);
@@ -39,16 +41,32 @@ export function SanctuaryObject({
   const visWidth = catalogItem?.visWidth || 2;
   const visHeight = catalogItem?.visHeight || 2;
 
-  const width = visWidth * TILE_SIZE;
-  const height = visHeight * TILE_SIZE;
+  const width = visWidth * tileSize;
+  const height = visHeight * tileSize;
 
   // Physical collision box geometry
-  const centerX = (col + colWidth / 2) * TILE_SIZE;
-  const bottomY = (row + colHeight) * TILE_SIZE;
+  const centerX = (col + colWidth / 2) * tileSize;
+  const bottomY = (row + colHeight) * tileSize;
 
   // Visually anchor the image so its bottom-center aligns with the bottom-center of the collision box.
   const left = centerX - (width / 2);
   const top = bottomY - height;
+
+  const isInteractingShared = useSharedValue(isInteracting);
+  const isTargetedShared = useSharedValue(isTargeted);
+  const mechanicStateShared = useSharedValue(mechanicState);
+
+  useEffect(() => {
+    isInteractingShared.value = isInteracting;
+  }, [isInteracting]);
+
+  useEffect(() => {
+    isTargetedShared.value = isTargeted;
+  }, [isTargeted]);
+
+  useEffect(() => {
+    mechanicStateShared.value = mechanicState;
+  }, [mechanicState]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const treeCenterX = left + width / 2;
@@ -56,16 +74,24 @@ export function SanctuaryObject({
     const dx = Math.abs(avatarCenterX - treeCenterX);
 
     const avatarFeetY = avatarY.value + AVATAR_SIZE;
-    const treeFeetY = (row + colHeight) * TILE_SIZE;
+    const treeFeetY = (row + colHeight) * tileSize;
     const dy = treeFeetY - avatarFeetY;
 
     const isBehind = dx < (width / 2) && dy > 0 && dy < height;
 
-    const baseOpacity = mechanicState === 'open_gate' ? 0.38 : mechanicState === 'disabled_trap' ? 0.58 : 1;
+    const mechanic = mechanicStateShared.value;
+    const baseOpacity = mechanic === 'open_gate' ? 0.38 : mechanic === 'disabled_trap' ? 0.58 : 1;
 
     return {
       opacity: withTiming(isBehind ? Math.min(baseOpacity, 0.4) : baseOpacity, { duration: 150 }),
-      transform: [{ scale: withTiming(isInteracting ? 1.08 : isTargeted ? 1.03 : 1, { duration: 120 }) }],
+      transform: [
+        {
+          scale: withTiming(
+            isInteractingShared.value ? 1.08 : isTargetedShared.value ? 1.03 : 1,
+            { duration: 120 }
+          ),
+        },
+      ],
     };
   });
 
@@ -98,4 +124,4 @@ export function SanctuaryObject({
       </Animated.View>
     </GestureDetector>
   );
-}
+});

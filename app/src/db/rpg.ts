@@ -34,6 +34,13 @@ export type RPGState = {
   hp: number;
   hp_max: number;
   mp: number;
+  energy: number;
+  energy_max: number;
+  farming_points: number;
+  mining_points: number;
+  combat_points: number;
+  foraging_points: number;
+  fishing_points: number;
   job: string;
   // v11
   self_destruct_count: number;
@@ -140,6 +147,10 @@ export function checkStreakFreeze(): void {
     const daysMissed = Math.floor(
       (new Date(today).getTime() - new Date(state.last_active_date).getTime()) / 86400000,
     );
+    if (daysMissed >= 1) {
+      const { reconcileOfflineTime } = require('./time');
+      reconcileOfflineTime(daysMissed);
+    }
     if (daysMissed === 1) return;
     if (daysMissed === 2 && (state.streak_freezes ?? 0) > 0) {
       // Consume freeze and back-date last_active_date to yesterday so next

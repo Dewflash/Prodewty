@@ -136,7 +136,7 @@ export default function SettingsScreen() {
     currencyRef.current = clean;
   }
 
-  async function confirmAndWipe(archiveHistory: boolean, retainCustomizations: boolean) {
+  async function confirmAndWipe(archiveHistory: boolean, retainCustomizations: boolean, retainOnboarding: boolean = false) {
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Confirm full wipe & reset',
@@ -144,7 +144,7 @@ export default function SettingsScreen() {
         disableDeviceFallback: false,
       });
       if (result.success) {
-        performFullReset(archiveHistory, retainCustomizations);
+        performFullReset(archiveHistory, retainCustomizations, retainOnboarding);
         clearAllCustomBGM();
         removeCustomWallpaper();
         triggerCurrencyRefresh();
@@ -174,8 +174,19 @@ export default function SettingsScreen() {
       'Retain Customizations?',
       'Do you want to keep your custom activities, moods, and recharge items? If wiped, you will need to set them up again during onboarding.',
       [
-        { text: 'Wipe Customizations', style: 'destructive', onPress: () => confirmAndWipe(archiveHistory, false) },
-        { text: 'Keep Customizations', onPress: () => confirmAndWipe(archiveHistory, true) },
+        { text: 'Wipe Customizations', style: 'destructive', onPress: () => confirmAndWipe(archiveHistory, false, false) },
+        { text: 'Keep Customizations', onPress: () => promptRetainOnboarding(archiveHistory) },
+      ]
+    );
+  }
+
+  function promptRetainOnboarding(archiveHistory: boolean) {
+    Alert.alert(
+      'Skip Onboarding?',
+      'Since you kept your custom activities, do you want to skip the onboarding flow? (If you restart onboarding, it will introduce new recommended activities on top of your retained ones).',
+      [
+        { text: 'Restart Onboarding', onPress: () => confirmAndWipe(archiveHistory, true, false) },
+        { text: 'Skip Onboarding', style: 'cancel', onPress: () => confirmAndWipe(archiveHistory, true, true) },
       ]
     );
   }

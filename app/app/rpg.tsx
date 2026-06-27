@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Pressable, StyleSheet, Text, View, AppState, useWindowDimensions } from 'react-native';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { fonts } from '../src/theme/typography';
 import { Joystick } from '../src/engine/Joystick';
-import { SpriteAnimator } from '../src/engine/SpriteAnimator';
+import { SpriteAnimator, GlobalTicker } from '../src/engine/SpriteAnimator';
 import { RpgBackpack } from '../src/engine/RpgBackpack';
 import { RpgArchive } from '../src/engine/RpgArchive';
 import { RpgItemIcon, RpgItemWorldArt, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
@@ -29,7 +29,7 @@ import {
   type ShopCatalogItem,
 } from '../src/engine/RpgObjectCatalog';
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
-import { DungeonMap, SanctuaryMap, TILE_COLLISION, TILE_SIZE, TileType } from '../src/engine/MapData';
+import { DungeonMap, getResponsiveTileSize, SanctuaryMap, TILE_COLLISION, TILE_SIZE as DEFAULT_TILE_SIZE, TileType } from '../src/engine/MapData';
 import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
 import { BridgeTile, FLOOR_TILE_COORD, PathTile, TilledTile, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
 import { db } from '../src/db/schema';
@@ -260,11 +260,11 @@ function getItem(type: string | null): ShopCatalogItem | null {
   return getPlaceableItem(type);
 }
 
-function cellsForRect(x: number, y: number, width: number, height: number) {
-  const startCol = Math.floor(x / TILE_SIZE);
-  const endCol = Math.floor((x + width - 1) / TILE_SIZE);
-  const startRow = Math.floor(y / TILE_SIZE);
-  const endRow = Math.floor((y + height - 1) / TILE_SIZE);
+function cellsForRect(x: number, y: number, width: number, height: number, tileSize: number) {
+  const startCol = Math.floor(x / tileSize);
+  const endCol = Math.floor((x + width - 1) / tileSize);
+  const startRow = Math.floor(y / tileSize);
+  const endRow = Math.floor((y + height - 1) / tileSize);
   const cells: { row: number; col: number }[] = [];
   for (let row = startRow; row <= endRow; row++) {
     for (let col = startCol; col <= endCol; col++) {
@@ -274,12 +274,13 @@ function cellsForRect(x: number, y: number, width: number, height: number) {
   return cells;
 }
 
-function avatarCells(avatarX: number, avatarY: number) {
+function avatarCells(avatarX: number, avatarY: number, tileSize: number) {
   return cellsForRect(
     avatarX + AVATAR_FOOT_BOX.offsetX,
     avatarY + AVATAR_FOOT_BOX.offsetY,
     AVATAR_FOOT_BOX.width,
     AVATAR_FOOT_BOX.height,
+    tileSize,
   );
 }
 
@@ -299,6 +300,19 @@ function pickPlacementReason(current: PlacementReason, next: PlacementReason) {
 }
 
 export default function RpgScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const TILE_SIZE = getResponsiveTileSize(windowWidth);
+
+  useEffect(() => {
+    const handleAppState = (nextState: string) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        setBuildItem(null);
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, []);
+
   const currentSeason = getCurrentSeason();
   const seasonInfo = SEASON_CONFIG[currentSeason];
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
@@ -764,7 +778,7 @@ export default function RpgScreen() {
   }, [getTargetedTile, resolveInteractionTargetAt]);
 
   const getAvatarFootCell = () => {
-    const cells = avatarCells(avatarX.value, avatarY.value);
+    const cells = avatarCells(avatarX.value, avatarY.value, TILE_SIZE);
     return cells[0] ?? { row: 0, col: 0 };
   };
 
@@ -868,7 +882,7 @@ export default function RpgScreen() {
     }
 
     const occupiedByAvatar = new Set(
-      avatarCells(avatarX.value, avatarY.value).map(cell => `${cell.row}:${cell.col}`),
+      avatarCells(avatarX.value, avatarY.value, TILE_SIZE).map(cell => `${cell.row}:${cell.col}`),
     );
     let reason: PlacementReason = 'Ready';
     const cells: PlacementCell[] = [];
@@ -2328,35 +2342,36 @@ export default function RpgScreen() {
 
   return (
     <View style={styles.container}>
+      <GlobalTicker />
       <GestureDetector gesture={worldGesture}>
         <Animated.View style={[styles.world, { width: mapWidth, height: mapHeight }, worldStyle]}>
           {mapData.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.mapRow}>
               {row.map((tile, colIndex) => (
                 activeZone === 'dungeon' && (tile === TileType.GRASS || tile === TileType.WALL) ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
-                    <TilesetTile {...(tile === TileType.WALL ? WALL_TILE_COORD : FLOOR_TILE_COORD)} />
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <TilesetTile {...(tile === TileType.WALL ? WALL_TILE_COORD : FLOOR_TILE_COORD)} tileSize={TILE_SIZE} />
                   </View>
                 ) : tile === TileType.WATER ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
-                    <WaterTile />
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <WaterTile tileSize={TILE_SIZE} />
                   </View>
                 ) : tile === TileType.BRIDGE ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
-                    <BridgeTile />
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <BridgeTile tileSize={TILE_SIZE} />
                   </View>
                 ) : tile === TileType.PATH ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
-                    <PathTile />
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <PathTile tileSize={TILE_SIZE} />
                   </View>
                 ) : tile === TileType.TILLED ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={styles.tile}>
-                    <TilledTile />
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <TilledTile tileSize={TILE_SIZE} />
                   </View>
                 ) : (
                   <View
                     key={`tile-${rowIndex}-${colIndex}`}
-                    style={[styles.tile, { backgroundColor: getTileColor(tile as TileType) }]}
+                    style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE, backgroundColor: getTileColor(tile as TileType) }]}
                   />
                 )
               ))}
@@ -2376,6 +2391,7 @@ export default function RpgScreen() {
               isInteracting={interactingObjectId === obj.id}
               isTargeted={SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
               mechanicState={getObjectMechanicState(obj)}
+              tileSize={TILE_SIZE}
               onMoveRequest={handleObjectLongPress}
             />
           ))}
@@ -2405,6 +2421,8 @@ export default function RpgScreen() {
                   {
                     left: plot.col * TILE_SIZE,
                     top: plot.row * TILE_SIZE,
+                    width: TILE_SIZE,
+                    height: TILE_SIZE,
                     zIndex: plot.row,
                   },
                 ]}
@@ -2472,6 +2490,8 @@ export default function RpgScreen() {
                   style={[
                     styles.placementCell,
                     {
+                      width: TILE_SIZE,
+                      height: TILE_SIZE,
                       left: cell.col * TILE_SIZE,
                       top: cell.row * TILE_SIZE,
                       borderColor: cell.valid ? '#35ff70' : '#ff3b30',
@@ -2490,6 +2510,8 @@ export default function RpgScreen() {
               style={[
                 styles.interactionTargetCell,
                 {
+                  width: TILE_SIZE,
+                  height: TILE_SIZE,
                   left: cell.col * TILE_SIZE,
                   top: cell.row * TILE_SIZE,
                 },
@@ -3064,22 +3086,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   tile: {
-    width: TILE_SIZE,
-    height: TILE_SIZE,
+    width: DEFAULT_TILE_SIZE,
+    height: DEFAULT_TILE_SIZE,
     borderWidth: 1,
     borderColor: 'rgba(9,20,12,0.18)',
   },
   placementCell: {
     position: 'absolute',
-    width: TILE_SIZE,
-    height: TILE_SIZE,
+    width: DEFAULT_TILE_SIZE,
+    height: DEFAULT_TILE_SIZE,
     borderWidth: 3,
     zIndex: 2000,
   },
   interactionTargetCell: {
     position: 'absolute',
-    width: TILE_SIZE,
-    height: TILE_SIZE,
+    width: DEFAULT_TILE_SIZE,
+    height: DEFAULT_TILE_SIZE,
     borderWidth: 2,
     borderColor: '#fff2bb',
     backgroundColor: 'rgba(255,242,187,0.14)',
@@ -3087,8 +3109,8 @@ const styles = StyleSheet.create({
   },
   gardenPlot: {
     position: 'absolute',
-    width: TILE_SIZE,
-    height: TILE_SIZE,
+    width: DEFAULT_TILE_SIZE,
+    height: DEFAULT_TILE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(72,48,28,0.34)',
