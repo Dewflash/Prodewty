@@ -3,6 +3,12 @@
 
 # Personal notes
 iPhoneStart.md
+ORIGINAL_REQUEST.md
+app/ORIGINAL_REQUEST.md
+
+# Codex/agent scratch
+.agents/
+app/.agents/
 
 # Backend
 backend/venv/
