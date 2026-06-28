@@ -983,8 +983,8 @@ function validateSanctuaryObjectRelations() {
 }
 
 function validateResourceNodeFeedback() {
-  if (!assetRegistry.includes('leaves: rpgFarmSupply(6, 2)')) {
-    fail('Leaves must use the verified green leaf farm-supply frame, not the old ambiguous icon');
+  if (!assetRegistry.includes('leaves: rpgUiIcon(5, 4)')) {
+    fail('Leaves must use the clean green leaf UI frame, not a mixed farm-supply crop');
   }
   if (!rpgScreen.includes('const getForageEmptyText = (item: ShopCatalogItem)')) {
     fail('Forage empty feedback must be source-aware');
@@ -1231,8 +1231,32 @@ function validateRpgCraftingV1() {
 }
 
 function validateIconQaAndMechanismReadabilityV2() {
-  if (!catalog.includes("source: RPG_OBJECT_SOURCES.Broken_tree1")) {
-    fail('Wood resource must use the verified stump placeholder instead of the generic fallback icon');
+  const woodBlock = extractBlock(catalog, "[RPG_WOOD_ITEM_ID]: {", "  [RPG_STONE_ITEM_ID]:");
+  const woodPlankBlock = extractBlock(catalog, "[RPG_WOOD_PLANK_ITEM_ID]: {", "  [RPG_GEODE_ITEM_ID]:");
+  const clothBlock = extractBlock(catalog, "[RPG_CLOTH_ITEM_ID]: {", "  [RPG_TURNIP_SEED_ITEM_ID]:");
+  if (!woodBlock.includes('source: RPG_RESOURCE_SOURCES.wood')) {
+    fail('Wood resource must use the dedicated branch/log candidate, not a broken-tree object');
+  }
+  if (woodBlock.includes('RPG_OBJECT_SOURCES.Broken_tree1')) {
+    fail('Wood resource must not render from the broken-tree object');
+  }
+  if (!woodPlankBlock.includes('source: RPG_RESOURCE_SOURCES.woodPlank')) {
+    fail('Wood Plank must use the dedicated wood-strip candidate, not the raw stick bundle');
+  }
+  if (!assetRegistry.includes('wood: RPG_WOOD_ICON')) {
+    fail('Asset registry must expose a dedicated raw wood source');
+  }
+  if (!assetRegistry.includes('woodPlank: RPG_WOOD_PLANK_ICON')) {
+    fail('Asset registry must expose a dedicated wood plank source');
+  }
+  if (!assetRegistry.includes('cloth: RPG_CLOTH_ICON')) {
+    fail('Cloth must use a dedicated candidate instead of aliasing raw wool');
+  }
+  if (assetRegistry.includes('cloth: RPG_WOOL_ICON')) {
+    fail('Cloth must not alias raw wool art');
+  }
+  if (!clothBlock.includes('source: RPG_RESOURCE_SOURCES.cloth')) {
+    fail('Cloth item must render from the dedicated cloth source');
   }
   if (!catalog.includes("if (asset.tags.includes('lever')) {\n    return { colWidth: 1, colHeight: 1, visWidth: 2, visHeight: 2 };")) {
     fail('Lever visual footprint must be larger than its 1x1 collision footprint so it is visible on device');
@@ -1268,8 +1292,21 @@ function validateFarmAnimalsV1() {
   ['resource.egg', 'resource.milk', 'resource.wool', 'resource.truffle'].forEach(assetId => {
     if (!assetRegistry.includes(`'${assetId}'`)) fail(`Asset registry must declare product placeholder: ${assetId}`);
   });
-  ['eggProduct', 'milkProduct', 'woolProduct', 'truffleProduct'].forEach(frameId => {
+  ['milkProduct'].forEach(frameId => {
     if (!assetRegistry.includes(frameId)) fail(`Asset registry must expose ${frameId} frame`);
+  });
+  ['egg', 'wool', 'truffle'].forEach(sourceId => {
+    if (!assetRegistry.includes(`${sourceId}: RPG_`)) {
+      fail(`Asset registry must expose source-backed product candidate: ${sourceId}`);
+    }
+  });
+  ['resource.cloth', 'resource.trash', 'resource.dwarvishHelm', 'resource.omelet'].forEach(assetId => {
+    if (!assetRegistry.includes(`'${assetId}'`)) fail(`Asset registry must declare rewired placeholder: ${assetId}`);
+  });
+  ['cloth', 'trash', 'dwarvishHelm', 'omelet'].forEach(sourceId => {
+    if (!assetRegistry.includes(`${sourceId}: RPG_`)) {
+      fail(`Asset registry must expose source-backed rewired candidate: ${sourceId}`);
+    }
   });
   if (catalog.includes("description: 'A small egg from a Chick. Placeholder seed-packet art")) {
     fail('Egg must no longer use seed-packet placeholder copy');

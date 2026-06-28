@@ -1,6 +1,6 @@
 # RPG Asset Atlas
 
-Last updated: 2026-06-27
+Last updated: 2026-06-29
 
 This document records verified RPG sandbox assets and coordinates. It is the companion artifact for Phase 1 of `RPG_SANDBOX_PHASE_PLAN.md`.
 
@@ -19,6 +19,12 @@ Generated contact sheets are stored under `docs/rpg-asset-atlas/`.
 | `shop-sheet-16.png` | `app/assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Shop.png` | 16x16 | Shop panel and buy buttons |
 | `farm-plants-16.png` | `app/assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Plants.png` | 16x16 | Crop and plant growth candidates |
 | `farm-supplies-16.png` | `app/assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Supplies.png` | 16x16 | Harvest/resource/produce candidates |
+| `fish-seed-candidates.png` | mixed candidate sources | variable | Focused fish, squid, seaweed, bait, and seed candidate review |
+| `wood-cloth-candidates.png` | mixed candidate sources | variable | Focused wood, plank, wool, and cloth candidate review |
+| `remaining-placeholder-candidates.png` | mixed candidate sources | variable | Before choosing replacements for leftover placeholder items |
+| `wired-remaining-placeholder-fixes.png` | mixed candidate sources | variable | Before/after proof for the latest rewired item icons |
+| `wired-squid-fix.png` | fantasy icon sources | variable | Before/after proof replacing the squid bait/worm reuse |
+| `wired-wood-cloth-fixes.png` | mixed candidate sources | variable | Before/after proof replacing raw wood, wood plank, and cloth reuses |
 
 ## Verified Production Frames
 
@@ -29,27 +35,69 @@ These frames are safe for current production use.
 | `backpack` | `Icons.png` | row 0, col 3 | 16x16 | HUD backpack button |
 | `inventoryPanel` | `Inventory.png` | x 224, y 0 | 112x128 | Backpack overlay panel |
 | `shopPanel` | `Shop.png` | x 384, y 0 | 128x128 | Shop overlay panel |
-| `leaves` | `Supplies.png` | row 6, col 2 | 32x32 | `rpg_leaves` |
-| `seed` | `Supplies.png` | row 1, col 1 | 32x32 | Tree seed placeholder/sapling marker |
+| `leaves` | `Icons.png` | row 5, col 4 | 16x16 | `rpg_leaves`, fiber, hay, bait |
+| `treeSeed` | `Icon83_1_2.png` | full file | 32x32 | Tree and crop seed placeholder |
+| `waterDrop` | `Icons.png` | row 17, col 2 | 16x16 | `rpg_water_drops` |
+| `sprinklerProduct` | `Icons.png` | row 6, col 3 | 16x16 | `rpg_sprinkler` candidate |
+| `fertiliserProduct` | `Icon108_1_2.png` | full file | 32x32 | `rpg_fertiliser` candidate |
+| `stone` | `Rock5_1_no_shadow.png` | full file | 64x64 | `rpg_stone` rounded rock candidate |
+| `geode` | `Rock2_1_no_shadow.png` | full file | 64x64 | `rpg_geode` closed rock/mineral candidate |
+| `amethyst` | `Violet_crystal4.png` | full file | 16x16 | `rpg_amethyst` |
+| `ruby` | `Red_crystal4.png` | full file | 16x16 | `rpg_ruby` |
+| `diamond` | `White_crystal4.png` | full file | 16x16 | `rpg_diamond` |
 | `archiveClosedBook` | `Open_book.png` | row 0, col 0 | 272x272 | Archive HUD button |
 | `archiveOpenBook` | `Open_book.png` | row 2, col 3 | 272x272 | Archive overlay panel |
 
 Notes:
 
-- `leaves` is visually a green leaf cluster and replaces the prior worm-looking numbered icon.
-- `seed` is currently a sprout/plant marker. It is acceptable for the draft tree-seed item, but Phase 7 may replace it with a seed-bag or crop-specific seed once farming is live.
+- `leaves` now uses a clean green leaf UI frame. The prior `Supplies.png` row 6, col 2 crop mixed multiple produce pieces in one frame.
+- `treeSeed` now uses a clean acorn file. The prior `Supplies.png` row 1, col 1 crop was effectively a blank crate slice.
+- `waterDrop` now uses a complete blue bottle/drop frame. The prior row 13, col 3 UI crop showed only a partial cut-off vial.
+- `sprinklerProduct` uses a clean watering-can candidate until dedicated sprinkler art is found.
+- `fertiliserProduct` uses a clean white powder-pile candidate until dedicated fertiliser art is found.
+- `stone` now uses a rounded rock candidate. Earlier code used a narrow cave spire that read more like an object prop than a resource icon.
+- `geode` now uses a closed rock candidate. Earlier code reused a blue crystal shard even though a geode is a sealed node.
+- `amethyst` now uses the violet crystal shard. Earlier code reused the blue crystal shard despite the item description saying purple.
+- `squid` now uses a tentacle-like fantasy icon candidate. Earlier code reused the bait/worm candidate.
+- `wood` now uses a branch-like fantasy icon candidate. Earlier code used a broken stump object.
+- `woodPlank` now uses a small wood-strip candidate. Earlier code reused a loose stick bundle.
+- `cloth` now uses a purple fabric/thread-like candidate. Earlier code reused the raw wool candidate.
 - `inventoryPanel` includes the full right-side inventory panel from the source sheet. Earlier code used a narrower local crop; this was corrected by moving the frame into `RpgObjectCatalog.ts`.
 
-## Labeled Placeholder Frames
+## Candidate Resource Sources
 
-These frames are intentionally not final art, but they are semantically safer than reusing unrelated icons. The runtime overlays a text badge on these items so players can see what the item is while final produce art remains unverified.
+These sources are intentionally marked candidate-quality, but they are semantically safer than reusing unrelated objects or split farm-supply frames.
 
 | Name | Source | Coordinates | Size | Current use |
 | --- | --- | --- | --- | --- |
-| `eggProduct` | `Supplies.png` | row 3, col 8 | 32x32 | `rpg_egg` placeholder with `EGG` badge |
-| `milkProduct` | `Supplies.png` | row 6, col 6 | 32x32 | `rpg_milk` placeholder with `MILK` badge |
-| `woolProduct` | `Supplies.png` | row 6, col 0 | 32x32 | `rpg_wool` placeholder with `WOOL` badge |
-| `truffleProduct` | `Supplies.png` | row 6, col 5 | 32x32 | `rpg_truffle` placeholder with `TRUF` badge |
+| `egg` | `Icon84_1_2.png` | full file | 32x32 | `rpg_egg` nest/egg candidate |
+| `milkProduct` | `Icons.png` | row 7, col 4 | 16x16 | `rpg_milk` bottle candidate with `MILK` badge |
+| `wool` | `Icon88_1_2.png` | full file | 32x32 | `rpg_wool` textile-like candidate |
+| `cloth` | `Icon85_1_2.png` | full file | 32x32 | `rpg_cloth` fabric/thread-like candidate |
+| `truffle` | `Icon76_1_2.png` | full file | 32x32 | `rpg_truffle` brown mushroom/truffle candidate |
+| `wood` | `Icon46_1_2.png` | full file | 32x32 | `rpg_wood` branch/log-like candidate |
+| `woodPlank` | `Icon59_1_2.png` | full file | 32x32 | `rpg_wood_plank` wood-strip candidate |
+| `trash` | `Icon48_1_2.png` | full file | 32x32 | `rpg_trash` bag-like junk candidate |
+| `dwarvishHelm` | `Icon40_1_2.png` | full file | 32x32 | `rpg_dwarvish_helm` helmet-like relic candidate |
+| `omelet` | `Icon112_1_2.png` | full file | 32x32 | `rpg_omelet` cooked dish candidate |
+| `squid` | `Icon107_1_2.png` | full file | 32x32 | `rpg_squid` tentacle-like candidate |
+
+Historical bad frames replaced in runtime:
+
+- `Supplies.png` row 3, col 8 was used for both raw egg and omelet. It was visually ambiguous and touched the frame edge in the scanner.
+- `Supplies.png` row 6, col 0 was used for wool and cloth. It mixed cotton-like puffs with unrelated green produce.
+- `Supplies.png` row 6, col 5 was used for truffle. It was a tiny split mushroom frame and touched the frame edge.
+- `Broken_tree1.png` was used for fishing trash.
+- `Broken_tree1.png` was used for `rpg_wood`; it remains valid as an object/stump, not as the raw wood resource.
+- `Icon75_1_2.png` was used for `rpg_wood_plank`; it reads as loose sticks rather than processed lumber.
+- `Icon88_1_2.png` was used for both `rpg_wool` and `rpg_cloth`; cloth now has a separate source.
+- `Temple_wooden_chest` was used for `rpg_dwarvish_helm`.
+- `Icon90_1_2.png` was used for `rpg_squid`; it remains valid for bait but reads as a worm, not squid.
+
+No better candidate found in the current asset set:
+
+- Carp, catfish, and pufferfish still share the generic fish candidate from `Icon98_1_2.png`; the focused fish/seed sheet did not expose clearly distinct fish variants.
+- Crop/tree seeds still share the acorn candidate from `Icon83_1_2.png`; the focused pass did not find a clean seed bag or seed packet icon.
 
 ## Verified Candidate Frames
 
@@ -93,7 +141,34 @@ RPG_UI_FRAMES.backpack
 RPG_UI_FRAMES.inventoryPanel
 RPG_UI_FRAMES.shopPanel
 RPG_UI_FRAMES.leaves
-RPG_UI_FRAMES.seed
+RPG_UI_FRAMES.waterDrop
+RPG_UI_FRAMES.sprinklerProduct
+RPG_RESOURCE_SOURCES.treeSeed
+RPG_RESOURCE_SOURCES.fertiliser
+RPG_RESOURCE_SOURCES.bait
+RPG_RESOURCE_SOURCES.squid
+RPG_RESOURCE_SOURCES.fish
+RPG_RESOURCE_SOURCES.seaweed
+RPG_RESOURCE_SOURCES.salad
+RPG_RESOURCE_SOURCES.hay
+RPG_RESOURCE_SOURCES.coal
+RPG_RESOURCE_SOURCES.wood
+RPG_RESOURCE_SOURCES.woodPlank
+RPG_RESOURCE_SOURCES.cheese
+RPG_RESOURCE_SOURCES.mayonnaise
+RPG_RESOURCE_SOURCES.egg
+RPG_RESOURCE_SOURCES.wool
+RPG_RESOURCE_SOURCES.cloth
+RPG_RESOURCE_SOURCES.truffle
+RPG_RESOURCE_SOURCES.trash
+RPG_RESOURCE_SOURCES.dwarvishHelm
+RPG_RESOURCE_SOURCES.omelet
+RPG_UI_FRAMES.copperBar
+RPG_UI_FRAMES.ironBar
+RPG_UI_FRAMES.goldBar
+RPG_RESOURCE_SOURCES.turnip
+RPG_RESOURCE_SOURCES.cabbage
+RPG_RESOURCE_SOURCES.pumpkin
 BRIDGE_TILE_FRAME
 PATH_TILE_FRAME
 TILLED_TILE_FRAME
@@ -105,20 +180,48 @@ Current item mappings:
 
 | Item id | Kind | Icon policy |
 | --- | --- | --- |
-| `rpg_leaves` | resource | Uses verified `leaves` |
-| `White_tree1_seed` | seed | Uses verified draft `seed` |
-| `Curved_tree1_seed` | seed | Uses verified draft `seed` |
-| `Luminous_tree1_seed` | seed | Uses verified draft `seed` |
-| `Blue-green_balls_tree1_seed` | seed | Uses verified draft `seed` |
-| `Mega_tree1_seed` | seed | Uses verified draft `seed` |
+| `rpg_leaves` | resource | Uses clean `leaves` UI frame |
+| `White_tree1_seed` | seed | Uses clean `treeSeed` acorn source |
+| `Curved_tree1_seed` | seed | Uses clean `treeSeed` acorn source |
+| `Luminous_tree1_seed` | seed | Uses clean `treeSeed` acorn source |
+| `Blue-green_balls_tree1_seed` | seed | Uses clean `treeSeed` acorn source |
+| `Mega_tree1_seed` | seed | Uses clean `treeSeed` acorn source |
 | `Farm_chick` | object | Uses framed animation from tracked farm animal pack |
 | `Farm_piglet` | object | Uses framed animation from tracked farm animal pack |
 | `Farm_sheep` | object | Uses framed animation from tracked farm animal pack |
 | `Farm_calf` | object | Uses framed animation from tracked farm animal pack |
-| `rpg_egg` | resource | Placeholder `seed` frame until a verified egg icon exists |
-| `rpg_milk` | resource | Placeholder `waterDrop` frame until a verified milk icon exists |
-| `rpg_wool` | resource | Placeholder `leaves` frame until a verified wool icon exists |
-| `rpg_truffle` | resource | Placeholder cave mushroom source until a verified truffle icon exists |
+| `rpg_egg` | resource | Nest/egg candidate from fantasy icon pack |
+| `rpg_milk` | resource | Labeled clean bottle candidate from `Icons.png` |
+| `rpg_wool` | resource | Textile-like candidate from fantasy icon pack |
+| `rpg_truffle` | resource | Brown mushroom/truffle candidate from fantasy icon pack |
+| `rpg_fertiliser` | resource | Clean white powder-pile candidate from fantasy icon pack |
+| `rpg_sprinkler` | resource | Clean watering-can candidate from `Icons.png` |
+| `rpg_bait` | resource | Clean worm-like candidate from fantasy icon pack |
+| fish items | resource | Generic fish candidate from fantasy icon pack |
+| `rpg_squid` | resource | Tentacle-like candidate from fantasy icon pack |
+| `rpg_seaweed` | resource | Green aquatic strand candidate from fantasy icon pack |
+| `rpg_salad` | resource | Bowl of greens candidate from fantasy icon pack |
+| `rpg_hay` | resource | Grain/hay candidate from fantasy icon pack |
+| `rpg_coal` | resource | Dark lump candidate from fantasy icon pack |
+| `rpg_wood` | resource | Branch/log-like candidate from fantasy icon pack |
+| `rpg_wood_plank` | resource | Wood-strip candidate from fantasy icon pack |
+| `rpg_cheese` | resource | Cheese-like wedge candidate from fantasy icon pack |
+| `rpg_mayonnaise` | resource | White jar/bowl candidate from fantasy icon pack |
+| `rpg_copper_bar` | resource | Brown/orange ingot candidate from `Icons.png` |
+| `rpg_iron_bar` | resource | Silver ingot candidate from `Icons.png` |
+| `rpg_gold_bar` | resource | Gold ingot candidate from `Icons.png` |
+| `rpg_turnip` | resource | Pale root candidate from fantasy icon pack |
+| `rpg_cabbage` | resource | Green produce bowl candidate from fantasy icon pack |
+| `rpg_pumpkin` | resource | Orange produce bowl candidate from fantasy icon pack |
+| `rpg_cloth` | resource | Separate fabric/thread-like cloth candidate from fantasy icon pack |
+| `rpg_trash` | resource | Bag-like junk candidate from fantasy icon pack |
+| `rpg_dwarvish_helm` | resource | Helmet-like relic candidate from fantasy icon pack |
+| `rpg_omelet` | resource | Cooked dish candidate from fantasy icon pack |
+| `rpg_stone` | resource | Rounded rock candidate from rocks-and-stones pack |
+| `rpg_geode` | resource | Closed rock/mineral candidate from rocks-and-stones pack |
+| `rpg_amethyst` | resource | Violet crystal shard from crystal pack |
+| `rpg_ruby` | resource | Red crystal shard from crystal pack |
+| `rpg_diamond` | resource | White crystal shard from crystal pack |
 | tree/gazebo objects | object | Uses full object sprite source, not icon frame |
 
 ## Forest Object Pack Mapping
@@ -150,7 +253,7 @@ Runtime behavior:
 - Existing garden plots render the verified seed marker for early stages and verified leaves for mature crops.
 - The plot renderer falls back to the seed icon if a crop has no verified stage frames.
 - `Plants.png` is not imported by runtime crop rendering because its previously chosen frames were visually wrong on device.
-- `Supplies.png` remains a candidate sheet for produce/harvest icons and is not yet used at runtime.
+- `Supplies.png` remains a candidate sheet for produce/harvest icons and is not used by the current runtime registry after the egg/wool/truffle replacement pass.
 
 ## Tool Terrain Tile Art
 
@@ -188,14 +291,14 @@ Runtime behavior:
 - All four animals are archive-visible and shop-visible.
 - Animals are placeable world objects with 1x1 collision footprints.
 - Interacting with animals can grant products through the inventory/discovery path.
-- Product icons are labeled placeholder mappings, not final verified produce art.
+- Product icons are candidate mappings, not final verified produce art.
 
 ## Open Asset Issues
 
 - Backpack and shop now use real React Native touch grids instead of sprite-panel hitbox alignment; phone review should focus on touch comfort and visual sizing.
-- Seeds use a sprout marker, not a true seed-bag icon.
-- Crop stage art is deliberately unresolved; produce icons are still unselected.
-- Water Drops icon is selected as a candidate but not implemented.
+- Seeds use a generic acorn marker, not crop-specific seed bags.
+- Crop stage art is deliberately unresolved; produce icons are still candidate-quality.
+- Egg, milk, wool, truffle, fertiliser, sprinkler, bait, fish, squid, seaweed, salad, hay, coal, wood plank, cheese, mayonnaise, metal bars, crop outputs, trash, Dwarvish Helm, omelet, stone, and geode are still candidates/placeholders, but the known blank/mixed/cut or semantically generic crops have been replaced where clear alternatives existed.
 - Some untracked asset sheets remain in the worktree and should only be staged when a phase needs them.
 
 ## Phase 1 Audit
