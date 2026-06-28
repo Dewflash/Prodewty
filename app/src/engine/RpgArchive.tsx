@@ -8,7 +8,6 @@ import {
   countRpgSourcePacks,
   getRpgArchiveEntries,
   RPG_SOURCE_PACK_FILTERS,
-  SHOP_CATALOG,
   type RpgArchiveCategory,
   type RpgArchiveEntry,
   type RpgItemRarity,
@@ -16,6 +15,32 @@ import {
 } from './RpgObjectCatalog';
 import { getRpgAsset, RPG_ARCHIVE_FRAMES, type RpgAssetDefinition } from './RpgAssetRegistry';
 import { RpgSpriteAnimationView, RpgSpriteFrameView } from './RpgItemIcon';
+import { getMasteryLevel, getMasteryTier } from '../db/skills';
+
+// Discovery/Understanding ladder (RPG_ARCHITECTURE.md): an item's own
+// rarity maps to a required Research mastery tier. Reaching the tier
+// *before* that unlocks Discovery (shown as "???"); reaching the
+// matching tier unlocks Understanding (real name shown).
+const RARITY_TIER_RANK: Record<RpgItemRarity, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  epic: 3,
+};
+const TIER_RANK: Record<string, number> = { Bronze: 0, Silver: 1, Gold: 2, Platinum: 3 };
+
+function getResearchTierRank(): number {
+  const level = getMasteryLevel('research');
+  return TIER_RANK[getMasteryTier(level)] ?? 0;
+}
+
+// `entry.known` already means "Understood" (see Archive section in
+// RPG_ARCHITECTURE.md) — redact the name until then. Undiscovered
+// entries don't reach this at all (filtered out by scope before render).
+function archiveDisplayName(entry: { name: string; known: boolean; discovered: boolean }): string {
+  if (!entry.discovered) return '???';
+  return entry.known ? entry.name : '???';
+}
 
 type CountRow = {
   item_id: string;
@@ -84,21 +109,21 @@ function loadCounts() {
 }
 
 function archiveStatusLabel(entry: ArchiveEntryState) {
-  if (entry.discovered) {
-    if (entry.quantity > 0 && entry.placed > 0) return `Own ${entry.quantity} / Map ${entry.placed}`;
-    if (entry.quantity > 0) return `Owned ${entry.quantity}`;
-    if (entry.placed > 0) return `Placed ${entry.placed}`;
-    return 'Discovered';
-  }
-  if (entry.known) return 'Known';
-  return 'Locked';
+  if (!entry.discovered) return 'Locked';
+  if (entry.quantity > 0 && entry.placed > 0) return `Own ${entry.quantity} / Map ${entry.placed}`;
+  if (entry.quantity > 0) return `Owned ${entry.quantity}`;
+  if (entry.placed > 0) return `Placed ${entry.placed}`;
+  return entry.known ? 'Known' : 'Seen';
 }
 
+// known now implies discovered (Understanding requires Discovery first —
+// see RPG_ARCHITECTURE.md), so these are no longer mutually exclusive
+// categories the way they were when `known` meant "shop-purchasable."
 function archiveScopeMatches(entry: ArchiveEntryState, scope: ArchiveScope) {
   if (scope === 'all') return true;
   if (scope === 'discovered') return entry.discovered;
-  if (scope === 'known') return !entry.discovered && entry.known;
-  return !entry.discovered && !entry.known;
+  if (scope === 'known') return entry.discovered && entry.known;
+  return !entry.discovered;
 }
 
 function archiveSourceMatches(entry: ArchiveEntryState, source: RpgSourcePackId) {
@@ -122,8 +147,8 @@ function rarityRank(rarity: RpgItemRarity | undefined) {
 }
 
 function statusRank(entry: ArchiveEntryState) {
-  if (entry.discovered) return 0;
-  if (entry.known) return 1;
+  if (entry.discovered && entry.known) return 0;
+  if (entry.discovered) return 1;
   return 2;
 }
 
@@ -157,7 +182,8 @@ function ArchiveItemArt({ asset, discovered, known }: {
   discovered: boolean;
   known: boolean;
 }) {
-  const opacity = discovered ? 1 : known ? 0.52 : 0.26;
+  // known now implies discovered, so this is just a 2-state opacity.
+  const opacity = discovered ? 1 : 0.26;
 
   if (asset?.animation) {
     return (
@@ -208,18 +234,24 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
     if (!isOpen) return;
     try {
       const counts = loadCounts();
-      const knownShopItems = new Set(Object.keys(SHOP_CATALOG));
+      const researchTierRank = getResearchTierRank();
       const nextEntries = getRpgArchiveEntries().map(entry => {
         const quantity = counts.inventory[entry.itemId] ?? 0;
         const placed = counts.placed[entry.itemId] ?? 0;
         const discovery = counts.discoveries[entry.itemId] ?? null;
-        const known = knownShopItems.has(entry.itemId);
+        const requiredTierRank = RARITY_TIER_RANK[entry.rarity] ?? 0;
+        // Discovered = "I've seen it and can own it" — gated by Research
+        // mastery one tier below the item's own rarity tier.
+        const seenOrOwned = !!discovery || quantity > 0 || placed > 0;
+        const discovered = seenOrOwned && researchTierRank + 1 >= requiredTierRank;
+        // Known = "Understood" — reached the item's own rarity tier.
+        const known = discovered && researchTierRank >= requiredTierRank;
         return {
           ...entry,
           quantity,
           placed,
           known,
-          discovered: !!discovery || quantity > 0 || placed > 0,
+          discovered,
           discovery,
           asset: getRpgAsset(entry.iconAssetId ?? entry.assetId),
         };
@@ -403,7 +435,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
               <Pressable
                 key={entry.itemId}
                 accessibilityRole="button"
-                accessibilityLabel={`${entry.name}, ${archiveStatusLabel(entry)}`}
+                accessibilityLabel={`${archiveDisplayName(entry)}, ${archiveStatusLabel(entry)}`}
                 onPress={() => setSelectedId(entry.itemId)}
                 style={[
                   styles.entrySlot,
@@ -418,7 +450,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
               >
                 <ArchiveItemArt asset={entry.asset} discovered={entry.discovered} known={entry.known} />
                 <View style={styles.entryTextBlock}>
-                  <Text numberOfLines={1} style={styles.entryName}>{entry.name}</Text>
+                  <Text numberOfLines={1} style={styles.entryName}>{archiveDisplayName(entry)}</Text>
                   <Text numberOfLines={1} style={styles.entryStatus}>{archiveStatusLabel(entry)}</Text>
                 </View>
               </Pressable>
@@ -459,7 +491,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
 
         <View style={styles.detailBar}>
           <View style={styles.detailTitleRow}>
-            <Text numberOfLines={1} style={styles.detailTitle}>{selected?.name ?? 'Archive'}</Text>
+            <Text numberOfLines={1} style={styles.detailTitle}>{selected ? archiveDisplayName(selected) : 'Archive'}</Text>
             {selected && (
               <>
                 <Text style={styles.detailBadge}>{selected.category}</Text>

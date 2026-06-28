@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, Pressable, StyleSheet, Text, View, AppState, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -58,7 +59,23 @@ import {
 } from '../src/db/sanctuaryObjectRelations';
 import { claimSanctuaryReward } from '../src/db/sanctuaryRewards';
 import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/SanctuaryBootstrapper';
-import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
+import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_STONE_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
+import { getToolDef } from '../src/engine/ToolCatalog';
+import { equipItem, getEquipment, unequipItem } from '../src/db/equipment';
+import { getBuildingDef, isBuildingShell, isStation, type BuildingRole } from '../src/engine/BuildingCatalog';
+import { startConstruction, checkAndCompleteConstructions, getConstructionForObject } from '../src/db/construction';
+import { startCrafting, claimCrafting, getActiveCraftingJobs, type CraftingJob } from '../src/db/crafting';
+import { getCraftingRecipe, getAllCraftingRecipes } from '../src/engine/CraftingCatalog';
+import { sqlNow } from '../src/utils/date';
+import { getSkillState, getMasteryTier, ALL_SKILLS, POINTS_PER_MASTERY, type SkillType } from '../src/db/skills';
+import {
+  tillSoil,
+  plantSeed as plantFarmSeed,
+  waterPlot as waterFarmPlot,
+  harvestPlot as harvestFarmPlot,
+  processOvernightGrowth,
+  type FarmingPlot,
+} from '../src/db/farming';
 
 const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
@@ -88,11 +105,59 @@ const SHOW_NORMAL_TARGET_DEBUG = false;
 type Zone = 'sanctuary' | 'dungeon';
 type MapObject = { id: number; type: string; row: number; col: number };
 type BuildItem = {
-  mode: 'place' | 'edit' | 'plant';
+  mode: 'place' | 'edit' | 'plant' | 'terrain';
   itemId: string;
   label: string;
   objectId: number | null;
 };
+
+// Terrain-edit Backpack items (Bridge Kit, Path) — placed via the normal
+// build-mode flow, but the confirm action edits the tile instead of
+// spawning a sanctuary_objects row. See "Universal placement rule" in
+// RPG_ARCHITECTURE.md.
+const TERRAIN_EDIT_ITEM_IDS = ['rpg_bridge_kit', 'rpg_path_kit'] as const;
+// Real food-crop seeds (turnip/cabbage/pumpkin, src/db/farming.ts's
+// farming_plots) vs decorative CraftPix tree/flower seeds (garden_plots,
+// the original Sanctuary system) — distinguished by sourceLabel since
+// both live in the same RPG_CROP_CATALOG/getCropForSeed lookup.
+function isFarmingSeed(itemId: string): boolean {
+  return getRpgItem(itemId)?.sourceLabel === 'Crop Seeds';
+}
+const STARTER_FARMING_SEED_ITEM_IDS = ['rpg_turnip_seed', 'rpg_cabbage_seed', 'rpg_pumpkin_seed'];
+const MASTERY_ICONS: Record<SkillType, keyof typeof Feather.glyphMap> = {
+  farming: 'sun',
+  mining: 'triangle',
+  combat: 'crosshair',
+  foraging: 'package',
+  fishing: 'droplet',
+  crafting: 'tool',
+  livestock: 'github', // placeholder — no animal icon in Feather
+  language: 'message-circle',
+  trading: 'shopping-bag',
+  hunting: 'target',
+  surviving: 'shield',
+  research: 'book',
+};
+const MASTERY_LABELS: Record<SkillType, string> = {
+  farming: 'Farming',
+  mining: 'Mining',
+  combat: 'Attacking',
+  foraging: 'Foraging',
+  fishing: 'Fishing',
+  crafting: 'Crafting',
+  livestock: 'Livestock',
+  language: 'Language',
+  trading: 'Trading',
+  hunting: 'Hunting',
+  surviving: 'Surviving',
+  research: 'Research',
+};
+
+function terrainEditAllowsTile(itemId: string, tile: TileType): boolean {
+  if (itemId === 'rpg_bridge_kit') return tile === TileType.WATER;
+  if (itemId === 'rpg_path_kit') return tile === TileType.GRASS || tile === TileType.TILLED;
+  return false;
+}
 type PlacementReason =
   | 'Ready'
   | 'Unavailable'
@@ -126,22 +191,15 @@ type WorldCellReaction = {
   tone: 'success' | 'muted' | 'warn';
 };
 type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
-type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';
-const TOOLS: { id: ToolId; itemId: string; label: string; icon: keyof typeof Feather.glyphMap; hint: string }[] = [
-  { id: 'shovel', itemId: 'rpg_tool_shovel', label: 'Shovel', icon: 'tool', hint: 'Dig grass into a river (5 coins)' },
-  { id: 'bridge', itemId: 'rpg_tool_bridge', label: 'Bridge Kit', icon: 'link', hint: 'Bridge a river tile (3 wood)' },
-  { id: 'path', itemId: 'rpg_tool_path', label: 'Path', icon: 'minus', hint: 'Lay a walking path (1 wood)' },
-  { id: 'plow', itemId: 'rpg_tool_plow', label: 'Plow', icon: 'grid', hint: 'Till grass for planting (3 energy)' },
-  { id: 'watering', itemId: 'rpg_tool_watering_can', label: 'Water', icon: 'droplet', hint: 'Water a crop with energy and Water Drops' },
-];
-const STARTER_TOOL_ITEM_IDS = TOOLS.map(t => t.itemId);
-const TOOL_ENERGY_COST: Record<ToolId, number> = {
-  shovel: 6,
-  bridge: 4,
-  path: 2,
-  plow: 3,
-  watering: 4,
-};
+// Real equippable tools, persisted via player_equipment/equipItem (see
+// src/db/equipment.ts, src/engine/ToolCatalog.ts) — not local React state.
+// Bridge Kit/Path are NOT tools; they're placeable Backpack items (see
+// TERRAIN_EDIT_ITEM_IDS above) per the Universal Placement Rule.
+const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe_basic', 'rpg_watering_can_basic'];
+// Granted free on first load. Bridge/Path kits are temporarily included
+// here too — until Crafting (Phase 5) gives a real acquisition path,
+// there'd be no way to test terrain-edit placement otherwise.
+const STARTER_TOOL_ITEM_IDS = [...EQUIPPABLE_TOOL_ITEM_IDS, ...TERRAIN_EDIT_ITEM_IDS];
 const CLUTTER_ENERGY_COST = 3;
 const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;
 const CLUTTER_ITEM_IDS = ['rpg_clutter_weeds', 'rpg_clutter_twig', 'rpg_clutter_rock'];
@@ -154,38 +212,8 @@ const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_rock', row: 8, col: 14 },
   { type: 'rpg_clutter_rock', row: 15, col: 8 },
 ];
-const CRAFTING_RECIPES = [
-  {
-    id: 'woodland_planter',
-    label: 'Woodland Planter',
-    outputItemId: 'Bush_simple1_1',
-    quantity: 1,
-    ingredients: [
-      { itemId: RPG_WOOD_ITEM_ID, quantity: 4 },
-      { itemId: 'rpg_leaves', quantity: 3 },
-    ],
-  },
-  {
-    id: 'crystal_lamp',
-    label: 'Crystal Lamp',
-    outputItemId: 'Blue_crystal4',
-    quantity: 1,
-    ingredients: [
-      { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, quantity: 4 },
-      { itemId: RPG_WOOD_ITEM_ID, quantity: 2 },
-    ],
-  },
-  {
-    id: 'temple_chest',
-    label: 'Temple Chest',
-    outputItemId: 'Temple_animated_chest',
-    quantity: 1,
-    ingredients: [
-      { itemId: RPG_WOOD_ITEM_ID, quantity: 6 },
-      { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, quantity: 2 },
-    ],
-  },
-];
+// Recipes now live in src/engine/CraftingCatalog.ts (timed, real
+// crafting_queue jobs) — see startCraftingJob/claimCraftingJob below.
 const SEASON_CONFIG: Record<SeasonId, { label: string; icon: keyof typeof Feather.glyphMap; color: string; bonus: HarvestDrop; hint: string }> = {
   spring: {
     label: 'Spring',
@@ -225,7 +253,7 @@ function getCurrentSeason(date = new Date()): SeasonId {
   return 'winter';
 }
 
-type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';
+type InteractionTargetKind = 'object' | 'plot' | 'farmplot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
 type LiveEnemy = { uid: string; defId: EnemyDefId; row: number; col: number; hp: number };
 type InteractionTarget = {
@@ -238,6 +266,7 @@ type InteractionTarget = {
   item?: RpgItemDefinition | null;
   object?: MapObject;
   plot?: GardenPlot;
+  farmPlot?: FarmingPlot;
   enemy?: LiveEnemy;
 };
 type ResolvedInteractionTarget = {
@@ -302,6 +331,7 @@ function pickPlacementReason(current: PlacementReason, next: PlacementReason) {
 export default function RpgScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const TILE_SIZE = getResponsiveTileSize(windowWidth);
+  const safeAreaInsets = useSafeAreaInsets();
 
   useEffect(() => {
     const handleAppState = (nextState: string) => {
@@ -320,12 +350,13 @@ export default function RpgScreen() {
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
   const [gardenPlots, setGardenPlots] = useState<GardenPlot[]>([]);
   const [coins, setCoins] = useState(0);
-  const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100, mp: 100 });
+  const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100, energy: 100, energy_max: 100 });
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
+  const [craftingJobsRevision, setCraftingJobsRevision] = useState(0);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
@@ -338,7 +369,7 @@ export default function RpgScreen() {
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
   const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
   const [terrainOverrides, setTerrainOverrides] = useState<Record<string, TileType>>({});
-  const [equippedTool, setEquippedTool] = useState<ToolId | null>(null);
+  const [equippedToolItemId, setEquippedToolItemId] = useState<string | null>(null);
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const worldCellReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -388,7 +419,15 @@ export default function RpgScreen() {
     [buildItem, mapObjects],
   );
 
-  const activeTool = activeZone === 'sanctuary' ? TOOLS.find(t => t.id === equippedTool) ?? null : null;
+  const equippedToolItem = activeZone === 'sanctuary' && equippedToolItemId ? getRpgItem(equippedToolItemId) : null;
+  const activeTool = equippedToolItem
+    ? {
+        itemId: equippedToolItemId as string,
+        label: equippedToolItem.name,
+        icon: (equippedToolItem.featherIcon ?? 'tool') as keyof typeof Feather.glyphMap,
+        hint: equippedToolItem.description ?? `Use ${equippedToolItem.name}`,
+      }
+    : null;
   const buildCatalogItem = getItem(buildItem?.itemId ?? null);
   const buildSeedItem = buildItem?.mode === 'plant' ? getRpgItem(buildItem.itemId) : null;
   const buildGhostWidth = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visWidth ?? 0) * TILE_SIZE;
@@ -458,8 +497,38 @@ export default function RpgScreen() {
   };
 
   const refreshPlayerHp = () => {
-    const state = db.getFirstSync<{ hp: number; hp_max: number; mp: number }>('SELECT hp, hp_max, mp FROM rpg_state WHERE id = 1');
-    if (state) setPlayerHp(state);
+    try {
+      const state = db.getFirstSync<{ hp: number; hp_max: number; energy: number; energy_max: number }>(
+        'SELECT hp, hp_max, energy, energy_max FROM rpg_state WHERE id = 1',
+      );
+      if (state) {
+        setPlayerHp({
+          hp: state.hp ?? 0,
+          hp_max: state.hp_max ?? 100,
+          energy: state.energy ?? 0,
+          energy_max: state.energy_max ?? 100,
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to refresh player HP/energy', e);
+    }
+  };
+
+  const refreshEquippedTool = () => {
+    setEquippedToolItemId(getEquipment('tool')?.item_id ?? null);
+  };
+
+  const handleEquipTool = (itemId: string | null) => {
+    const result = itemId ? equipItem(itemId) : unequipItem('tool');
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'no_item' ? "You don't have that tool" : 'Could not equip tool',
+        tone: 'warn',
+      });
+      return;
+    }
+    refreshEquippedTool();
+    bumpInventoryRevision();
   };
 
   const ensureStarterClutter = () => {
@@ -521,18 +590,18 @@ export default function RpgScreen() {
 
   const spendEnergy = (cost: number) => {
     if (cost <= 0) return true;
-    const state = db.getFirstSync<{ mp: number }>('SELECT mp FROM rpg_state WHERE id = 1');
-    const currentMp = state?.mp ?? 0;
-    if (currentMp < cost) {
+    const state = db.getFirstSync<{ energy: number }>('SELECT energy FROM rpg_state WHERE id = 1');
+    const currentEnergy = state?.energy ?? 0;
+    if (currentEnergy < cost) {
       showWorldToast({ text: `Too tired: need ${cost} energy`, tone: 'warn' });
       return false;
     }
-    db.runSync('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1', cost);
+    db.runSync('UPDATE rpg_state SET energy = MAX(0, energy - ?) WHERE id = 1', cost);
     refreshPlayerHp();
     return true;
   };
 
-  const spendToolEnergy = (toolId: ToolId) => spendEnergy(TOOL_ENERGY_COST[toolId]);
+  const spendToolEnergy = (toolItemId: string) => spendEnergy(getToolDef(toolItemId)?.energyCost ?? 0);
 
   const enterZone = (zone: Zone) => {
     setActiveZone(zone);
@@ -739,6 +808,21 @@ export default function RpgScreen() {
         };
       }
 
+      const farmPlot = getFarmingPlotAt(row, col);
+      if (farmPlot?.planted_seed_id) {
+        const cropDef = getCropForSeed(farmPlot.planted_seed_id);
+        return {
+          kind: 'farmplot',
+          row,
+          col,
+          cells: [{ row, col }],
+          label: cropDef?.name ?? 'Crop',
+          detail: farmPlot.growth_stage >= 2 ? 'Ready' : farmPlot.is_watered ? 'Watered' : 'Needs water',
+          item: getRpgItem(farmPlot.planted_seed_id),
+          farmPlot,
+        };
+      }
+
       if (SanctuaryMap[row]?.[col] === TileType.PORTAL_DUNGEON) {
         return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Dungeon portal', detail: 'Portal' };
       }
@@ -864,6 +948,22 @@ export default function RpgScreen() {
     return { ok: true, reason: 'Ready' };
   };
 
+  // Finds the building-shell object (if any) whose footprint covers
+  // (row, col), and whether its construction has finished. Used to gate
+  // station placement (Furnace, Loom, ...) per the Universal Placement
+  // Rule's "stations only go inside a completed matching building" rule.
+  const findBuildingShellAt = (row: number, col: number) => {
+    for (const obj of mapObjects) {
+      const def = getBuildingDef(obj.type);
+      if (!def || !isBuildingShell(def)) continue;
+      if (row >= obj.row && row < obj.row + def.colHeight && col >= obj.col && col < obj.col + def.colWidth) {
+        const construction = getConstructionForObject(obj.id);
+        return { object: obj, def, isComplete: construction?.is_complete ?? false };
+      }
+    }
+    return null;
+  };
+
   const analyzePlacement = (
     row: number,
     col: number,
@@ -879,6 +979,28 @@ export default function RpgScreen() {
 
     if (!footprint || (mode === 'plant' && !seedCrop) || activeZone !== 'sanctuary') {
       return { row, col, valid: false, reason: 'Unavailable', cells: [] };
+    }
+
+    const stationDef = mode === 'place' ? getBuildingDef(itemId) : null;
+    const requiredRole: BuildingRole | undefined = stationDef && isStation(stationDef)
+      ? stationDef.requiredBuildingRole
+      : undefined;
+    let stationParentBuildingId: number | null = null;
+    if (requiredRole) {
+      const parent = findBuildingShellAt(row, col);
+      if (!parent || parent.def.role !== requiredRole) {
+        return {
+          row, col, valid: false, reason: 'Unavailable',
+          cells: [{ row, col, valid: false, reason: 'Unavailable' }],
+        };
+      }
+      if (!parent.isComplete) {
+        return {
+          row, col, valid: false, reason: 'Unavailable',
+          cells: [{ row, col, valid: false, reason: 'Unavailable' }],
+        };
+      }
+      stationParentBuildingId = parent.object.id;
     }
 
     const occupiedByAvatar = new Set(
@@ -902,14 +1024,16 @@ export default function RpgScreen() {
           cellReason = 'Avatar';
         } else if (
           mode === 'plant'
-            ? mapData[checkRow][checkCol] !== TileType.TILLED
-            : TILE_COLLISION[mapData[checkRow][checkCol] as TileType]
+            ? (isFarmingSeed(itemId) ? mapData[checkRow][checkCol] !== TileType.TILLED : TILE_COLLISION[mapData[checkRow][checkCol] as TileType])
+            : mode === 'terrain'
+              ? !terrainEditAllowsTile(itemId, mapData[checkRow][checkCol] as TileType)
+              : TILE_COLLISION[mapData[checkRow][checkCol] as TileType]
         ) {
           valid = false;
           cellReason = 'Terrain';
         } else {
           const hasObject = mapObjects.some(obj => {
-            if (obj.id === ignoreObjectId) return false;
+            if (obj.id === ignoreObjectId || obj.id === stationParentBuildingId) return false;
             const existing = getItem(obj.type);
             const width = existing?.colWidth ?? 1;
             const height = existing?.colHeight ?? 1;
@@ -1009,6 +1133,31 @@ export default function RpgScreen() {
           showWorldToast({ text: 'Cannot plant this seed yet', tone: 'warn' });
           return;
         }
+
+        if (isFarmingSeed(buildItem.itemId)) {
+          // Real food crop — goes through farming.ts's farming_plots,
+          // not the decorative garden_plots system. tillSoil already ran
+          // (Hoe), so a plot row should already exist here.
+          plantFarmSeed(row, col, buildItem.itemId).then(result => {
+            if (result !== 'ok') {
+              showWorldToast({
+                text: result === 'no_plot' ? 'Till this tile first (equip Hoe)'
+                  : result === 'no_seed' ? 'No seed left'
+                    : result === 'occupied' ? 'Plot occupied'
+                      : result === 'no_energy' ? 'Too tired'
+                        : 'Could not plant',
+                tone: 'warn',
+              });
+              return;
+            }
+            recordRpgDiscovery(buildItem.itemId, 'plant');
+            bumpInventoryRevision();
+            showWorldToast({ text: `${crop.name} planted`, item: getRpgItem(buildItem.itemId), tone: 'success' });
+          });
+          clearBuildMode();
+          return;
+        }
+
         const result = plantSeed(buildItem.itemId, crop.cropId, row, col);
         if (!result.ok) {
           showWorldToast({
@@ -1033,6 +1182,22 @@ export default function RpgScreen() {
           row, col, buildItem.objectId,
         );
         showWorldToast({ text: `Moved ${buildItem.label}`, item, tone: 'success' });
+      } else if (buildItem.mode === 'terrain') {
+        const result = db.runSync(
+          'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
+          buildItem.itemId,
+        );
+        if (result.changes <= 0) {
+          showWorldToast({ text: 'No item left', item, tone: 'warn' });
+          return;
+        }
+        const nextTile = buildItem.itemId === 'rpg_bridge_kit' ? TileType.BRIDGE : TileType.PATH;
+        setSanctuaryTile(row, col, nextTile);
+        recordRpgDiscovery(buildItem.itemId, 'place');
+        showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
+        bumpInventoryRevision();
+        clearBuildMode();
+        return;
       } else {
         db.execSync('BEGIN TRANSACTION');
         const result = db.runSync(
@@ -1044,13 +1209,24 @@ export default function RpgScreen() {
           showWorldToast({ text: 'No item left', item, tone: 'warn' });
           return;
         }
-        db.runSync(
+        const insertResult = db.runSync(
           'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
           buildItem.itemId, row, col,
         );
         db.execSync('COMMIT');
         recordRpgDiscovery(buildItem.itemId, 'place');
-        showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
+
+        const buildingDef = getBuildingDef(buildItem.itemId);
+        if (buildingDef) {
+          const construction = startConstruction(insertResult.lastInsertRowId, buildItem.itemId);
+          if (construction.ok) {
+            showWorldToast({ text: `Construction started: ${buildItem.label}`, item, tone: 'success' });
+          } else {
+            showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
+          }
+        } else {
+          showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
+        }
       }
       bumpInventoryRevision();
       clearBuildMode();
@@ -1095,7 +1271,8 @@ export default function RpgScreen() {
   };
 
   const handleBackpackPlaceItem = (itemId: string) => {
-    beginBuildMode('place', itemId);
+    const mode = (TERRAIN_EDIT_ITEM_IDS as readonly string[]).includes(itemId) ? 'terrain' : 'place';
+    beginBuildMode(mode, itemId);
   };
 
   const handleBackpackPlantSeed = (itemId: string) => {
@@ -1122,52 +1299,66 @@ export default function RpgScreen() {
     showWorldToast({ text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins`, tone: 'success' });
   };
 
-  const craftRecipe = (recipeId: string) => {
-    const recipe = CRAFTING_RECIPES.find(item => item.id === recipeId);
+  // Finds a completed, matching station object somewhere in the
+  // Sanctuary for a recipe's requiredBuilding (Furnace/Loom/...).
+  // Proximity isn't enforced yet — "is one built at all" is the backend
+  // gate for now; standing-near-it can be a later UI nicety.
+  const findStationObjectId = (stationType: string): number | null => {
+    for (const obj of mapObjects) {
+      const def = getBuildingDef(obj.type);
+      if (def?.type !== stationType) continue;
+      const construction = getConstructionForObject(obj.id);
+      if (construction?.is_complete) return obj.id;
+    }
+    return null;
+  };
+
+  const startCraftingJob = (recipeId: string) => {
+    const recipe = getCraftingRecipe(recipeId);
     if (!recipe) return;
     const outputItem = getRpgItem(recipe.outputItemId);
-    if (!outputItem) {
-      showWorldToast({ text: 'Recipe output missing', tone: 'warn' });
-      return;
+
+    let buildingObjectId: number | null = null;
+    if (recipe.requiredBuilding) {
+      buildingObjectId = findStationObjectId(recipe.requiredBuilding);
+      if (!buildingObjectId) {
+        showWorldToast({ text: `Need a built ${recipe.requiredBuilding} first`, item: outputItem, tone: 'warn' });
+        return;
+      }
     }
 
-    const missing = recipe.ingredients.find(ingredient => getInventoryQuantity(ingredient.itemId) < ingredient.quantity);
-    if (missing) {
-      const item = getRpgItem(missing.itemId);
-      showWorldToast({ text: `Need ${missing.quantity} ${item?.name ?? missing.itemId}`, item, tone: 'warn' });
-      return;
-    }
-
-    try {
-      db.execSync('BEGIN TRANSACTION');
-      recipe.ingredients.forEach(ingredient => {
-        const result = db.runSync(
-          'UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ? AND quantity >= ?',
-          ingredient.quantity,
-          ingredient.itemId,
-          ingredient.quantity,
-        );
-        if (result.changes <= 0) {
-          throw new Error(`Missing ingredient: ${ingredient.itemId}`);
-        }
+    const result = startCrafting(recipeId, buildingObjectId);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'missing_ingredients' ? 'Missing ingredients'
+          : result === 'building_busy' ? `${recipe.requiredBuilding} is busy`
+            : 'Could not start crafting',
+        item: outputItem,
+        tone: 'warn',
       });
-      db.runSync(
-        `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
-         ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
-        recipe.outputItemId,
-        recipe.quantity,
-      );
-      db.execSync('COMMIT');
-    } catch (e) {
-      try { db.execSync('ROLLBACK'); } catch {}
-      console.warn('Failed to craft RPG recipe', e);
-      showWorldToast({ text: 'Craft failed', item: outputItem, tone: 'warn' });
       return;
     }
-
-    recordRpgDiscovery(recipe.outputItemId, 'inventory');
     bumpInventoryRevision();
-    showWorldToast({ text: `Crafted ${outputItem.name}`, item: outputItem, tone: 'success' });
+    setCraftingJobsRevision(rev => rev + 1);
+    showWorldToast({ text: `Started crafting ${outputItem?.name ?? recipe.outputItemId}`, item: outputItem, tone: 'success' });
+  };
+
+  const claimCraftingJob = (jobId: number, recipeId: string) => {
+    const recipe = getCraftingRecipe(recipeId);
+    const outputItem = recipe ? getRpgItem(recipe.outputItemId) : null;
+    const result = claimCrafting(jobId);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'not_ready' ? 'Not finished yet' : 'Could not claim',
+        item: outputItem,
+        tone: 'warn',
+      });
+      return;
+    }
+    if (recipe) recordRpgDiscovery(recipe.outputItemId, 'inventory');
+    bumpInventoryRevision();
+    setCraftingJobsRevision(rev => rev + 1);
+    showWorldToast({ text: `Crafted ${outputItem?.name ?? recipeId}`, item: outputItem, tone: 'success' });
   };
 
   useEffect(() => {
@@ -1181,12 +1372,54 @@ export default function RpgScreen() {
     if (worldCellReactionTimer.current) clearTimeout(worldCellReactionTimer.current);
   }, []);
 
+  // Flips sanctuary_constructions.is_complete once finish_at has passed.
+  // No dedicated game-tick engine exists yet (System B's GameTicker.tsx
+  // is unused) — a lightweight interval is the pragmatic stand-in.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const completed = checkAndCompleteConstructions();
+        if (completed > 0) {
+          showWorldToast({ text: `${completed} construction${completed > 1 ? 's' : ''} finished`, tone: 'success' });
+        }
+      } catch (e) {
+        console.warn('Failed to check construction completion', e);
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Stand-in for a real day/sleep cycle (Calendar/TimeEngine — not wired
+  // yet, see RPG_ARCHITECTURE_AUDIT.md). processOvernightGrowth() is
+  // meant to run once per night; until sleep is a real mechanic, this
+  // advances watered crops on a fixed real-time interval instead so
+  // farming is actually testable today.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        processOvernightGrowth();
+      } catch (e) {
+        console.warn('Failed to process crop growth tick', e);
+      }
+    }, 10 * 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Re-renders the open Crafting panel periodically so "In progress" jobs
+  // flip to "Claim" once their timer passes, without needing a manual action.
+  useEffect(() => {
+    if (!isCraftingOpen) return;
+    const interval = setInterval(() => setCraftingJobsRevision(rev => rev + 1), 5000);
+    return () => clearInterval(interval);
+  }, [isCraftingOpen]);
+
   useEffect(() => {
     try {
       refreshMapObjects();
       refreshGardenPlots();
       refreshCoins();
       refreshPlayerHp();
+      refreshEquippedTool();
       refreshWeather();
       const kills = db.getAllSync<{ uid: string }>('SELECT uid FROM dungeon_enemy_kills');
       kills.forEach(row => defeatedEnemyUids.current.add(row.uid));
@@ -1207,6 +1440,15 @@ export default function RpgScreen() {
       STARTER_TOOL_ITEM_IDS.forEach(itemId => {
         db.runSync(
           'INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1) ON CONFLICT(item_id) DO NOTHING',
+          itemId,
+        );
+      });
+      // Real food-crop seeds have no in-game acquisition path yet (no
+      // Shop entry, no forage drop) — granted for testability, same as
+      // the starter tools above, until a real source exists.
+      STARTER_FARMING_SEED_ITEM_IDS.forEach(itemId => {
+        db.runSync(
+          'INSERT INTO user_inventory (item_id, quantity) VALUES (?, 3) ON CONFLICT(item_id) DO NOTHING',
           itemId,
         );
       });
@@ -1789,7 +2031,10 @@ export default function RpgScreen() {
       return rollHarvestDrops([{ itemId: RPG_WOOD_ITEM_ID, chance: 1, min: 1, max: 2 }]);
     }
     if (item.tags?.includes('rock')) {
-      return rollHarvestDrops([{ itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, chance: 0.65, min: 1, max: 1 }]);
+      return rollHarvestDrops([
+        { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 1, max: 2 },
+        { itemId: RPG_CRYSTAL_SHARDS_ITEM_ID, chance: 0.65, min: 1, max: 1 },
+      ]);
     }
     return [];
   };
@@ -2031,7 +2276,7 @@ export default function RpgScreen() {
 
     const nextStage = Math.min(2, growth.stage + 1) as GrowthStage;
     if (isRaining) {
-      if (!spendToolEnergy('watering')) return;
+      if (!spendToolEnergy('rpg_watering_can_basic')) return;
       updatePlantGrowth(plot.id, nextStage);
       refreshGardenPlots();
       showPlotReaction(plot, nextStage >= 2 ? 'mature' : '+growth', getRpgItem(plot.seed_item_id), 'success');
@@ -2048,7 +2293,7 @@ export default function RpgScreen() {
       showWorldToast({ text: 'Need Water Drops', item: getRpgItem(RPG_WATER_DROPS_ITEM_ID), tone: 'warn' });
       return;
     }
-    if (!spendToolEnergy('watering')) return;
+    if (!spendToolEnergy('rpg_watering_can_basic')) return;
     const result = advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage);
     if (result.ok) {
       bumpInventoryRevision();
@@ -2197,49 +2442,89 @@ export default function RpgScreen() {
       showWorldToast({ text: `Need ${DIG_COST} coins to dig`, tone: 'warn' });
       return;
     }
-    if (!spendToolEnergy('shovel')) return;
+    if (!spendToolEnergy('rpg_pickaxe_basic')) return;
     db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DIG_COST);
     refreshCoins();
     setSanctuaryTile(row, col, TileType.WATER);
     showWorldToast({ text: `Dug a channel — water flows in (-${DIG_COST} coins)`, tone: 'success' });
   };
 
-  const BRIDGE_WOOD_COST = 3;
-
-  const buildBridge = (row: number, col: number) => {
-    if (getInventoryQuantity(RPG_WOOD_ITEM_ID) < BRIDGE_WOOD_COST) {
-      showWorldToast({ text: `Need ${BRIDGE_WOOD_COST} wood to build a bridge`, tone: 'warn' });
-      return;
-    }
-    if (!spendToolEnergy('bridge')) return;
-    addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -BRIDGE_WOOD_COST, 'inventory');
-    setSanctuaryTile(row, col, TileType.BRIDGE);
-    showWorldToast({ text: `Built a bridge (-${BRIDGE_WOOD_COST} wood)`, tone: 'success' });
-  };
-
-  const PATH_WOOD_COST = 1;
-
-  const placePath = (row: number, col: number) => {
-    if (getInventoryQuantity(RPG_WOOD_ITEM_ID) < PATH_WOOD_COST) {
-      showWorldToast({ text: `Need ${PATH_WOOD_COST} wood to lay a path`, tone: 'warn' });
-      return;
-    }
-    if (!spendToolEnergy('path')) return;
-    addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -PATH_WOOD_COST, 'inventory');
-    setSanctuaryTile(row, col, TileType.PATH);
-    showWorldToast({ text: `Laid a path (-${PATH_WOOD_COST} wood)`, tone: 'success' });
-  };
-
   const plowTile = (row: number, col: number) => {
-    if (!spendToolEnergy('plow')) return;
-    setSanctuaryTile(row, col, TileType.TILLED);
-    showWorldToast({ text: 'Tilled the soil — ready to plant', tone: 'success' });
+    // tillSoil (farming.ts) is now the source of truth for the energy
+    // cost and the real farming_plots row — not spendToolEnergy, which
+    // would double-charge energy on top of tillSoil's own TILL_COST.
+    tillSoil(row, col).then(result => {
+      if (result !== 'ok') {
+        showWorldToast({
+          text: result === 'no_energy' ? 'Too tired to till'
+            : result === 'occupied' ? 'Something is already here'
+              : 'Could not till',
+          tone: 'warn',
+        });
+        return;
+      }
+      setSanctuaryTile(row, col, TileType.TILLED);
+      refreshPlayerHp();
+      showWorldToast({ text: 'Tilled the soil — ready to plant', tone: 'success' });
+    });
+  };
+
+  // Dispatches by the equipped item's ToolCatalog *type*, not its itemId —
+  // works for any future tier (rpg_hoe_basic, rpg_hoe_copper, ...) without
+  // touching this function. Bridge/Path are NOT handled here — they're
+  // placeable Backpack items now (see TERRAIN_EDIT_ITEM_IDS), not tools.
+  const getFarmingPlotAt = (row: number, col: number): FarmingPlot | null => {
+    try {
+      return db.getFirstSync<FarmingPlot>('SELECT * FROM farming_plots WHERE row = ? AND col = ?', row, col) ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const inspectOrHarvestFarmPlot = (plot: FarmingPlot) => {
+    if (plot.growth_stage < 2) {
+      showWorldToast({
+        text: plot.is_watered ? 'Still growing' : 'Needs water',
+        item: getRpgItem(plot.planted_seed_id),
+        tone: 'muted',
+      });
+      return;
+    }
+    harvestFarmPlot(plot.row, plot.col).then(result => {
+      if (result !== 'ok') {
+        showWorldToast({ text: result === 'not_ready' ? 'Not ready yet' : 'Could not harvest', tone: 'warn' });
+        return;
+      }
+      const cropDef = getCropForSeed(plot.planted_seed_id);
+      bumpInventoryRevision();
+      refreshCoins();
+      showWorldToast({ text: `Harvested ${cropDef?.name ?? 'crop'}`, item: getRpgItem(plot.planted_seed_id), tone: 'success' });
+    });
   };
 
   const useEquippedTool = (row: number, col: number) => {
     const tile = mapData[row]?.[col];
     const plot = gardenPlots.find(item => item.row === row && item.col === col);
-    if (equippedTool === 'watering') {
+    const toolType = equippedToolItemId ? getToolDef(equippedToolItemId)?.type : null;
+
+    if (toolType === 'WateringCan') {
+      const farmPlot = getFarmingPlotAt(row, col);
+      if (farmPlot?.planted_seed_id) {
+        waterFarmPlot(row, col).then(result => {
+          if (result !== 'ok') {
+            showWorldToast({
+              text: result === 'already_watered' ? 'Already watered'
+                : result === 'no_energy' ? 'Too tired'
+                  : 'Could not water',
+              tone: 'warn',
+            });
+            return;
+          }
+          refreshPlayerHp();
+          showWorldToast({ text: 'Watered', tone: 'success' });
+        });
+        return;
+      }
       if (!plot) {
         showWorldToast({ text: 'Watering Can needs a crop', tone: 'warn' });
         return;
@@ -2247,9 +2532,9 @@ export default function RpgScreen() {
       waterGardenPlot(plot);
       return;
     }
-    if (equippedTool === 'shovel') {
+    if (toolType === 'Pickaxe') {
       if (tile !== TileType.GRASS) {
-        showWorldToast({ text: 'Shovel only works on grass', tone: 'warn' });
+        showWorldToast({ text: 'Pickaxe can only dig grass into a river here', tone: 'warn' });
         return;
       }
       if (Math.abs(row - 18) <= 1 && Math.abs(col - 10) <= 1) {
@@ -2259,30 +2544,16 @@ export default function RpgScreen() {
       digTile(row, col);
       return;
     }
-    if (equippedTool === 'bridge') {
-      if (tile !== TileType.WATER) {
-        showWorldToast({ text: 'Bridge Kit only works on water', tone: 'warn' });
-        return;
-      }
-      buildBridge(row, col);
-      return;
-    }
-    if (equippedTool === 'path') {
-      if (tile !== TileType.GRASS && tile !== TileType.TILLED) {
-        showWorldToast({ text: 'Path can only be laid on grass', tone: 'warn' });
-        return;
-      }
-      placePath(row, col);
-      return;
-    }
-    if (equippedTool === 'plow') {
+    if (toolType === 'Hoe') {
       if (tile !== TileType.GRASS) {
-        showWorldToast({ text: 'Plow only works on grass', tone: 'warn' });
+        showWorldToast({ text: 'Hoe only works on grass', tone: 'warn' });
         return;
       }
       plowTile(row, col);
       return;
     }
+    // Axe: tree-chopping still runs through plain Interact/forage today,
+    // not gated by this dispatcher yet — see RPG_ARCHITECTURE_AUDIT.md.
   };
 
   function handleInteract() {
@@ -2297,7 +2568,7 @@ export default function RpgScreen() {
     setInteractionPrompt(current.target);
     const resolvedTarget = current.target;
 
-    if (activeZone === 'sanctuary' && equippedTool) {
+    if (activeZone === 'sanctuary' && equippedToolItemId) {
       useEquippedTool(current.row, current.col);
       return;
     }
@@ -2310,6 +2581,11 @@ export default function RpgScreen() {
 
       if (resolvedTarget?.kind === 'plot' && resolvedTarget.plot) {
         inspectOrHarvestPlot(resolvedTarget.plot);
+        return;
+      }
+
+      if (resolvedTarget?.kind === 'farmplot' && resolvedTarget.farmPlot) {
+        inspectOrHarvestFarmPlot(resolvedTarget.farmPlot);
         return;
       }
 
@@ -2395,6 +2671,30 @@ export default function RpgScreen() {
               onMoveRequest={handleObjectLongPress}
             />
           ))}
+
+          {activeZone === 'sanctuary' && mapObjects.map(obj => {
+            const buildingDef = getBuildingDef(obj.type);
+            if (!buildingDef) return null;
+            const construction = getConstructionForObject(obj.id);
+            if (!construction || construction.is_complete) return null;
+            const remainingMs = new Date(construction.finish_at.replace(' ', 'T')).getTime() - Date.now();
+            const remainingMinutes = Math.max(0, Math.ceil(remainingMs / 60000));
+            return (
+              <View
+                key={`construction-${obj.id}`}
+                pointerEvents="none"
+                style={[
+                  styles.constructionBadge,
+                  { left: obj.col * TILE_SIZE, top: obj.row * TILE_SIZE - 20, width: buildingDef.colWidth * TILE_SIZE },
+                ]}
+              >
+                <Feather name="clock" size={11} color="#fff" />
+                <Text style={styles.constructionBadgeText}>
+                  {remainingMinutes > 0 ? `${remainingMinutes}m left` : 'Finishing…'}
+                </Text>
+              </View>
+            );
+          })}
 
           {activeZone === 'sanctuary' && gardenPlots.map(plot => {
             const growth = getPlotGrowthInfo(plot);
@@ -2595,7 +2895,7 @@ export default function RpgScreen() {
         </View>
       )}
 
-      <View style={styles.header}>
+      <View style={[styles.header, { top: safeAreaInsets.top + 10 }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Leave RPG sandbox"
@@ -2644,7 +2944,7 @@ export default function RpgScreen() {
           {activeZone === 'sanctuary' && (
             <View style={styles.currencyPill}>
               <Feather name="zap" size={16} color="#70d6ff" />
-              <Text style={styles.energyText}>{playerHp.mp}/100</Text>
+              <Text style={styles.energyText}>{playerHp.energy}/{playerHp.energy_max}</Text>
             </View>
           )}
           <View style={styles.currencyPill}>
@@ -2745,22 +3045,30 @@ export default function RpgScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Unequip tool (back to Interact)"
-            style={[styles.hotbarSlot, !equippedTool && styles.hotbarSlotActive]}
-            onPress={() => setEquippedTool(null)}
+            style={[styles.hotbarSlot, !equippedToolItemId && styles.hotbarSlotActive]}
+            onPress={() => handleEquipTool(null)}
           >
-            <Feather name="mouse-pointer" size={20} color={equippedTool ? 'rgba(255,255,255,0.55)' : '#fff'} />
+            <Feather name="mouse-pointer" size={20} color={equippedToolItemId ? 'rgba(255,255,255,0.55)' : '#fff'} />
           </Pressable>
-          {TOOLS.map(tool => (
-            <Pressable
-              key={tool.id}
-              accessibilityRole="button"
-              accessibilityLabel={equippedTool === tool.id ? `Unequip ${tool.label}` : `Equip ${tool.label}`}
-              style={[styles.hotbarSlot, equippedTool === tool.id && styles.hotbarSlotActive]}
-              onPress={() => setEquippedTool(current => (current === tool.id ? null : tool.id))}
-            >
-              <Feather name={tool.icon} size={20} color={equippedTool === tool.id ? '#fff' : 'rgba(255,255,255,0.55)'} />
-            </Pressable>
-          ))}
+          {EQUIPPABLE_TOOL_ITEM_IDS.map(itemId => {
+            const item = getRpgItem(itemId);
+            const isEquipped = equippedToolItemId === itemId;
+            return (
+              <Pressable
+                key={itemId}
+                accessibilityRole="button"
+                accessibilityLabel={isEquipped ? `Unequip ${item?.name ?? itemId}` : `Equip ${item?.name ?? itemId}`}
+                style={[styles.hotbarSlot, isEquipped && styles.hotbarSlotActive]}
+                onPress={() => handleEquipTool(isEquipped ? null : itemId)}
+              >
+                <Feather
+                  name={(item?.featherIcon as keyof typeof Feather.glyphMap) ?? 'circle'}
+                  size={20}
+                  color={isEquipped ? '#fff' : 'rgba(255,255,255,0.55)'}
+                />
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
@@ -2852,43 +3160,65 @@ export default function RpgScreen() {
             </Pressable>
           </View>
           <View style={styles.recipeList}>
-            {CRAFTING_RECIPES.map(recipe => {
+            {getAllCraftingRecipes().map(recipe => {
               const outputItem = getRpgItem(recipe.outputItemId);
               const canCraft = recipe.ingredients.every(ingredient => getInventoryQuantity(ingredient.itemId) >= ingredient.quantity);
+              const hasStation = !recipe.requiredBuilding || !!findStationObjectId(recipe.requiredBuilding);
+              const activeJob = getActiveCraftingJobs().find(job => job.recipe_id === recipe.recipeId);
+              const isReady = activeJob ? activeJob.completes_at <= sqlNow() : false;
               return (
-                <View key={recipe.id} style={styles.recipeCard}>
+                <View key={recipe.recipeId} style={styles.recipeCard}>
                   <View style={styles.recipeOutput}>
                     <RpgItemIcon item={outputItem} size={34} fallbackLabel={recipe.outputItemId} />
                     <View style={styles.recipeTitleStack}>
-                      <Text numberOfLines={1} style={styles.recipeName}>{recipe.label}</Text>
-                      <Text numberOfLines={1} style={styles.recipeOutputText}>{outputItem?.name ?? recipe.outputItemId}</Text>
+                      <Text numberOfLines={1} style={styles.recipeName}>{outputItem?.name ?? recipe.outputItemId}</Text>
+                      <Text numberOfLines={1} style={styles.recipeOutputText}>
+                        {recipe.requiredBuilding ? `Needs ${recipe.requiredBuilding} · ${recipe.timeMinutes}m` : `${recipe.timeMinutes}m`}
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.recipeIngredients}>
-                    {recipe.ingredients.map(ingredient => {
-                      const ingredientItem = getRpgItem(ingredient.itemId);
-                      const owned = getInventoryQuantity(ingredient.itemId);
-                      const enough = owned >= ingredient.quantity;
-                      return (
-                        <View key={`${recipe.id}-${ingredient.itemId}`} style={[styles.ingredientPill, !enough && styles.ingredientPillMissing]}>
-                          <RpgItemIcon item={ingredientItem} size={16} fallbackLabel={ingredient.itemId} />
-                          <Text numberOfLines={1} style={[styles.ingredientText, !enough && styles.ingredientTextMissing]}>
-                            {owned}/{ingredient.quantity}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Craft ${recipe.label}`}
-                    disabled={!canCraft}
-                    style={[styles.craftButton, !canCraft && styles.craftButtonDisabled]}
-                    onPress={() => craftRecipe(recipe.id)}
-                  >
-                    <Feather name="tool" size={14} color="#fff" />
-                    <Text style={styles.craftButtonText}>{canCraft ? 'Craft' : 'Need mats'}</Text>
-                  </Pressable>
+                  {!activeJob && (
+                    <View style={styles.recipeIngredients}>
+                      {recipe.ingredients.map(ingredient => {
+                        const ingredientItem = getRpgItem(ingredient.itemId);
+                        const owned = getInventoryQuantity(ingredient.itemId);
+                        const enough = owned >= ingredient.quantity;
+                        return (
+                          <View key={`${recipe.recipeId}-${ingredient.itemId}`} style={[styles.ingredientPill, !enough && styles.ingredientPillMissing]}>
+                            <RpgItemIcon item={ingredientItem} size={16} fallbackLabel={ingredient.itemId} />
+                            <Text numberOfLines={1} style={[styles.ingredientText, !enough && styles.ingredientTextMissing]}>
+                              {owned}/{ingredient.quantity}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {activeJob ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={isReady ? `Claim ${outputItem?.name ?? recipe.outputItemId}` : 'Crafting in progress'}
+                      disabled={!isReady}
+                      style={[styles.craftButton, !isReady && styles.craftButtonDisabled]}
+                      onPress={() => claimCraftingJob(activeJob.id, recipe.recipeId)}
+                    >
+                      <Feather name={isReady ? 'check' : 'clock'} size={14} color="#fff" />
+                      <Text style={styles.craftButtonText}>{isReady ? 'Claim' : 'In progress'}</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Start crafting ${outputItem?.name ?? recipe.outputItemId}`}
+                      disabled={!canCraft || !hasStation}
+                      style={[styles.craftButton, (!canCraft || !hasStation) && styles.craftButtonDisabled]}
+                      onPress={() => startCraftingJob(recipe.recipeId)}
+                    >
+                      <Feather name="tool" size={14} color="#fff" />
+                      <Text style={styles.craftButtonText}>
+                        {!hasStation ? `Need ${recipe.requiredBuilding}` : canCraft ? 'Start' : 'Need mats'}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               );
             })}
@@ -2933,34 +3263,63 @@ export default function RpgScreen() {
             <View style={styles.characterBarRow}>
               <Text style={styles.characterBarLabel}>Energy</Text>
               <View style={styles.characterBarTrack}>
-                <View style={[styles.characterEnergyFill, { width: `${Math.max(0, Math.min(100, playerHp.mp))}%` }]} />
+                <View style={[styles.characterEnergyFill, { width: `${Math.max(0, Math.min(100, (playerHp.energy / Math.max(1, playerHp.energy_max)) * 100))}%` }]} />
               </View>
-              <Text style={styles.characterBarValue}>{playerHp.mp}/100</Text>
+              <Text style={styles.characterBarValue}>{playerHp.energy}/{playerHp.energy_max}</Text>
             </View>
           </View>
           <View style={styles.characterSlots}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Unequip current tool"
-              style={[styles.characterToolSlot, !equippedTool && styles.characterToolSlotActive]}
-              onPress={() => setEquippedTool(null)}
+              style={[styles.characterToolSlot, !equippedToolItemId && styles.characterToolSlotActive]}
+              onPress={() => handleEquipTool(null)}
             >
               <Feather name="mouse-pointer" size={17} color="#fff" />
               <Text numberOfLines={1} style={styles.characterToolLabel}>Hands</Text>
             </Pressable>
-            {TOOLS.map(tool => (
-              <Pressable
-                key={tool.id}
-                accessibilityRole="button"
-                accessibilityLabel={equippedTool === tool.id ? `Unequip ${tool.label}` : `Equip ${tool.label}`}
-                style={[styles.characterToolSlot, equippedTool === tool.id && styles.characterToolSlotActive]}
-                onPress={() => setEquippedTool(current => (current === tool.id ? null : tool.id))}
-              >
-                <Feather name={tool.icon} size={17} color="#fff" />
-                <Text numberOfLines={1} style={styles.characterToolLabel}>{tool.label}</Text>
-                <Text numberOfLines={1} style={styles.characterToolCost}>{TOOL_ENERGY_COST[tool.id]} EN</Text>
-              </Pressable>
-            ))}
+            {EQUIPPABLE_TOOL_ITEM_IDS.map(itemId => {
+              const item = getRpgItem(itemId);
+              const isEquipped = equippedToolItemId === itemId;
+              const energyCost = getToolDef(itemId)?.energyCost ?? 0;
+              return (
+                <Pressable
+                  key={itemId}
+                  accessibilityRole="button"
+                  accessibilityLabel={isEquipped ? `Unequip ${item?.name ?? itemId}` : `Equip ${item?.name ?? itemId}`}
+                  style={[styles.characterToolSlot, isEquipped && styles.characterToolSlotActive]}
+                  onPress={() => handleEquipTool(isEquipped ? null : itemId)}
+                >
+                  <Feather name={(item?.featherIcon as keyof typeof Feather.glyphMap) ?? 'circle'} size={17} color="#fff" />
+                  <Text numberOfLines={1} style={styles.characterToolLabel}>{item?.name ?? itemId}</Text>
+                  <Text numberOfLines={1} style={styles.characterToolCost}>{energyCost} EN</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.characterSectionLabel}>Masteries</Text>
+          <View style={styles.masteryGrid}>
+            {(() => {
+              const skillState = getSkillState();
+              return ALL_SKILLS.map(skill => {
+                const level = (skillState as any)[`${skill}_mastery`] as number;
+                const points = (skillState as any)[`${skill}_points`] as number;
+                const tier = getMasteryTier(level);
+                const progressInLevel = points % POINTS_PER_MASTERY;
+                return (
+                  <View key={skill} style={styles.masteryChip}>
+                    <Feather name={MASTERY_ICONS[skill]} size={14} color="#fff2bb" />
+                    <View style={styles.masteryTextStack}>
+                      <Text numberOfLines={1} style={styles.masteryLabel}>{MASTERY_LABELS[skill]}</Text>
+                      <Text numberOfLines={1} style={styles.masteryTier}>Lv {level} · {tier}</Text>
+                    </View>
+                    <View style={styles.masteryBarTrack}>
+                      <View style={[styles.masteryBarFill, { width: `${(progressInLevel / POINTS_PER_MASTERY) * 100}%` }]} />
+                    </View>
+                  </View>
+                );
+              });
+            })()}
           </View>
         </View>
       )}
@@ -3019,17 +3378,28 @@ export default function RpgScreen() {
           try {
             const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
             const item = getRpgItem(itemId);
+            const buildingDef = getBuildingDef(itemId);
+            const woodCost = buildingDef?.priceWood ?? 0;
+            const stoneCost = buildingDef?.priceStone ?? 0;
+
             if (!state || state.coins < price) {
               const shortfall = Math.max(0, price - (state?.coins ?? 0));
-              showWorldToast({
-                text: `Need ${shortfall} more coins`,
-                item,
-                tone: 'warn',
-              });
+              showWorldToast({ text: `Need ${shortfall} more coins`, item, tone: 'warn' });
               return { ok: false, message: `Need ${shortfall} more coins` };
             }
+            if (woodCost > 0 && getInventoryQuantity(RPG_WOOD_ITEM_ID) < woodCost) {
+              showWorldToast({ text: `Need ${woodCost} wood`, item, tone: 'warn' });
+              return { ok: false, message: `Need ${woodCost} wood` };
+            }
+            if (stoneCost > 0 && getInventoryQuantity(RPG_STONE_ITEM_ID) < stoneCost) {
+              showWorldToast({ text: `Need ${stoneCost} stone`, item, tone: 'warn' });
+              return { ok: false, message: `Need ${stoneCost} stone` };
+            }
+
             db.execSync('BEGIN TRANSACTION');
             db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
+            if (woodCost > 0) addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -woodCost, 'inventory');
+            if (stoneCost > 0) addSandboxInventoryItem(RPG_STONE_ITEM_ID, -stoneCost, 'inventory');
             db.runSync(
               `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
                ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
@@ -3306,6 +3676,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 60,
+  },
+  constructionBadge: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    zIndex: 55,
+  },
+  constructionBadgeText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
   },
   hotbar: {
     position: 'absolute',
@@ -3601,6 +3989,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  characterSectionLabel: {
+    marginTop: 10,
+    marginBottom: 4,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+  },
+  masteryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  masteryChip: {
+    width: 132,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  masteryTextStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  masteryLabel: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+  },
+  masteryTier: {
+    color: 'rgba(255,255,255,0.6)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 9,
+  },
+  masteryBarTrack: {
+    width: 18,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  masteryBarFill: {
+    height: 5,
+    backgroundColor: '#9ee6a8',
   },
   characterToolSlot: {
     width: 80,

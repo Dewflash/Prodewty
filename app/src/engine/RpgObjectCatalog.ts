@@ -41,6 +41,7 @@ import {
   RPG_WOOL_ITEM_ID,
   RPG_TRUFFLE_ITEM_ID,
 } from './RpgItemIds';
+import { BUILDING_CATALOG, isBuildingShell, isStation, type BuildingDefinition } from './BuildingCatalog';
 import {
   RPG_ANIMAL_OBJECT_ASSETS,
   RPG_BUSH_OBJECT_ASSETS,
@@ -1123,50 +1124,63 @@ export const RPG_ITEM_CATALOG = {
     sourceLabel: 'Sanctuary Clutter',
     description: 'A small rock jutting out of the ground. Clear it for a chance at Crystal Shards.',
   },
-  rpg_tool_shovel: {
-    name: 'Shovel',
+  rpg_axe_basic: {
+    name: 'Axe',
     kind: 'tool',
-    toolId: 'shovel',
     featherIcon: 'tool',
     rarity: 'common',
     sourceLabel: 'Tools',
-    description: 'Dig a patch of grass into a river (5 coins per dig).',
+    description: 'Chop trees for wood.',
   },
-  rpg_tool_bridge: {
-    name: 'Bridge Kit',
+  rpg_pickaxe_basic: {
+    name: 'Pickaxe',
     kind: 'tool',
-    toolId: 'bridge',
-    featherIcon: 'link',
+    featherIcon: 'triangle',
     rarity: 'common',
     sourceLabel: 'Tools',
-    description: 'Lay a bridge across a river tile (3 wood per bridge).',
+    description: 'Break rocks and ore. Also carves a channel into a river (5 coins per dig).',
   },
-  rpg_tool_path: {
-    name: 'Path Layer',
+  rpg_hoe_basic: {
+    name: 'Hoe',
     kind: 'tool',
-    toolId: 'path',
-    featherIcon: 'minus',
-    rarity: 'common',
-    sourceLabel: 'Tools',
-    description: 'Lay a walking path on grass or tilled soil (1 wood per tile).',
-  },
-  rpg_tool_plow: {
-    name: 'Plow',
-    kind: 'tool',
-    toolId: 'plow',
     featherIcon: 'grid',
     rarity: 'common',
     sourceLabel: 'Tools',
-    description: 'Till grass into soil ready for planting. Free.',
+    description: 'Till soil so it can be planted.',
   },
-  rpg_tool_watering_can: {
+  rpg_watering_can_basic: {
     name: 'Watering Can',
     kind: 'tool',
-    toolId: 'watering',
     featherIcon: 'droplet',
     rarity: 'common',
     sourceLabel: 'Tools',
-    description: 'Water a crop in front of you. Uses energy and one Water Drop when it speeds growth.',
+    description: 'Water a crop in front of you.',
+  },
+  rpg_bridge_kit: {
+    name: 'Bridge Kit',
+    kind: 'object',
+    price: 0,
+    colWidth: 1,
+    colHeight: 1,
+    visWidth: 1,
+    visHeight: 1,
+    tags: ['terrain_edit', 'bridge'],
+    rarity: 'common',
+    sourceLabel: 'Sanctuary',
+    description: 'Place on a river tile to bridge it (consumes 3 wood when placed).',
+  },
+  rpg_path_kit: {
+    name: 'Path',
+    kind: 'object',
+    price: 0,
+    colWidth: 1,
+    colHeight: 1,
+    visWidth: 1,
+    visHeight: 1,
+    tags: ['terrain_edit', 'path'],
+    rarity: 'common',
+    sourceLabel: 'Sanctuary',
+    description: 'Place on grass or tilled soil to lay a walking path (consumes 1 wood when placed).',
   },
   White_tree1_seed: {
     name: 'White Tree Seed',
@@ -1229,7 +1243,55 @@ export const RPG_ITEM_CATALOG = {
   ...RPG_CAVE_OBJECT_CATALOG,
   ...RPG_TEMPLE_OBJECT_CATALOG,
   ...RPG_ANIMAL_OBJECT_CATALOG,
+  ...Object.fromEntries(
+    Object.entries(BUILDING_CATALOG)
+      .filter(([, def]) => isBuildingShell(def) || isStation(def))
+      .map(([id, def]) => [id, makeBuildingItem(def)]),
+  ),
 } satisfies Record<string, RpgItemDefinition>;
+
+const BUILDING_SHELL_ICONS: Record<string, string> = {
+  Workshop: 'tool',
+  Factory: 'settings',
+  ToolShed: 'box',
+  Market: 'shopping-bag',
+  TownHall: 'home',
+  Library: 'book',
+};
+const STATION_ICONS: Record<string, string> = {
+  Furnace: 'sun',
+  Loom: 'grid',
+  CheesePress: 'circle',
+  MayonnaiseMachine: 'droplet',
+};
+
+function buildingDescription(def: BuildingDefinition): string {
+  if (isStation(def)) return `Station. Place inside a completed ${def.requiredBuildingRole} building.`;
+  return 'Empty shell — place compatible stations inside it once construction finishes.';
+}
+
+function makeBuildingItem(def: BuildingDefinition): RpgPlaceableItem {
+  return {
+    name: def.name,
+    kind: 'object',
+    price: def.priceCoins,
+    colWidth: def.colWidth,
+    colHeight: def.colHeight,
+    visWidth: def.colWidth,
+    visHeight: def.colHeight,
+    featherIcon: isStation(def) ? STATION_ICONS[def.type] : BUILDING_SHELL_ICONS[def.type],
+    tags: isStation(def) ? ['station', def.type] : ['building', def.type],
+    rarity: 'rare',
+    sourceLabel: isStation(def) ? 'Station' : 'Building',
+    description: buildingDescription(def),
+  };
+}
+
+export const RPG_BUILDING_CATALOG: Record<string, RpgPlaceableItem> = Object.fromEntries(
+  Object.entries(BUILDING_CATALOG)
+    .filter(([, def]) => isBuildingShell(def) || isStation(def))
+    .map(([id, def]) => [id, makeBuildingItem(def)]),
+);
 
 export const SHOP_CATALOG = {
   ...RPG_FOREST_OBJECT_CATALOG,
@@ -1238,6 +1300,7 @@ export const SHOP_CATALOG = {
   ...RPG_CAVE_OBJECT_CATALOG,
   ...RPG_TEMPLE_OBJECT_CATALOG,
   ...RPG_ANIMAL_OBJECT_CATALOG,
+  ...RPG_BUILDING_CATALOG,
   rpg_coin_mine: RPG_ITEM_CATALOG.rpg_coin_mine,
 } satisfies Record<string, RpgPlaceableItem>;
 

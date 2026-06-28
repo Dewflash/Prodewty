@@ -70,6 +70,38 @@ export const EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = {
     description: 'Increases your chance to land a critical hit.',
     stats: { critChance: 0.15 },
   },
+
+  // Tools — equip-slot entries so they go through the same persisted
+  // player_equipment mechanism as weapon/armor/accessory. Gameplay effect
+  // (energy cost, tier) lives in ToolCatalog.ts, not here.
+  rpg_axe_basic: {
+    itemId: 'rpg_axe_basic',
+    name: 'Axe',
+    slot: 'tool',
+    description: 'Chop trees for wood.',
+    stats: {},
+  },
+  rpg_pickaxe_basic: {
+    itemId: 'rpg_pickaxe_basic',
+    name: 'Pickaxe',
+    slot: 'tool',
+    description: 'Break rocks and ore. Also used to carve a channel into a river.',
+    stats: {},
+  },
+  rpg_hoe_basic: {
+    itemId: 'rpg_hoe_basic',
+    name: 'Hoe',
+    slot: 'tool',
+    description: 'Till soil so it can be planted.',
+    stats: {},
+  },
+  rpg_watering_can_basic: {
+    itemId: 'rpg_watering_can_basic',
+    name: 'Watering Can',
+    slot: 'tool',
+    description: 'Water a planted crop.',
+    stats: {},
+  },
 };
 
 export function getEquipmentDef(itemId: string): EquipmentDefinition | null {

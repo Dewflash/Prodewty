@@ -37,8 +37,46 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     ingredients: [
       { itemId: 'rpg_wood', quantity: 2 }
     ]
-  }
+  },
+
+  // Decorative Sanctuary objects — ported from rpg.tsx's old instant-craft
+  // list (2026-06-28). No station required, unlike the resource recipes
+  // above — these were never described as production-line goods.
+  'recipe_woodland_planter': {
+    recipeId: 'recipe_woodland_planter',
+    outputItemId: 'Bush_simple1_1',
+    outputQuantity: 1,
+    timeMinutes: 10,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 4 },
+      { itemId: 'rpg_leaves', quantity: 3 },
+    ],
+  },
+  'recipe_crystal_lamp': {
+    recipeId: 'recipe_crystal_lamp',
+    outputItemId: 'Blue_crystal4',
+    outputQuantity: 1,
+    timeMinutes: 15,
+    ingredients: [
+      { itemId: 'rpg_crystal_shards', quantity: 4 },
+      { itemId: 'rpg_wood', quantity: 2 },
+    ],
+  },
+  'recipe_temple_chest': {
+    recipeId: 'recipe_temple_chest',
+    outputItemId: 'Temple_animated_chest',
+    outputQuantity: 1,
+    timeMinutes: 20,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 6 },
+      { itemId: 'rpg_crystal_shards', quantity: 2 },
+    ],
+  },
 };
+
+export function getAllCraftingRecipes(): CraftingRecipe[] {
+  return Object.values(CRAFTING_CATALOG);
+}
 
 export function getCraftingRecipe(recipeId: string): CraftingRecipe | null {
   return CRAFTING_CATALOG[recipeId] || null;

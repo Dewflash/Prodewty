@@ -397,6 +397,8 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             </Pressable>
           ) : selectedItem?.kind === 'seed' ? (
             <Text style={styles.kindText}>Seed not plantable yet</Text>
+          ) : selectedItem?.kind === 'tool' ? (
+            <Text style={styles.kindText}>Equip from the Character panel</Text>
           ) : selected && selectedSellPrice > 0 ? (
             <>
               <Pressable

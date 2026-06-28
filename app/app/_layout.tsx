@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Modal, View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
   Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
@@ -118,6 +119,7 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
@@ -183,6 +185,7 @@ export default function RootLayout() {
         </View>
       </Modal>
     </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

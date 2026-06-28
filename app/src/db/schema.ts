@@ -1745,6 +1745,26 @@ function runMigrations() {
     migrateSkillPointsColumns();
     db.execSync('PRAGMA user_version = 88');
   }
+
+  if (version < 89) {
+    addExtendedSkillPointsColumns();
+    db.execSync('PRAGMA user_version = 89');
+  }
+}
+
+function addExtendedSkillPointsColumns() {
+  const columns = [
+    'crafting_points',
+    'livestock_points',
+    'language_points',
+    'trading_points',
+    'hunting_points',
+    'surviving_points',
+    'research_points',
+  ];
+  for (const col of columns) {
+    try { db.runSync(`ALTER TABLE rpg_state ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch {}
+  }
 }
 
 function migrateSkillPointsColumns() {

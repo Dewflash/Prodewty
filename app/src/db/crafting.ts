@@ -12,6 +12,23 @@ export type CraftingJob = {
   is_claimed: boolean;
 };
 
+export function getActiveCraftingJobs(): CraftingJob[] {
+  try {
+    const rows = db.getAllSync<{
+      id: number;
+      recipe_id: string;
+      started_at: string;
+      completes_at: string;
+      building_object_id: number | null;
+      is_claimed: number;
+    }>('SELECT * FROM crafting_queue WHERE is_claimed = 0');
+    return rows.map(r => ({ ...r, is_claimed: r.is_claimed === 1 }));
+  } catch (e) {
+    console.warn('Failed to fetch active crafting jobs', e);
+    return [];
+  }
+}
+
 export function startCrafting(recipeId: string, buildingObjectId: number | null = null): 'ok' | 'no_recipe' | 'missing_ingredients' | 'building_busy' | 'db_error' {
   const recipe = getCraftingRecipe(recipeId);
   if (!recipe) return 'no_recipe';

@@ -20,6 +20,9 @@ export const TOOL_CATALOG: Record<string, ToolDefinition> = {
   
   'rpg_pickaxe_basic': { itemId: 'rpg_pickaxe_basic', type: 'Pickaxe', tier: 'Basic', energyCost: 2, upgradeCostCoins: 0 },
   'rpg_pickaxe_copper': { itemId: 'rpg_pickaxe_copper', type: 'Pickaxe', tier: 'Copper', energyCost: 1.5, upgradeCostCoins: 2000, upgradeRequiredItemId: 'rpg_copper_bar', upgradeRequiredQuantity: 5 },
+
+  'rpg_hoe_basic': { itemId: 'rpg_hoe_basic', type: 'Hoe', tier: 'Basic', energyCost: 2, areaOfEffect: 1, upgradeCostCoins: 0 },
+  'rpg_watering_can_basic': { itemId: 'rpg_watering_can_basic', type: 'WateringCan', tier: 'Basic', energyCost: 2, areaOfEffect: 1, upgradeCostCoins: 0 },
   
   'rpg_sword_basic': { itemId: 'rpg_sword_basic', type: 'Sword', tier: 'Basic', energyCost: 1, damage: 3, upgradeCostCoins: 0 },
   'rpg_sword_copper': { itemId: 'rpg_sword_copper', type: 'Sword', tier: 'Copper', energyCost: 1, damage: 6, upgradeCostCoins: 2000, upgradeRequiredItemId: 'rpg_copper_bar', upgradeRequiredQuantity: 5 },

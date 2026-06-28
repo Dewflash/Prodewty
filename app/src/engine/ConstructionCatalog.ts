@@ -68,6 +68,74 @@ export const CONSTRUCTION_CATALOG: Record<string, ConstructionDefinition> = {
     buildTimeMinutes: 30, // 30 minutes
     description: 'Turns eggs into mayonnaise.',
   },
+
+  // ── Stations (BuildingCatalog.ts ids) — placed inside a matching
+  // building's footprint, not freestanding. Same stations as above; these
+  // entries use the rpg_* ids BuildingCatalog/RpgObjectCatalog actually
+  // reference, kept alongside the legacy keys above rather than renaming
+  // them (low risk of breaking any already-placed test data).
+  rpg_furnace: {
+    itemType: 'rpg_furnace',
+    name: 'Furnace',
+    buildTimeMinutes: 30,
+    description: 'Smelts ores into metal bars. Place inside a Blacksmith Hut.',
+  },
+  rpg_loom: {
+    itemType: 'rpg_loom',
+    name: 'Loom',
+    buildTimeMinutes: 45,
+    description: 'Spins wool into fine cloth. Place inside an Artisan Mill.',
+  },
+  rpg_cheese_press: {
+    itemType: 'rpg_cheese_press',
+    name: 'Cheese Press',
+    buildTimeMinutes: 45,
+    description: 'Turns milk into cheese. Place inside an Artisan Mill.',
+  },
+  rpg_mayonnaise_machine: {
+    itemType: 'rpg_mayonnaise_machine',
+    name: 'Mayonnaise Machine',
+    buildTimeMinutes: 30,
+    description: 'Turns eggs into mayonnaise. Place inside an Artisan Mill.',
+  },
+
+  // ── The 6 empty-shell buildings ──────────────────────────────────────────
+  rpg_blacksmith_hut: {
+    itemType: 'rpg_blacksmith_hut',
+    name: 'Blacksmith Hut',
+    buildTimeMinutes: 60 * 4,
+    description: 'Workshop. Place crafting stations like the Furnace inside it.',
+  },
+  rpg_artisan_mill: {
+    itemType: 'rpg_artisan_mill',
+    name: 'Artisan Mill',
+    buildTimeMinutes: 60 * 4,
+    description: 'Factory. Place produce-processing stations (Cheese Press, Loom, Mayonnaise Machine) inside it.',
+  },
+  rpg_tool_shed: {
+    itemType: 'rpg_tool_shed',
+    name: 'Tool Shed',
+    buildTimeMinutes: 60 * 3,
+    description: 'Place irrigation and fertiliser-making stations inside it.',
+  },
+  rpg_wanderers_bazaar: {
+    itemType: 'rpg_wanderers_bazaar',
+    name: "Wanderer's Bazaar",
+    buildTimeMinutes: 60 * 5,
+    description: 'Market. NPC vendor stalls go inside it once villagers are around to staff them.',
+  },
+  rpg_village_hearth: {
+    itemType: 'rpg_village_hearth',
+    name: 'Village Hearth',
+    buildTimeMinutes: 60 * 2,
+    description: 'Town Hall. The first building of the Village — no prerequisites.',
+  },
+  rpg_forgotten_chamber: {
+    itemType: 'rpg_forgotten_chamber',
+    name: 'Forgotten Chamber',
+    buildTimeMinutes: 60 * 5,
+    description: 'Library. Inspect discovered items here to research their identity.',
+  },
 };
 
 export function getConstructionDef(itemType: string): ConstructionDefinition | null {
