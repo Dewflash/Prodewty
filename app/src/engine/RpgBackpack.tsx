@@ -37,7 +37,10 @@ type Props = {
   onPlantSeed: (itemId: string) => void;
   onSellItem: (itemId: string) => void;
   onSellAllItem: (itemId: string) => void;
+  onUseOnNearestPlot: (itemId: string) => void;
 };
+
+const PLOT_USE_ITEM_IDS = new Set(['rpg_fertiliser', 'rpg_sprinkler']);
 
 const SLOT_COUNT = 12;
 type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
@@ -102,7 +105,7 @@ function sortBackpackSlots(a: InventorySlot, b: InventorySlot, sort: BackpackSor
   );
 }
 
-export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed, onSellItem, onSellAllItem }: Props) {
+export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed, onSellItem, onSellAllItem, onUseOnNearestPlot }: Props) {
   const { width, height } = useWindowDimensions();
   const [inventory, setInventory] = useState<InventorySlot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -399,6 +402,16 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             <Text style={styles.kindText}>Seed not plantable yet</Text>
           ) : selectedItem?.kind === 'tool' ? (
             <Text style={styles.kindText}>Equip from the Character panel</Text>
+          ) : selected && PLOT_USE_ITEM_IDS.has(selected.item_id) ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${selectedName} on the nearest tilled plot`}
+              onPress={() => onUseOnNearestPlot(selected.item_id)}
+              style={styles.placeButton}
+            >
+              <Feather name="droplet" size={14} color="#fff" />
+              <Text style={styles.placeText}>Use on nearest plot</Text>
+            </Pressable>
           ) : selected && selectedSellPrice > 0 ? (
             <>
               <Pressable

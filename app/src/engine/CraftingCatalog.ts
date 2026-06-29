@@ -7,12 +7,14 @@ export type CraftingRecipe = {
   requiredBuilding?: string; // e.g., 'Furnace', 'Loom'
 };
 
+// All times dropped to 0.1min (6s) for testing (2026-06-30) — real timings
+// (iron bar was 30min, cloth 60min, etc.) need restoring before launch.
 export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
   'recipe_iron_bar': {
     recipeId: 'recipe_iron_bar',
     outputItemId: 'rpg_iron_bar',
     outputQuantity: 1,
-    timeMinutes: 30, // Takes 30 real minutes
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_stone', quantity: 5 },
       { itemId: 'rpg_coal', quantity: 1 }
@@ -23,17 +25,98 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     recipeId: 'recipe_cloth',
     outputItemId: 'rpg_cloth',
     outputQuantity: 1,
-    timeMinutes: 60,
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_wool', quantity: 3 }
     ],
     requiredBuilding: 'Loom'
   },
+  'recipe_fertiliser': {
+    recipeId: 'recipe_fertiliser',
+    outputItemId: 'rpg_fertiliser',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_hay', quantity: 3 },
+      { itemId: 'rpg_leaves', quantity: 2 },
+    ],
+    requiredBuilding: 'FertiliserMixer',
+  },
+  'recipe_sprinkler': {
+    recipeId: 'recipe_sprinkler',
+    outputItemId: 'rpg_sprinkler',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_copper_bar', quantity: 1 },
+      { itemId: 'rpg_wood', quantity: 3 },
+    ],
+    requiredBuilding: 'IrrigationBench',
+  },
+  'recipe_stick': {
+    recipeId: 'recipe_stick',
+    outputItemId: 'rpg_stick',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_wood', quantity: 1 }],
+  },
+  'recipe_wooden_pole': {
+    recipeId: 'recipe_wooden_pole',
+    outputItemId: 'rpg_wooden_pole',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_stick', quantity: 3 }],
+  },
+  'recipe_brick': {
+    recipeId: 'recipe_brick',
+    outputItemId: 'rpg_brick',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 1 },
+      { itemId: 'rpg_stone', quantity: 1 },
+      { itemId: 'rpg_mud', quantity: 1 },
+    ],
+  },
+  'recipe_stone_wall': {
+    recipeId: 'recipe_stone_wall',
+    outputItemId: 'rpg_stone_wall',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_stone', quantity: 1 }],
+  },
+  'recipe_door': {
+    recipeId: 'recipe_door',
+    outputItemId: 'rpg_door',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 2 },
+      { itemId: 'rpg_metal', quantity: 1 },
+    ],
+  },
+  'recipe_rope': {
+    recipeId: 'recipe_rope',
+    outputItemId: 'rpg_rope',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_stick', quantity: 2 }],
+  },
+  'recipe_gate': {
+    recipeId: 'recipe_gate',
+    outputItemId: 'rpg_gate',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 1 },
+      { itemId: 'rpg_stick', quantity: 1 },
+    ],
+  },
   'recipe_wood_plank': {
     recipeId: 'recipe_wood_plank',
     outputItemId: 'rpg_wood_plank',
     outputQuantity: 2,
-    timeMinutes: 5,
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_wood', quantity: 2 }
     ]
@@ -46,7 +129,7 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     recipeId: 'recipe_woodland_planter',
     outputItemId: 'Bush_simple1_1',
     outputQuantity: 1,
-    timeMinutes: 10,
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_wood', quantity: 4 },
       { itemId: 'rpg_leaves', quantity: 3 },
@@ -56,7 +139,7 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     recipeId: 'recipe_crystal_lamp',
     outputItemId: 'Blue_crystal4',
     outputQuantity: 1,
-    timeMinutes: 15,
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_crystal_shards', quantity: 4 },
       { itemId: 'rpg_wood', quantity: 2 },
@@ -66,7 +149,7 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     recipeId: 'recipe_temple_chest',
     outputItemId: 'Temple_animated_chest',
     outputQuantity: 1,
-    timeMinutes: 20,
+    timeMinutes: 0.1,
     ingredients: [
       { itemId: 'rpg_wood', quantity: 6 },
       { itemId: 'rpg_crystal_shards', quantity: 2 },

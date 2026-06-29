@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, Pressable, StyleSheet, Text, View, AppState, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -32,7 +33,7 @@ import {
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
 import { DungeonMap, getResponsiveTileSize, SanctuaryMap, TILE_COLLISION, TILE_SIZE as DEFAULT_TILE_SIZE, TileType } from '../src/engine/MapData';
 import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
-import { BridgeTile, FLOOR_TILE_COORD, PathTile, TilledTile, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
+import { FLOOR_TILE_COORD, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
 import { db } from '../src/db/schema';
 import {
   advanceGardenPlotWithInventoryItem,
@@ -73,9 +74,16 @@ import {
   plantSeed as plantFarmSeed,
   waterPlot as waterFarmPlot,
   harvestPlot as harvestFarmPlot,
-  processOvernightGrowth,
+  applyFertilizer,
+  useSprinkler,
   type FarmingPlot,
 } from '../src/db/farming';
+import { getCalendarState, sleepOvernight, fastForwardTime, type CalendarState } from '../src/db/time';
+import { tryDropBlueprint } from '../src/db/blueprints';
+import { travelToZone } from '../src/db/zones';
+import { getZoneDef } from '../src/engine/ZoneCatalog';
+import { getBiomeTree } from '../src/engine/BiomeTreeCatalog';
+import { logicalToday } from '../src/db/dayBoundary';
 
 const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
@@ -101,9 +109,30 @@ const RAIN_DROPS = Array.from({ length: 28 }, (_, index) => ({
   opacity: 0.28 + (index % 5) * 0.08,
 }));
 const SHOW_NORMAL_TARGET_DEBUG = false;
+// Verification hook for the zoneCellMap O(1) lookup (Phase 1, 2026-06-30)
+// — flip true to render each cell the Map actually contains, with its
+// zone id, directly over the Sanctuary so the in-memory layer can be
+// visually confirmed on-device instead of trusting console logs alone.
+const TESTING_SHOW_ZONE_MAP = false;
 
 type Zone = 'sanctuary' | 'dungeon';
 type MapObject = { id: number; type: string; row: number; col: number };
+// Player-declared Sanctuary zones (Pond/Garden/Building Plot). interior/
+// perimeter are kept as separate cell-key arrays so a breach check ("did
+// the tile that just got mined belong to a wall?") and a containment
+// check ("is this tile inside a Garden?") are both single Map lookups —
+// see zoneCellMap below. state stays addressable after a breach (not
+// deleted) so a future repair flow can resolve back to 'active'.
+type SanctuaryZoneType = 'pond' | 'garden' | 'building_plot';
+type SanctuaryZoneState = 'active' | 'breached';
+type SanctuaryZoneRecord = {
+  id: number;
+  type: SanctuaryZoneType;
+  state: SanctuaryZoneState;
+  interiorCells: string[];
+  perimeterCells: string[];
+};
+type PendingZoneCandidate = { interiorCells: string[]; perimeterCells: string[] };
 type BuildItem = {
   mode: 'place' | 'edit' | 'plant' | 'terrain';
   itemId: string;
@@ -195,7 +224,7 @@ type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 // src/db/equipment.ts, src/engine/ToolCatalog.ts) — not local React state.
 // Bridge Kit/Path are NOT tools; they're placeable Backpack items (see
 // TERRAIN_EDIT_ITEM_IDS above) per the Universal Placement Rule.
-const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe_basic', 'rpg_watering_can_basic'];
+const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe_basic', 'rpg_watering_can_basic', 'rpg_rake_basic', 'rpg_shovel_basic'];
 // Granted free on first load. Bridge/Path kits are temporarily included
 // here too — until Crafting (Phase 5) gives a real acquisition path,
 // there'd be no way to test terrain-edit placement otherwise.
@@ -211,6 +240,19 @@ const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_twig', row: 13, col: 13 },
   { type: 'rpg_clutter_rock', row: 8, col: 14 },
   { type: 'rpg_clutter_rock', row: 15, col: 8 },
+];
+// Minimal villager stub spawn — one fixed NPC, seeded once. Real spawning
+// (via Villager House construction) is part of the deferred full social
+// system; this is just enough to test Interact -> blueprint-chance.
+const STARTER_VILLAGER_SPAWN = { type: 'rpg_villager_brog', row: 10, col: 10 };
+// Free, naturally-occurring mining nodes (RPG resource dynamics, 2026-06-30)
+// — not purchasable, unlike the Cave pack's decorative rocks. Same
+// seed-once + nightly-respawn pattern as clutter, just Pickaxe-gated.
+const STARTER_ROCK_VEIN_SPAWNS = [
+  { type: 'rpg_rock_vein', row: 3, col: 9 },
+  { type: 'rpg_rock_vein', row: 9, col: 16 },
+  { type: 'rpg_rock_vein', row: 16, col: 3 },
+  { type: 'rpg_rock_vein', row: 17, col: 14 },
 ];
 // Recipes now live in src/engine/CraftingCatalog.ts (timed, real
 // crafting_queue jobs) — see startCraftingJob/claimCraftingJob below.
@@ -244,14 +286,6 @@ const SEASON_CONFIG: Record<SeasonId, { label: string; icon: keyof typeof Feathe
     hint: '+Crystal Shards on harvest',
   },
 };
-
-function getCurrentSeason(date = new Date()): SeasonId {
-  const month = date.getMonth();
-  if (month >= 2 && month <= 4) return 'spring';
-  if (month >= 5 && month <= 7) return 'summer';
-  if (month >= 8 && month <= 10) return 'autumn';
-  return 'winter';
-}
 
 type InteractionTargetKind = 'object' | 'plot' | 'farmplot' | 'portal' | 'enemy';
 type InteractionTargetCell = { row: number; col: number };
@@ -343,11 +377,59 @@ export default function RpgScreen() {
     return () => sub.remove();
   }, []);
 
-  const currentSeason = getCurrentSeason();
+  // RPG sandbox allows free rotation between portrait and landscape while
+  // playing; rest of the app (mood/journaling/etc.) is portrait-only.
+  // Unlock on mount, restore portrait-only on leaving this screen.
+  useEffect(() => {
+    ScreenOrientation.unlockAsync().catch(() => {});
+    return () => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    };
+  }, []);
+
+  const [calendar, setCalendar] = useState<CalendarState>({ current_season: 'spring', current_day: 1, current_year: 1 });
+  const currentSeason = calendar.current_season as SeasonId;
   const seasonInfo = SEASON_CONFIG[currentSeason];
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [activeZone, setActiveZone] = useState<Zone>('sanctuary');
   const [mapObjects, setMapObjects] = useState<MapObject[]>([]);
+  const [sanctuaryZones, setSanctuaryZones] = useState<SanctuaryZoneRecord[]>([]);
+  const [pendingZoneCandidates, setPendingZoneCandidates] = useState<PendingZoneCandidate[]>([]);
+
+  const zonesById = useMemo(() => {
+    const map: Record<number, SanctuaryZoneRecord> = {};
+    sanctuaryZones.forEach(zone => { map[zone.id] = zone; });
+    return map;
+  }, [sanctuaryZones]);
+
+  // O(1) tile->zone lookup. Only 'active' zones are mapped — a breach
+  // pulls its cells out of this Map entirely (per spec), so a Hoe/Shovel
+  // zone-gate check or a building's containment check both naturally see
+  // "not in an active zone" without a separate state check.
+  const zoneCellMap = useMemo(() => {
+    const map = new Map<string, number>();
+    sanctuaryZones.forEach(zone => {
+      if (zone.state !== 'active') return;
+      zone.interiorCells.forEach(key => map.set(key, zone.id));
+      zone.perimeterCells.forEach(key => map.set(key, zone.id));
+    });
+    // Verification hook: if the Map's size doesn't match the sum of every
+    // active zone's recorded cells, two zones are silently claiming the
+    // same tile (overlapping declarations / a key collision). Surface it
+    // immediately rather than letting it manifest as a confusing gameplay
+    // bug three systems later.
+    const expectedSize = sanctuaryZones
+      .filter(zone => zone.state === 'active')
+      .reduce((sum, zone) => sum + zone.interiorCells.length + zone.perimeterCells.length, 0);
+    if (map.size !== expectedSize) {
+      console.warn(
+        `[zones] cellMap size mismatch: ${map.size} entries built, ${expectedSize} expected — zones may overlap`,
+        sanctuaryZones.filter(z => z.state === 'active').map(z => ({ id: z.id, type: z.type, cells: z.interiorCells.length + z.perimeterCells.length })),
+      );
+    }
+    return map;
+  }, [sanctuaryZones]);
+
   const [gardenPlots, setGardenPlots] = useState<GardenPlot[]>([]);
   const [coins, setCoins] = useState(0);
   const [playerHp, setPlayerHp] = useState({ hp: 100, hp_max: 100, energy: 100, energy_max: 100 });
@@ -356,6 +438,8 @@ export default function RpgScreen() {
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
+  const [isExploreOpen, setIsExploreOpen] = useState(false);
+  const [craftingPage, setCraftingPage] = useState(0);
   const [craftingJobsRevision, setCraftingJobsRevision] = useState(0);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
@@ -391,6 +475,21 @@ export default function RpgScreen() {
   const joyY = useSharedValue(0);
   const avatarX = useSharedValue(TILE_SIZE * 2);
   const avatarY = useSharedValue(TILE_SIZE * 2);
+  // TILE_SIZE is responsive to viewport width (see getResponsiveTileSize),
+  // so it changes sharply between portrait and landscape. Avatar position
+  // is stored in raw pixels, not tile units — without this, rotating the
+  // device would leave the same pixel coordinate landing on a totally
+  // different tile, looking like the player teleported.
+  const lastTileSizeRef = useRef(TILE_SIZE);
+  useEffect(() => {
+    const prevTileSize = lastTileSizeRef.current;
+    if (prevTileSize !== TILE_SIZE) {
+      const ratio = TILE_SIZE / prevTileSize;
+      avatarX.value *= ratio;
+      avatarY.value *= ratio;
+      lastTileSizeRef.current = TILE_SIZE;
+    }
+  }, [TILE_SIZE]);
   const avatarDirection = useSharedValue(0);
   const avatarIsPlaying = useSharedValue(false);
   const isAttacking = useSharedValue(false);
@@ -398,6 +497,7 @@ export default function RpgScreen() {
   const mapScale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
   const collisionMap = useSharedValue<number[]>([]);
+  const waterMap = useSharedValue<number[]>([]);
   const mapCols = useSharedValue(mapColsCount);
   const mapRows = useSharedValue(mapRowsCount);
   const buildActive = useSharedValue(0);
@@ -456,8 +556,12 @@ export default function RpgScreen() {
     if (zone !== 'sanctuary') return flat;
 
     objects.forEach(obj => {
-      if (isObjectMechanicallyPassable(obj)) return;
       const item = getItem(obj.type);
+      // Entrance pieces (Door/Rope/Gate) are always walk-through, regardless
+      // of any toggleable-mechanism state — they're a perimeter piece you're
+      // meant to pass through, not a gate you open/close.
+      if (item?.tags?.includes('entrance')) return;
+      if (isObjectMechanicallyPassable(obj)) return;
       const width = item?.colWidth ?? 1;
       const height = item?.colHeight ?? 1;
       for (let dr = 0; dr < height; dr++) {
@@ -474,6 +578,7 @@ export default function RpgScreen() {
 
   const applyMovementCollision = (objects: MapObject[], zone: Zone = activeZone, data: TileType[][] = mapData) => {
     collisionMap.value = makeMovementCollisionFlat(objects, zone, data);
+    waterMap.value = data.flat().map(tile => (tile === TileType.WATER ? 1 : 0));
     mapCols.value = data[0]?.length ?? 0;
     mapRows.value = data.length;
   };
@@ -518,6 +623,26 @@ export default function RpgScreen() {
     setEquippedToolItemId(getEquipment('tool')?.item_id ?? null);
   };
 
+  const refreshCalendar = () => {
+    setCalendar(getCalendarState());
+  };
+
+  const handleSleep = () => {
+    const result = sleepOvernight();
+    if (result !== 'ok') {
+      showWorldToast({ text: 'Could not sleep right now', tone: 'warn' });
+      return;
+    }
+    refreshCalendar();
+    refreshPlayerHp();
+    refreshGardenPlots();
+    respawnStarterSpawns(STARTER_CLUTTER_SPAWNS);
+    respawnStarterSpawns(STARTER_ROCK_VEIN_SPAWNS);
+    refreshMapObjects();
+    bumpInventoryRevision();
+    showWorldToast({ text: 'You wake up refreshed — a new day begins', tone: 'success' });
+  };
+
   const handleEquipTool = (itemId: string | null) => {
     const result = itemId ? equipItem(itemId) : unequipItem('tool');
     if (result !== 'ok') {
@@ -531,9 +656,9 @@ export default function RpgScreen() {
     bumpInventoryRevision();
   };
 
-  const ensureStarterClutter = () => {
+  const ensureStarterSpawns = (spawns: { type: string; row: number; col: number }[], discoveryFlag: string) => {
     const seeded = db.getFirstSync<{ item_id: string }>(
-      "SELECT item_id FROM rpg_discoveries WHERE item_id = 'system.sanctuary_clutter_v1' LIMIT 1",
+      'SELECT item_id FROM rpg_discoveries WHERE item_id = ? LIMIT 1', discoveryFlag,
     );
     if (seeded) return false;
 
@@ -555,7 +680,7 @@ export default function RpgScreen() {
     let inserted = 0;
     db.execSync('BEGIN TRANSACTION');
     try {
-      STARTER_CLUTTER_SPAWNS.forEach(spawn => {
+      spawns.forEach(spawn => {
         const key = `${spawn.row}:${spawn.col}`;
         if (occupied.has(key)) return;
         if (SanctuaryMap[spawn.row]?.[spawn.col] !== TileType.GRASS) return;
@@ -564,12 +689,52 @@ export default function RpgScreen() {
         inserted += 1;
       });
       db.runSync(
-        "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES ('system.sanctuary_clutter_v1', 'system', datetime('now', 'localtime'))",
+        "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES (?, 'system', datetime('now', 'localtime'))",
+        discoveryFlag,
       );
       db.execSync('COMMIT');
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
-      console.warn('Failed to seed sanctuary clutter', e);
+      console.warn('Failed to seed starter spawns', e);
+      return false;
+    }
+    return inserted > 0;
+  };
+
+  // Refills any cleared/mined spots from a starter spawn list — unlike
+  // ensureStarterSpawns (one-time-ever seeding gated by a discovery flag),
+  // this has no "only once" gate and is meant to run every sleep/day-boundary.
+  const respawnStarterSpawns = (spawns: { type: string; row: number; col: number }[]) => {
+    const objects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+    const plots = db.getAllSync<{ row: number; col: number }>('SELECT row, col FROM garden_plots');
+    const occupied = new Set<string>();
+    objects.forEach(obj => {
+      const item = getItem(obj.type);
+      const width = item?.colWidth ?? 1;
+      const height = item?.colHeight ?? 1;
+      for (let dr = 0; dr < height; dr++) {
+        for (let dc = 0; dc < width; dc++) {
+          occupied.add(`${obj.row + dr}:${obj.col + dc}`);
+        }
+      }
+    });
+    plots.forEach(plot => occupied.add(`${plot.row}:${plot.col}`));
+
+    let inserted = 0;
+    db.execSync('BEGIN TRANSACTION');
+    try {
+      spawns.forEach(spawn => {
+        const key = `${spawn.row}:${spawn.col}`;
+        if (occupied.has(key)) return;
+        if (SanctuaryMap[spawn.row]?.[spawn.col] !== TileType.GRASS) return;
+        db.runSync('INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)', spawn.type, spawn.row, spawn.col);
+        occupied.add(key);
+        inserted += 1;
+      });
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to respawn starter spawns', e);
       return false;
     }
     return inserted > 0;
@@ -1230,7 +1395,11 @@ export default function RpgScreen() {
       }
       bumpInventoryRevision();
       clearBuildMode();
-      refreshMapObjects();
+      const freshObjects = refreshMapObjects();
+      const placedTags = getItem(buildItem.itemId)?.tags;
+      if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
+        scanForZoneCandidates(freshObjects);
+      }
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
       console.warn('Failed to confirm build placement', e);
@@ -1258,6 +1427,7 @@ export default function RpgScreen() {
       bumpInventoryRevision();
       clearBuildMode();
       refreshMapObjects();
+      breachZoneIfPerimeterRemoved(selectedObject);
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
       console.warn('Failed to stash object', e);
@@ -1279,24 +1449,74 @@ export default function RpgScreen() {
     beginPlantMode(itemId);
   };
 
+  // A completed Vendor Stall (Market station) bumps sell prices — the
+  // backend gate is "is one built at all", same convention as
+  // findStationObjectId's other callers (crafting stations).
+  const getSellPriceWithStallBonus = (itemId: string): { price: number; hasStall: boolean } => {
+    const base = getResourceSellPrice(itemId);
+    if (base <= 0) return { price: base, hasStall: false };
+    const hasStall = findStationObjectId('VendorStall') !== null;
+    return { price: hasStall ? Math.round(base * 1.2) : base, hasStall };
+  };
+
   const handleSellItem = (itemId: string) => {
-    const price = getResourceSellPrice(itemId);
+    const { price, hasStall } = getSellPriceWithStallBonus(itemId);
     if (price <= 0 || getInventoryQuantity(itemId) <= 0) return;
     addSandboxInventoryItem(itemId, -1, 'inventory');
     db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', price);
     refreshCoins();
-    showWorldToast({ text: `Sold ${getRpgItem(itemId)?.name ?? itemId} for +${price} coins`, tone: 'success' });
+    showWorldToast({
+      text: `Sold ${getRpgItem(itemId)?.name ?? itemId} for +${price} coins${hasStall ? ' (Vendor Stall bonus)' : ''}`,
+      tone: 'success',
+    });
   };
 
   const handleSellAllItem = (itemId: string) => {
-    const price = getResourceSellPrice(itemId);
+    const { price, hasStall } = getSellPriceWithStallBonus(itemId);
     const quantity = getInventoryQuantity(itemId);
     if (price <= 0 || quantity <= 0) return;
     addSandboxInventoryItem(itemId, -quantity, 'inventory');
     const total = price * quantity;
     db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', total);
     refreshCoins();
-    showWorldToast({ text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins`, tone: 'success' });
+    showWorldToast({
+      text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins${hasStall ? ' (Vendor Stall bonus)' : ''}`,
+      tone: 'success',
+    });
+  };
+
+  const handleUseOnNearestPlot = (itemId: string) => {
+    const avatarBaseCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
+    const avatarBaseRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
+    const plots = db.getAllSync<FarmingPlot>('SELECT * FROM farming_plots');
+    let nearest: FarmingPlot | null = null;
+    let nearestDist = Infinity;
+    for (const plot of plots) {
+      const dist = Math.abs(plot.row - avatarBaseRow) + Math.abs(plot.col - avatarBaseCol);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearest = plot;
+      }
+    }
+    if (!nearest || nearestDist > 2) {
+      showWorldToast({ text: 'No tilled plot nearby', tone: 'warn' });
+      return;
+    }
+    const action = itemId === 'rpg_fertiliser' ? applyFertilizer : itemId === 'rpg_sprinkler' ? useSprinkler : null;
+    if (!action) return;
+    action(nearest.row, nearest.col).then(result => {
+      if (result !== 'ok') {
+        showWorldToast({
+          text: result === 'already_fertilized' ? 'Already fertilized'
+            : result === 'no_item' ? `No ${getRpgItem(itemId)?.name ?? 'item'} left`
+              : 'Could not use on this plot',
+          tone: 'warn',
+        });
+        return;
+      }
+      bumpInventoryRevision();
+      showWorldToast({ text: `Used ${getRpgItem(itemId)?.name ?? itemId}`, item: getRpgItem(itemId), tone: 'success' });
+    });
   };
 
   // Finds a completed, matching station object somewhere in the
@@ -1389,22 +1609,6 @@ export default function RpgScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Stand-in for a real day/sleep cycle (Calendar/TimeEngine — not wired
-  // yet, see RPG_ARCHITECTURE_AUDIT.md). processOvernightGrowth() is
-  // meant to run once per night; until sleep is a real mechanic, this
-  // advances watered crops on a fixed real-time interval instead so
-  // farming is actually testable today.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      try {
-        processOvernightGrowth();
-      } catch (e) {
-        console.warn('Failed to process crop growth tick', e);
-      }
-    }, 10 * 60000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Re-renders the open Crafting panel periodically so "In progress" jobs
   // flip to "Claim" once their timer passes, without needing a manual action.
   useEffect(() => {
@@ -1415,6 +1619,53 @@ export default function RpgScreen() {
 
   useEffect(() => {
     try {
+      // One-time test-state wipe (2026-06-30, requested for big-building
+      // testing) — clears all placed objects/plots/terrain so the Sanctuary
+      // is a blank canvas. Gated so it only ever runs once.
+      const mapCleared = db.getFirstSync<{ item_id: string }>(
+        "SELECT item_id FROM rpg_discoveries WHERE item_id = 'system.sanctuary_map_clear_test_v1' LIMIT 1",
+      );
+      if (!mapCleared) {
+        db.runSync('DELETE FROM sanctuary_objects');
+        db.runSync('DELETE FROM garden_plots');
+        db.runSync('DELETE FROM farming_plots');
+        db.runSync('DELETE FROM sanctuary_terrain_overrides');
+        db.runSync('DELETE FROM sanctuary_object_interactions');
+        db.runSync('DELETE FROM sanctuary_object_relations');
+        db.runSync('DELETE FROM sanctuary_reward_claims');
+        db.runSync('DELETE FROM sanctuary_ponds');
+        db.runSync('DELETE FROM sanctuary_building_plots');
+        db.runSync('DELETE FROM sanctuary_zones');
+        // Also reset the natural-spawn seed flags (clutter/rock veins/
+        // villager) and the zone-migration flag — otherwise
+        // ensureStarterSpawns below sees them as "already seeded" and
+        // skips re-inserting what was just deleted, and migrateLegacyZones
+        // skips re-running against the now-empty legacy tables (which is
+        // harmless, but leaves the flag pointing at a wipe that no longer
+        // exists).
+        db.runSync(
+          "DELETE FROM rpg_discoveries WHERE item_id IN ('system.sanctuary_clutter_v1', 'system.sanctuary_rock_veins_v1', 'system.sanctuary_zones_migration_v1')",
+        );
+        db.runSync(
+          "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES ('system.sanctuary_map_clear_test_v1', 'system', datetime('now', 'localtime'))",
+        );
+      }
+
+      const rpgRow = db.getFirstSync<{ last_active_date: string | null }>(
+        'SELECT last_active_date FROM rpg_state WHERE id = 1',
+      );
+      const today = logicalToday();
+      if (rpgRow?.last_active_date && rpgRow.last_active_date < today) {
+        const daysPassed = Math.floor(
+          (new Date(today).getTime() - new Date(rpgRow.last_active_date).getTime()) / 86400000,
+        );
+        if (daysPassed > 0) {
+          fastForwardTime(daysPassed);
+          respawnStarterSpawns(STARTER_CLUTTER_SPAWNS);
+          respawnStarterSpawns(STARTER_ROCK_VEIN_SPAWNS);
+        }
+      }
+      refreshCalendar();
       refreshMapObjects();
       refreshGardenPlots();
       refreshCoins();
@@ -1427,13 +1678,38 @@ export default function RpgScreen() {
       const overrideRows = db.getAllSync<{ row: number; col: number; tile_type: number }>(
         'SELECT row, col, tile_type FROM sanctuary_terrain_overrides',
       );
+      let loadedOverrides: Record<string, TileType> = {};
       if (overrideRows.length > 0) {
-        const overrides: Record<string, TileType> = {};
-        overrideRows.forEach(o => { overrides[`${o.row}:${o.col}`] = o.tile_type as TileType; });
-        setTerrainOverrides(overrides);
+        overrideRows.forEach(o => { loadedOverrides[`${o.row}:${o.col}`] = o.tile_type as TileType; });
+        setTerrainOverrides(loadedOverrides);
+      }
+      // One-time legacy backfill, then a retroactive scan — picks up any
+      // ring that was already fully built before zone declaration
+      // existed, not just ones completed by a brand-new placement going
+      // forward. zonesOverride is passed explicitly since the
+      // sanctuaryZones state set by refreshSanctuaryZones() here won't
+      // be visible via closure until next render.
+      migrateLegacyZones();
+      const loadedZones = refreshSanctuaryZones();
+      const loadedObjects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+      scanForZoneCandidates(loadedObjects, loadedOverrides, loadedZones);
+
+      if (ensureStarterSpawns(STARTER_CLUTTER_SPAWNS, 'system.sanctuary_clutter_v1')) {
+        refreshMapObjects();
+      }
+      if (ensureStarterSpawns(STARTER_ROCK_VEIN_SPAWNS, 'system.sanctuary_rock_veins_v1')) {
+        refreshMapObjects();
       }
 
-      if (ensureStarterClutter()) {
+      const villagerExists = db.getFirstSync<{ id: number }>(
+        'SELECT id FROM sanctuary_objects WHERE type = ?',
+        STARTER_VILLAGER_SPAWN.type,
+      );
+      if (!villagerExists) {
+        db.runSync(
+          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+          STARTER_VILLAGER_SPAWN.type, STARTER_VILLAGER_SPAWN.row, STARTER_VILLAGER_SPAWN.col,
+        );
         refreshMapObjects();
       }
 
@@ -1452,6 +1728,16 @@ export default function RpgScreen() {
           itemId,
         );
       });
+      // Fertiliser/Sprinkler have a real acquisition path (craft at Tool
+      // Shed stations), but that's a long Build→wait→Build→wait→Craft→wait
+      // chain to reach just to test the effect — granted directly too,
+      // same testability rationale as the starter seeds above.
+      db.runSync(
+        "INSERT INTO user_inventory (item_id, quantity) VALUES ('rpg_fertiliser', 2) ON CONFLICT(item_id) DO NOTHING",
+      );
+      db.runSync(
+        "INSERT INTO user_inventory (item_id, quantity) VALUES ('rpg_sprinkler', 2) ON CONFLICT(item_id) DO NOTHING",
+      );
       bumpInventoryRevision();
     } catch (e) {
       console.warn('Failed to load RPG sandbox state', e);
@@ -1595,8 +1881,23 @@ export default function RpgScreen() {
 
     const footX = avatarX.value + AVATAR_FOOT_BOX.offsetX + AVATAR_FOOT_BOX.width / 2;
     const footY = avatarY.value + AVATAR_FOOT_BOX.offsetY + AVATAR_FOOT_BOX.height / 2;
-    let col = Math.floor(footX / TILE_SIZE);
-    let row = Math.floor(footY / TILE_SIZE);
+    const ownCol = Math.floor(footX / TILE_SIZE);
+    const ownRow = Math.floor(footY / TILE_SIZE);
+
+    // Water is walkable but a hazard — falling in sends you back to spawn.
+    // Bridge tiles are the actual safe way across (different TileType).
+    if (
+      ownRow >= 0 && ownRow < mapRows.value && ownCol >= 0 && ownCol < mapCols.value &&
+      waterMap.value[ownRow * mapCols.value + ownCol] === 1
+    ) {
+      avatarX.value = TILE_SIZE * 2;
+      avatarY.value = TILE_SIZE * 2;
+      runOnJS(showWorldToast)({ text: 'Swept back to shore!', tone: 'warn' });
+      return;
+    }
+
+    let col = ownCol;
+    let row = ownRow;
     if (avatarDirection.value === 0) row += 1;
     else if (avatarDirection.value === 1) col -= 1;
     else if (avatarDirection.value === 2) col += 1;
@@ -1921,6 +2222,28 @@ export default function RpgScreen() {
     });
   };
 
+  const isVillagerObject = (item: ShopCatalogItem) => item.tags?.includes('villager');
+
+  // Minimal villager stub (RPG resource dynamics spec, 2026-06-30): Interact
+  // always succeeds — it never blocks, even once the blueprint pool is dry,
+  // because the future villager system needs Interact to stay a stable verb
+  // (NPC-to-NPC trading etc). It just has nothing to give once exhausted.
+  const VILLAGER_BLUEPRINT_CHANCE = 0.2;
+  const interactWithVillager = (object: MapObject, item: ShopCatalogItem) => {
+    if (Math.random() < VILLAGER_BLUEPRINT_CHANCE) {
+      const blueprintId = tryDropBlueprint();
+      if (blueprintId) {
+        bumpInventoryRevision();
+        const blueprintItem = getRpgItem(blueprintId);
+        showWorldToast({ text: `${item.name} hands you: ${blueprintItem?.name ?? blueprintId}`, item: blueprintItem, tone: 'success' });
+        showObjectReaction(object, '!', item, 'success');
+        return;
+      }
+    }
+    showWorldToast({ text: `${item.name} has nothing for you right now`, item, tone: 'muted' });
+    showObjectReaction(object, '...', item, 'muted');
+  };
+
   const isLeverObject = (item: ShopCatalogItem) => (
     item.tags?.includes('lever') || item.assetId === 'object.temple.Floor_lever'
   );
@@ -2087,6 +2410,42 @@ export default function RpgScreen() {
     showObjectReaction(object, drops.length ? rewardText : 'clear', drops[0] ? getRpgItem(drops[0].itemId) : item, 'success');
   };
 
+  // Free, naturally-occurring rock — Pickaxe-gated, unlike clutter (which
+  // any tool can clear). Same delete-then-nightly-respawn shape as clutter,
+  // just with mining drops (Stone + a real Coal source) instead.
+  const mineRockVein = (object: MapObject) => {
+    if (!spendToolEnergy('rpg_pickaxe_basic')) return;
+    const drops = rollHarvestDrops([
+      { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 1, max: 3 },
+      { itemId: 'rpg_coal', chance: 0.3, min: 1, max: 1 },
+    ]);
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      deleteSanctuaryObjectInteractions(object.id);
+      deleteSanctuaryObjectRelationsForObject(object.id);
+      db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', object.id);
+      drops.forEach(drop => {
+        if (drop.quantity <= 0) return;
+        db.runSync(
+          `INSERT INTO user_inventory (item_id, quantity) VALUES (?, ?)
+           ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
+          drop.itemId, drop.quantity,
+        );
+        recordRpgDiscovery(drop.itemId, 'forage');
+      });
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to mine rock vein', e);
+      showWorldToast({ text: 'Could not mine this', tone: 'warn' });
+      return;
+    }
+    bumpInventoryRevision();
+    refreshMapObjects();
+    const rewardText = drops.map(drop => `+${drop.quantity} ${getRpgItem(drop.itemId)?.name ?? drop.itemId}`).join(', ');
+    showWorldToast({ text: `Mined: ${rewardText}`, item: getRpgItem(drops[0]?.itemId ?? null), tone: 'success' });
+  };
+
   const interactWithObject = (object: MapObject) => {
     const item = getPlaceableItem(object.type);
     if (!item) {
@@ -2102,6 +2461,11 @@ export default function RpgScreen() {
 
     if (isClearableClutter(item)) {
       clearClutterObject(object, item);
+      return;
+    }
+
+    if (isVillagerObject(item)) {
+      interactWithVillager(object, item);
       return;
     }
 
@@ -2406,12 +2770,36 @@ export default function RpgScreen() {
     setInteractionPrompt(current.target);
     showAttackFeedback(current);
     try {
+      // Enemies have chase AI and move every frame — requiring them to sit
+      // on the exact single front-facing tile makes melee feel like it
+      // whiffs constantly. Attack is lenient: it hits any enemy on the
+      // avatar's own tile or the 4 tiles around it, preferring the one
+      // directly faced if there's a choice.
+      const ownCell = getAvatarFootCell();
+      const candidateCells = [
+        current,
+        ownCell,
+        { row: ownCell.row - 1, col: ownCell.col },
+        { row: ownCell.row + 1, col: ownCell.col },
+        { row: ownCell.row, col: ownCell.col - 1 },
+        { row: ownCell.row, col: ownCell.col + 1 },
+      ];
+      let targetEnemy: LiveEnemy | null = current.target?.kind === 'enemy' ? current.target.enemy ?? null : null;
+      if (!targetEnemy) {
+        for (const cell of candidateCells) {
+          const hit = enemies.find(e => e.row === cell.row && e.col === cell.col);
+          if (hit) { targetEnemy = hit; break; }
+        }
+      }
+
       const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
         'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
       );
-      if (stats && current.target?.kind === 'enemy' && current.target.enemy) {
+      if (stats && targetEnemy) {
         const atk = Math.floor((stats.str + stats.foc + stats.agi + stats.wis + stats.res) / 5);
-        resolveEnemyHit(current.target.enemy, atk);
+        resolveEnemyHit(targetEnemy, atk);
+      } else if (activeZone === 'dungeon') {
+        showWorldToast({ text: 'No enemy in range', tone: 'muted' });
       }
     } catch {}
 
@@ -2432,6 +2820,310 @@ export default function RpgScreen() {
     );
     const newMap = applyTerrainOverrides(SanctuaryMap, nextOverrides);
     applyMovementCollision(mapObjects, 'sanctuary', newMap);
+    return nextOverrides;
+  };
+
+  // Any object tagged as a structure piece (Stone Wall/Brick/Wooden Pole)
+  // or an entrance (Door/Rope/Gate) can seal a zone ring — declaration is
+  // free-form (the perimeter material no longer dictates the zone type),
+  // so detection only needs one tag check instead of three per-type ones.
+  const isZonePerimeterObject = (obj: MapObject) => {
+    const tags = getItem(obj.type)?.tags;
+    return !!tags && (tags.includes('structure_piece') || tags.includes('entrance'));
+  };
+
+  const zoneCandidateKey = (candidate: PendingZoneCandidate) => [...candidate.interiorCells].sort().join(',');
+
+  // Generalized replacement for the old checkPondCompletion/
+  // checkBuildingPlotCompletion duplicated flood-fill. Since declaration
+  // is now free-form, this no longer cares what tile type is inside the
+  // ring. Uses a flood-from-the-outside algorithm (see Step 1/2 below):
+  // an enclosed region is any walkable area the map's open exterior
+  // cannot reach. Returns every currently-enclosed, not-yet-zoned region
+  // — callers diff against pendingZoneCandidates to know what's new.
+  const findEnclosures = (
+    objectsOverride?: MapObject[],
+    overridesOverride?: Record<string, TileType>,
+    zonesOverride?: SanctuaryZoneRecord[],
+  ): PendingZoneCandidate[] => {
+    const overrides = overridesOverride ?? terrainOverrides;
+    const objects = objectsOverride ?? mapObjects;
+    const zones = zonesOverride ?? sanctuaryZones;
+
+    const perimeterCoords = new Set(objects.filter(isZonePerimeterObject).map(obj => `${obj.row}:${obj.col}`));
+    if (perimeterCoords.size === 0) return [];
+
+    // Cells already part of any recorded zone (active or breached) are
+    // off-limits to fresh detection — a breached zone must be explicitly
+    // repaired/redeclared, not silently rediscovered as a new candidate.
+    const alreadyZoned = new Set(zones.flatMap(z => [...z.interiorCells, ...z.perimeterCells]));
+
+    const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    const rows = SanctuaryMap.length;
+    const cols = SanctuaryMap[0].length;
+
+    // "Open" = a cell the player could walk through that is NOT a barrier.
+    // Barriers are: out of bounds, collision tiles (incl. the map's outer
+    // wall), the player's own perimeter pieces, and cells owned by an
+    // existing zone. The exterior flood and the enclosed grouping below
+    // both move only through open cells.
+    const isOpen = (r: number, c: number) => {
+      if (r < 0 || c < 0 || r >= rows || c >= cols) return false;
+      const key = `${r}:${c}`;
+      if (perimeterCoords.has(key) || alreadyZoned.has(key)) return false;
+      const tile = (overrides[key] ?? SanctuaryMap[r][c]) as TileType;
+      return !TILE_COLLISION[tile];
+    };
+
+    // Step 1 — flood the EXTERIOR. This is the "flood from the outside"
+    // approach, which is correct by construction and replaces the old
+    // seed-from-each-wall + size-cap heuristic that produced phantom
+    // sliver zones. Seed from the open ring just inside the map's outer
+    // wall (the main play area always touches it) and flood through every
+    // open cell. Everything reachable from there is, by definition, NOT
+    // enclosed — including the whole open map, so a breach gap can never
+    // turn the map into one giant zone. Consequence (intentional): a
+    // zone must be sealed ENTIRELY by perimeter pieces; the map edge
+    // cannot serve as one of its walls.
+    const exterior = new Set<string>();
+    const stack: [number, number][] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const onInnerRing = r === 1 || c === 1 || r === rows - 2 || c === cols - 2;
+        if (onInnerRing && isOpen(r, c)) stack.push([r, c]);
+      }
+    }
+    while (stack.length > 0) {
+      const [r, c] = stack.pop()!;
+      const key = `${r}:${c}`;
+      if (exterior.has(key)) continue;
+      exterior.add(key);
+      for (const [dr, dc] of deltas) {
+        if (isOpen(r + dr, c + dc) && !exterior.has(`${r + dr}:${c + dc}`)) {
+          stack.push([r + dr, c + dc]);
+        }
+      }
+    }
+
+    // Step 2 — every open cell NOT in the exterior is enclosed. Group
+    // them into connected components; each component is one zone
+    // candidate, with its bordering perimeter pieces recorded.
+    const visited = new Set<string>();
+    const results: PendingZoneCandidate[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const key = `${r}:${c}`;
+        if (!isOpen(r, c) || exterior.has(key) || visited.has(key)) continue;
+
+        const component: string[] = [];
+        const perimeterTouched = new Set<string>();
+        const compStack: [number, number][] = [[r, c]];
+        while (compStack.length > 0) {
+          const [cr, cc] = compStack.pop()!;
+          const ck = `${cr}:${cc}`;
+          if (visited.has(ck)) continue;
+          visited.add(ck);
+          component.push(ck);
+          for (const [dr, dc] of deltas) {
+            const nKey = `${cr + dr}:${cc + dc}`;
+            if (perimeterCoords.has(nKey)) {
+              perimeterTouched.add(nKey);
+            } else if (isOpen(cr + dr, cc + dc) && !exterior.has(nKey)) {
+              compStack.push([cr + dr, cc + dc]);
+            }
+          }
+        }
+
+        if (perimeterTouched.size > 0 && component.length > 0) {
+          results.push({ interiorCells: component, perimeterCells: [...perimeterTouched] });
+        }
+      }
+    }
+    return results;
+  };
+
+  const scanForZoneCandidates = (
+    objectsOverride?: MapObject[],
+    overridesOverride?: Record<string, TileType>,
+    zonesOverride?: SanctuaryZoneRecord[],
+  ) => {
+    const found = findEnclosures(objectsOverride, overridesOverride, zonesOverride);
+    setPendingZoneCandidates(prev => {
+      const prevKeys = new Set(prev.map(zoneCandidateKey));
+      const isNew = found.some(c => !prevKeys.has(zoneCandidateKey(c)));
+      if (isNew) {
+        showWorldToast({ text: 'Zone formed — step inside and Interact to declare its purpose', tone: 'success' });
+      }
+      return found;
+    });
+  };
+
+  const refreshSanctuaryZones = () => {
+    const rows = db.getAllSync<{ id: number; type: string; state: string; interior_cells: string; perimeter_cells: string }>(
+      'SELECT id, type, state, interior_cells, perimeter_cells FROM sanctuary_zones',
+    );
+    const parsed: SanctuaryZoneRecord[] = rows.map(r => ({
+      id: r.id,
+      type: r.type as SanctuaryZoneType,
+      state: r.state as SanctuaryZoneState,
+      interiorCells: JSON.parse(r.interior_cells),
+      perimeterCells: JSON.parse(r.perimeter_cells),
+    }));
+    setSanctuaryZones(parsed);
+    return parsed;
+  };
+
+  const ZONE_TYPE_LABEL: Record<SanctuaryZoneType, string> = {
+    pond: 'Pond',
+    garden: 'Garden',
+    building_plot: 'Building Plot',
+  };
+
+  const declareZone = (candidate: PendingZoneCandidate, type: SanctuaryZoneType) => {
+    db.runSync(
+      'INSERT INTO sanctuary_zones (type, state, interior_cells, perimeter_cells, created_at) VALUES (?, ?, ?, ?, ?)',
+      type, 'active', JSON.stringify(candidate.interiorCells), JSON.stringify(candidate.perimeterCells), Date.now(),
+    );
+    refreshSanctuaryZones();
+    const candidateId = zoneCandidateKey(candidate);
+    setPendingZoneCandidates(prev => prev.filter(c => zoneCandidateKey(c) !== candidateId));
+    showWorldToast({ text: `${ZONE_TYPE_LABEL[type]} declared!`, tone: 'success' });
+  };
+
+  const promptZoneDeclaration = (candidate: PendingZoneCandidate) => {
+    Alert.alert(
+      'Declare Zone',
+      `This enclosed area (${candidate.interiorCells.length} tiles) can become a Pond, Garden, or Building Plot.`,
+      [
+        { text: 'Pond', onPress: () => declareZone(candidate, 'pond') },
+        { text: 'Garden', onPress: () => declareZone(candidate, 'garden') },
+        { text: 'Building Plot', onPress: () => declareZone(candidate, 'building_plot') },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  // Dev-only testing tool (requested 2026-06-30) — standing in any
+  // existing zone (active or breached) and Interacting offers a one-tap
+  // way to wipe its DB row, so a declared/breached zone can be redeclared
+  // from scratch without manually clearing the database. Same convenience
+  // philosophy as the TESTING_FREE_SHOP-style flags elsewhere; revisit
+  // before launch.
+  const promptZoneDevUndo = (zone: SanctuaryZoneRecord) => {
+    Alert.alert(
+      `${ZONE_TYPE_LABEL[zone.type]} (${zone.state})`,
+      'Dev testing tool — delete this zone record so the area can be redeclared from scratch.',
+      [
+        {
+          text: 'Delete Zone (test)',
+          style: 'destructive',
+          onPress: () => {
+            db.runSync('DELETE FROM sanctuary_zones WHERE id = ?', zone.id);
+            refreshSanctuaryZones();
+            showWorldToast({ text: 'Zone deleted (test)', tone: 'warn' });
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  // Breach failsafe: removing a perimeter piece that belongs to an active
+  // zone flips that zone to 'breached' rather than deleting it — its
+  // cells drop out of zoneCellMap immediately (the memo only maps
+  // 'active' zones), but the DB row persists so a future repair flow can
+  // resolve it back to 'active' without redeclaring from scratch.
+  const breachZoneIfPerimeterRemoved = (object: MapObject) => {
+    if (!isZonePerimeterObject(object)) return;
+    const key = `${object.row}:${object.col}`;
+    const zone = sanctuaryZones.find(z => z.state === 'active' && z.perimeterCells.includes(key));
+    if (!zone) return;
+    db.runSync('UPDATE sanctuary_zones SET state = ? WHERE id = ?', 'breached', zone.id);
+    refreshSanctuaryZones();
+    showWorldToast({
+      text: `${ZONE_TYPE_LABEL[zone.type]} breached! Repair the perimeter to restore it.`,
+      tone: 'warn',
+    });
+  };
+
+  // One-time migration: the old sanctuary_ponds/sanctuary_building_plots
+  // tables stored a flat list of tile_keys with no grouping field at all
+  // — there was no way to tell which tiles belonged to the same pond if a
+  // player had built two. Re-derive distinct zone instances via the same
+  // connected-component grouping, then recompute each one's perimeter by
+  // checking which structure/entrance pieces actually border it.
+  const migrateLegacyZones = () => {
+    const flag = db.getFirstSync<{ item_id: string }>(
+      "SELECT item_id FROM rpg_discoveries WHERE item_id = 'system.sanctuary_zones_migration_v1' LIMIT 1",
+    );
+    if (flag) return;
+
+    const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    const groupTileKeys = (tileKeys: string[]): string[][] => {
+      const set = new Set(tileKeys);
+      const visited = new Set<string>();
+      const groups: string[][] = [];
+      for (const start of set) {
+        if (visited.has(start)) continue;
+        const component: string[] = [];
+        const stack = [start];
+        while (stack.length > 0) {
+          const key = stack.pop()!;
+          if (visited.has(key)) continue;
+          visited.add(key);
+          component.push(key);
+          const [r, c] = key.split(':').map(Number);
+          for (const [dr, dc] of deltas) {
+            const nKey = `${r + dr}:${c + dc}`;
+            if (set.has(nKey) && !visited.has(nKey)) stack.push(nKey);
+          }
+        }
+        groups.push(component);
+      }
+      return groups;
+    };
+
+    const findPerimeterFor = (component: string[], objects: MapObject[]): string[] => {
+      const componentSet = new Set(component);
+      const perimeter = new Set<string>();
+      objects.filter(isZonePerimeterObject).forEach(obj => {
+        for (const [dr, dc] of deltas) {
+          if (componentSet.has(`${obj.row + dr}:${obj.col + dc}`)) {
+            perimeter.add(`${obj.row}:${obj.col}`);
+            break;
+          }
+        }
+      });
+      return [...perimeter];
+    };
+
+    const objects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
+    const pondTiles = db.getAllSync<{ tile_key: string }>('SELECT tile_key FROM sanctuary_ponds').map(r => r.tile_key);
+    const plotTiles = db.getAllSync<{ tile_key: string }>('SELECT tile_key FROM sanctuary_building_plots').map(r => r.tile_key);
+
+    groupTileKeys(pondTiles).forEach(component => {
+      db.runSync(
+        'INSERT INTO sanctuary_zones (type, state, interior_cells, perimeter_cells, created_at) VALUES (?, ?, ?, ?, ?)',
+        'pond', 'active', JSON.stringify(component), JSON.stringify(findPerimeterFor(component, objects)), Date.now(),
+      );
+    });
+    groupTileKeys(plotTiles).forEach(component => {
+      db.runSync(
+        'INSERT INTO sanctuary_zones (type, state, interior_cells, perimeter_cells, created_at) VALUES (?, ?, ?, ?, ?)',
+        'building_plot', 'active', JSON.stringify(component), JSON.stringify(findPerimeterFor(component, objects)), Date.now(),
+      );
+    });
+
+    db.runSync(
+      "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES ('system.sanctuary_zones_migration_v1', 'system', datetime('now', 'localtime'))",
+    );
+  };
+
+  const rakeTile = (row: number, col: number) => {
+    if (!spendToolEnergy('rpg_rake_basic')) return;
+    const nextOverrides = setSanctuaryTile(row, col, TileType.SAND);
+    scanForZoneCandidates(undefined, nextOverrides);
+    showWorldToast({ text: 'Cleared into sandy land — ring it with structure pieces to mark out a zone', tone: 'success' });
   };
 
   const DIG_COST = 5;
@@ -2442,11 +3134,14 @@ export default function RpgScreen() {
       showWorldToast({ text: `Need ${DIG_COST} coins to dig`, tone: 'warn' });
       return;
     }
-    if (!spendToolEnergy('rpg_pickaxe_basic')) return;
+    if (!spendToolEnergy('rpg_shovel_basic')) return;
     db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DIG_COST);
     refreshCoins();
-    setSanctuaryTile(row, col, TileType.WATER);
-    showWorldToast({ text: `Dug a channel — water flows in (-${DIG_COST} coins)`, tone: 'success' });
+    const nextOverrides = setSanctuaryTile(row, col, TileType.WATER);
+    addSandboxInventoryItem('rpg_mud', 1 + Math.floor(Math.random() * 2), 'forage');
+    bumpInventoryRevision();
+    scanForZoneCandidates(undefined, nextOverrides);
+    showWorldToast({ text: `Dug a channel — water flows in, mud collected (-${DIG_COST} coins)`, tone: 'success' });
   };
 
   const plowTile = (row: number, col: number) => {
@@ -2533,8 +3228,29 @@ export default function RpgScreen() {
       return;
     }
     if (toolType === 'Pickaxe') {
+      // Rock Veins are solid (block movement, like clutter) — the avatar
+      // can never literally stand on the same tile as one, so check a
+      // radius around the avatar instead of just their own tile.
+      const candidateCells = [
+        { row, col },
+        { row: row - 1, col },
+        { row: row + 1, col },
+        { row, col: col - 1 },
+        { row, col: col + 1 },
+      ];
+      const rockVein = mapObjects.find(obj => (
+        obj.type === 'rpg_rock_vein' && candidateCells.some(cell => cell.row === obj.row && cell.col === obj.col)
+      ));
+      if (rockVein) {
+        mineRockVein(rockVein);
+        return;
+      }
+      showWorldToast({ text: 'No rock here to mine', tone: 'warn' });
+      return;
+    }
+    if (toolType === 'Shovel') {
       if (tile !== TileType.GRASS) {
-        showWorldToast({ text: 'Pickaxe can only dig grass into a river here', tone: 'warn' });
+        showWorldToast({ text: 'Shovel can only dig grass into a river here', tone: 'warn' });
         return;
       }
       if (Math.abs(row - 18) <= 1 && Math.abs(col - 10) <= 1) {
@@ -2550,6 +3266,14 @@ export default function RpgScreen() {
         return;
       }
       plowTile(row, col);
+      return;
+    }
+    if (toolType === 'Rake') {
+      if (tile !== TileType.GRASS) {
+        showWorldToast({ text: 'Rake only works on grass', tone: 'warn' });
+        return;
+      }
+      rakeTile(row, col);
       return;
     }
     // Axe: tree-chopping still runs through plain Interact/forage today,
@@ -2569,7 +3293,11 @@ export default function RpgScreen() {
     const resolvedTarget = current.target;
 
     if (activeZone === 'sanctuary' && equippedToolItemId) {
-      useEquippedTool(current.row, current.col);
+      // Till/dig/water act on the tile the player is standing on, not the
+      // tile they're facing — only plain Interact (trees, objects, portals)
+      // targets the adjacent front tile.
+      const ownTile = getAvatarFootCell();
+      useEquippedTool(ownTile.row, ownTile.col);
       return;
     }
 
@@ -2594,12 +3322,35 @@ export default function RpgScreen() {
         return;
       }
 
+      const ownFoot = getAvatarFootCell();
+      const ownKey = `${ownFoot.row}:${ownFoot.col}`;
+      const pendingHere = pendingZoneCandidates.find(c => c.interiorCells.includes(ownKey));
+      if (pendingHere) {
+        promptZoneDeclaration(pendingHere);
+        return;
+      }
+
+      const zoneHere = sanctuaryZones.find(z => z.interiorCells.includes(ownKey) || z.perimeterCells.includes(ownKey));
+      if (zoneHere) {
+        promptZoneDevUndo(zoneHere);
+        return;
+      }
+
       showEmptyInteractionFeedback('sanctuary');
       return;
     }
 
     if (resolvedTarget?.kind === 'portal') enterZone('sanctuary');
     else showEmptyInteractionFeedback('dungeon');
+  }
+
+  function getZoneOverlayColor(type: SanctuaryZoneType) {
+    switch (type) {
+      case 'pond': return 'rgba(77,138,168,0.45)';
+      case 'garden': return 'rgba(139,94,52,0.45)';
+      case 'building_plot': return 'rgba(91,168,91,0.45)';
+      default: return 'rgba(255,255,255,0.35)';
+    }
   }
 
   function getTileColor(type: TileType) {
@@ -2612,6 +3363,7 @@ export default function RpgScreen() {
       case TileType.BRIDGE: return '#9a6b3c';
       case TileType.PATH: return '#c2a06b';
       case TileType.TILLED: return '#6b4a2e';
+      case TileType.SAND: return '#d9c08a';
       default: return '#1b1f1b';
     }
   }
@@ -2632,18 +3384,6 @@ export default function RpgScreen() {
                   <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
                     <WaterTile tileSize={TILE_SIZE} />
                   </View>
-                ) : tile === TileType.BRIDGE ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
-                    <BridgeTile tileSize={TILE_SIZE} />
-                  </View>
-                ) : tile === TileType.PATH ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
-                    <PathTile tileSize={TILE_SIZE} />
-                  </View>
-                ) : tile === TileType.TILLED ? (
-                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
-                    <TilledTile tileSize={TILE_SIZE} />
-                  </View>
                 ) : (
                   <View
                     key={`tile-${rowIndex}-${colIndex}`}
@@ -2653,6 +3393,43 @@ export default function RpgScreen() {
               ))}
             </View>
           ))}
+
+          {activeZone === 'sanctuary' && pendingZoneCandidates.flatMap(c => c.interiorCells).map(key => {
+            const [row, col] = key.split(':').map(Number);
+            return (
+              <View
+                key={`zone-pending-${key}`}
+                pointerEvents="none"
+                style={[styles.zoneOverlay, { left: col * TILE_SIZE, top: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, backgroundColor: 'rgba(255,255,255,0.35)' }]}
+              />
+            );
+          })}
+
+          {activeZone === 'sanctuary' && sanctuaryZones.filter(z => z.state === 'active').map(zone => (
+            [...zone.interiorCells, ...zone.perimeterCells].map(key => {
+              const [row, col] = key.split(':').map(Number);
+              return (
+                <View
+                  key={`zone-${zone.id}-${key}`}
+                  pointerEvents="none"
+                  style={[styles.zoneOverlay, { left: col * TILE_SIZE, top: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, backgroundColor: getZoneOverlayColor(zone.type) }]}
+                />
+              );
+            })
+          ))}
+
+          {TESTING_SHOW_ZONE_MAP && activeZone === 'sanctuary' && [...zoneCellMap.entries()].map(([key, zoneId]) => {
+            const [row, col] = key.split(':').map(Number);
+            return (
+              <View
+                key={`zone-debug-${key}`}
+                pointerEvents="none"
+                style={[styles.zoneDebugLabel, { left: col * TILE_SIZE, top: row * TILE_SIZE }]}
+              >
+                <Text style={styles.zoneDebugLabelText}>{zoneId}</Text>
+              </View>
+            );
+          })}
 
           {activeZone === 'sanctuary' && mapObjects.map(obj => (
             buildItem?.mode === 'edit' && buildItem.objectId === obj.id ? null :
@@ -2743,6 +3520,40 @@ export default function RpgScreen() {
               </View>
             );
           })}
+
+          {/* Real food crops (farming_plots) had zero visual rendering until
+              now — only gardenPlots (decorative trees) were drawn. Turnip/
+              Cabbage/Pumpkin have no dedicated growth-stage art, so this
+              reuses the same icon-fallback pattern gardenPlots uses above. */}
+          {activeZone === 'sanctuary' && db.getAllSync<FarmingPlot>(
+            'SELECT * FROM farming_plots WHERE planted_seed_id IS NOT NULL',
+          ).map(plot => (
+            <View
+              key={`farm-${plot.id}`}
+              pointerEvents="none"
+              style={[
+                styles.gardenPlot,
+                plot.growth_stage === 1 && styles.gardenPlotGrowing,
+                plot.growth_stage >= 2 && styles.gardenPlotMature,
+                {
+                  left: plot.col * TILE_SIZE,
+                  top: plot.row * TILE_SIZE,
+                  width: TILE_SIZE,
+                  height: TILE_SIZE,
+                  zIndex: plot.row,
+                },
+              ]}
+            >
+              <RpgItemIcon
+                item={getRpgItem(plot.planted_seed_id)}
+                size={plot.growth_stage >= 2 ? 25 : 22}
+                fallbackLabel={plot.planted_seed_id ?? undefined}
+              />
+              <Text style={[styles.gardenStageText, plot.growth_stage >= 2 && styles.gardenStageMatureText]}>
+                {plot.growth_stage >= 2 ? '!' : plot.growth_stage === 1 ? '+' : plot.is_watered ? '~' : ''}
+              </Text>
+            </View>
+          ))}
 
           {activeZone === 'sanctuary' && worldCellReaction && (
             <View
@@ -2962,86 +3773,102 @@ export default function RpgScreen() {
               </View>
             </View>
           )}
-          {!buildItem && (
-            <View style={styles.hudActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open backpack"
-                style={styles.iconHudBtn}
-                onPress={() => {
-                  setIsShopOpen(false);
-                  setIsArchiveOpen(false);
-                  setIsCharacterOpen(false);
-                  setIsCraftingOpen(false);
-                  setIsBackpackOpen(true);
-                }}
-              >
-                <RpgSpriteFrameView frame={RPG_UI_FRAMES.backpack} size={24} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open character equipment"
-                style={styles.iconHudBtn}
-                onPress={() => {
-                  setIsShopOpen(false);
-                  setIsArchiveOpen(false);
-                  setIsBackpackOpen(false);
-                  setIsCraftingOpen(false);
-                  setIsCharacterOpen(true);
-                }}
-              >
-                <Feather name="user" size={18} color="#fff2bb" />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open archive"
-                style={styles.iconHudBtn}
-                onPress={() => {
-                  setIsShopOpen(false);
-                  setIsBackpackOpen(false);
-                  setIsCharacterOpen(false);
-                  setIsCraftingOpen(false);
-                  setIsArchiveOpen(true);
-                }}
-              >
-                <RpgSpriteFrameView frame={RPG_ARCHIVE_FRAMES.closedBook} size={24} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open crafting"
-                style={styles.iconHudBtn}
-                onPress={() => {
-                  setIsShopOpen(false);
-                  setIsArchiveOpen(false);
-                  setIsBackpackOpen(false);
-                  setIsCharacterOpen(false);
-                  setIsCraftingOpen(true);
-                }}
-              >
-                <Feather name="tool" size={18} color="#fff2bb" />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open shop"
-                style={styles.shopBtn}
-                onPress={() => {
-                  setIsBackpackOpen(false);
-                  setIsArchiveOpen(false);
-                  setIsCharacterOpen(false);
-                  setIsCraftingOpen(false);
-                  setIsShopOpen(true);
-                }}
-              >
-                <Feather name="shopping-bag" size={16} color="#fff" />
-                <Text style={styles.shopText}>Shop</Text>
-              </Pressable>
-            </View>
-          )}
         </View>
       </View>
 
+      {!buildItem && (
+        <View style={[styles.hudActions, { top: safeAreaInsets.top + 56, left: 20 + safeAreaInsets.left }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open backpack"
+            style={styles.iconHudBtn}
+            onPress={() => {
+              setIsShopOpen(false);
+              setIsArchiveOpen(false);
+              setIsCharacterOpen(false);
+              setIsCraftingOpen(false);
+              setIsBackpackOpen(true);
+            }}
+          >
+            <RpgSpriteFrameView frame={RPG_UI_FRAMES.backpack} size={24} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open character equipment"
+            style={styles.iconHudBtn}
+            onPress={() => {
+              setIsShopOpen(false);
+              setIsArchiveOpen(false);
+              setIsBackpackOpen(false);
+              setIsCraftingOpen(false);
+              setIsCharacterOpen(true);
+            }}
+          >
+            <Feather name="user" size={18} color="#fff2bb" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open archive"
+            style={styles.iconHudBtn}
+            onPress={() => {
+              setIsShopOpen(false);
+              setIsBackpackOpen(false);
+              setIsCharacterOpen(false);
+              setIsCraftingOpen(false);
+              setIsArchiveOpen(true);
+            }}
+          >
+            <RpgSpriteFrameView frame={RPG_ARCHIVE_FRAMES.closedBook} size={24} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open crafting"
+            style={styles.iconHudBtn}
+            onPress={() => {
+              setIsShopOpen(false);
+              setIsArchiveOpen(false);
+              setIsBackpackOpen(false);
+              setIsCharacterOpen(false);
+              setIsCraftingOpen(true);
+            }}
+          >
+            <Feather name="tool" size={18} color="#fff2bb" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open explore"
+            style={styles.iconHudBtn}
+            onPress={() => {
+              setIsShopOpen(false);
+              setIsArchiveOpen(false);
+              setIsBackpackOpen(false);
+              setIsCharacterOpen(false);
+              setIsCraftingOpen(false);
+              setIsExploreOpen(true);
+            }}
+          >
+            <Feather name="map" size={18} color="#fff2bb" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open shop"
+            style={styles.shopBtn}
+            onPress={() => {
+              setIsBackpackOpen(false);
+              setIsArchiveOpen(false);
+              setIsCharacterOpen(false);
+              setIsCraftingOpen(false);
+              setIsShopOpen(true);
+            }}
+          >
+            <Feather name="shopping-bag" size={16} color="#fff" />
+            <Text style={styles.shopText}>Shop</Text>
+          </Pressable>
+        </View>
+      )}
+
       {activeZone === 'sanctuary' && !buildItem && (
-        <View style={styles.hotbar}>
+        <View style={[styles.hotbar, { bottom: 170 + safeAreaInsets.bottom }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Unequip tool (back to Interact)"
@@ -3073,7 +3900,7 @@ export default function RpgScreen() {
       )}
 
       {buildItem && (
-        <View style={styles.modePill}>
+        <View style={[styles.modePill, { top: 112 + safeAreaInsets.top, left: 20 + safeAreaInsets.left, right: 20 + safeAreaInsets.right }]}>
           <Feather name={buildItem.mode === 'edit' ? 'move' : 'plus-square'} size={15} color="#fff" />
           <Text style={styles.modeText}>
             {placementReport?.valid
@@ -3094,7 +3921,7 @@ export default function RpgScreen() {
       )}
 
       {selectedObject && (
-        <View style={styles.editBar}>
+        <View style={[styles.editBar, { bottom: 104 + safeAreaInsets.bottom, right: 20 + safeAreaInsets.right }]}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Stash ${buildItem?.label ?? 'object'}`}
@@ -3116,10 +3943,15 @@ export default function RpgScreen() {
         </View>
       )}
 
-      <Joystick onMove={handleJoystickMove} onRelease={handleJoystickRelease} />
+      <Joystick
+        onMove={handleJoystickMove}
+        onRelease={handleJoystickRelease}
+        bottomInset={safeAreaInsets.bottom}
+        leftInset={safeAreaInsets.left}
+      />
 
       {worldToast && (
-        <View style={[styles.worldToast, worldToast.tone === 'success' && styles.worldToastSuccess]}>
+        <View style={[styles.worldToast, { top: 158 + safeAreaInsets.top }, worldToast.tone === 'success' && styles.worldToastSuccess]}>
           {worldToast.item ? (
             <RpgItemIcon item={worldToast.item} size={22} />
           ) : (
@@ -3130,7 +3962,7 @@ export default function RpgScreen() {
       )}
 
       {!buildItem && interactionPrompt && (
-        <View style={styles.interactionPrompt}>
+        <View style={[styles.interactionPrompt, { bottom: 150 + safeAreaInsets.bottom, right: 24 + safeAreaInsets.right }]}>
           {interactionPrompt.item ? (
             <RpgItemIcon item={interactionPrompt.item} size={22} />
           ) : (
@@ -3144,7 +3976,7 @@ export default function RpgScreen() {
       )}
 
       {isCraftingOpen && !buildItem && (
-        <View style={styles.craftingPanel}>
+        <View style={[styles.craftingPanel, { top: 128 + safeAreaInsets.top, right: 20 + safeAreaInsets.right }]}>
           <View style={styles.craftingHeader}>
             <View>
               <Text style={styles.craftingTitle}>Craft</Text>
@@ -3159,14 +3991,40 @@ export default function RpgScreen() {
               <Feather name="x" size={15} color="#fff" />
             </Pressable>
           </View>
-          <View style={styles.recipeList}>
-            {getAllCraftingRecipes().map(recipe => {
-              const outputItem = getRpgItem(recipe.outputItemId);
-              const canCraft = recipe.ingredients.every(ingredient => getInventoryQuantity(ingredient.itemId) >= ingredient.quantity);
-              const hasStation = !recipe.requiredBuilding || !!findStationObjectId(recipe.requiredBuilding);
-              const activeJob = getActiveCraftingJobs().find(job => job.recipe_id === recipe.recipeId);
-              const isReady = activeJob ? activeJob.completes_at <= sqlNow() : false;
-              return (
+          {(() => {
+            const allRecipes = getAllCraftingRecipes();
+            const pageIndex = Math.min(craftingPage, Math.max(0, allRecipes.length - 1));
+            const recipe = allRecipes[pageIndex];
+            if (!recipe) return <Text style={styles.recipeOutputText}>No recipes yet</Text>;
+            const outputItem = getRpgItem(recipe.outputItemId);
+            const canCraft = recipe.ingredients.every(ingredient => getInventoryQuantity(ingredient.itemId) >= ingredient.quantity);
+            const hasStation = !recipe.requiredBuilding || !!findStationObjectId(recipe.requiredBuilding);
+            const activeJob = getActiveCraftingJobs().find(job => job.recipe_id === recipe.recipeId);
+            const isReady = activeJob ? activeJob.completes_at <= sqlNow() : false;
+            return (
+              <>
+                <View style={styles.craftingPageControls}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous recipe"
+                    disabled={pageIndex === 0}
+                    onPress={() => setCraftingPage(p => Math.max(0, p - 1))}
+                    style={[styles.pageButton, pageIndex === 0 && styles.pageDisabled]}
+                  >
+                    <Feather name="chevron-left" size={18} color="#f7e6a5" />
+                  </Pressable>
+                  <Text style={styles.craftingPageText}>{pageIndex + 1}/{allRecipes.length}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Next recipe"
+                    disabled={pageIndex >= allRecipes.length - 1}
+                    onPress={() => setCraftingPage(p => Math.min(allRecipes.length - 1, p + 1))}
+                    style={[styles.pageButton, pageIndex >= allRecipes.length - 1 && styles.pageDisabled]}
+                  >
+                    <Feather name="chevron-right" size={18} color="#f7e6a5" />
+                  </Pressable>
+                </View>
+                <View style={styles.recipeList}>
                 <View key={recipe.recipeId} style={styles.recipeCard}>
                   <View style={styles.recipeOutput}>
                     <RpgItemIcon item={outputItem} size={34} fallbackLabel={recipe.outputItemId} />
@@ -3187,7 +4045,7 @@ export default function RpgScreen() {
                           <View key={`${recipe.recipeId}-${ingredient.itemId}`} style={[styles.ingredientPill, !enough && styles.ingredientPillMissing]}>
                             <RpgItemIcon item={ingredientItem} size={16} fallbackLabel={ingredient.itemId} />
                             <Text numberOfLines={1} style={[styles.ingredientText, !enough && styles.ingredientTextMissing]}>
-                              {owned}/{ingredient.quantity}
+                              {ingredientItem?.name ?? ingredient.itemId} {owned}/{ingredient.quantity}
                             </Text>
                           </View>
                         );
@@ -3220,6 +4078,62 @@ export default function RpgScreen() {
                     </Pressable>
                   )}
                 </View>
+                </View>
+              </>
+            );
+          })()}
+        </View>
+      )}
+
+      {isExploreOpen && !buildItem && (
+        <View style={[styles.craftingPanel, { top: 128 + safeAreaInsets.top, right: 20 + safeAreaInsets.right }]}>
+          <View style={styles.craftingHeader}>
+            <View>
+              <Text style={styles.craftingTitle}>Explore</Text>
+              <Text style={styles.craftingSubtitle}>Travel costs energy. No shop/crafting out there — just chop trees.</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close explore"
+              style={styles.characterCloseButton}
+              onPress={() => setIsExploreOpen(false)}
+            >
+              <Feather name="x" size={15} color="#fff" />
+            </Pressable>
+          </View>
+          <View style={styles.recipeList}>
+            {(['forest', 'beach', 'mountain', 'desert'] as const).map(biomeId => {
+              const zoneDef = getZoneDef('sanctuary');
+              const cost = zoneDef?.connections[biomeId] ?? 0;
+              const tree = getBiomeTree(biomeId);
+              return (
+                <View key={biomeId} style={styles.recipeCard}>
+                  <View style={styles.recipeTitleStack}>
+                    <Text numberOfLines={1} style={styles.recipeName}>{getZoneDef(biomeId)?.name ?? biomeId}</Text>
+                    <Text numberOfLines={1} style={styles.recipeOutputText}>{tree ? `${tree.name} grows here` : ''} · {cost} energy</Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Travel to ${biomeId}`}
+                    style={styles.craftButton}
+                    onPress={() => {
+                      const result = travelToZone(biomeId);
+                      if (result !== 'ok') {
+                        showWorldToast({
+                          text: result === 'no_energy' ? 'Not enough energy' : 'Could not travel there',
+                          tone: 'warn',
+                        });
+                        return;
+                      }
+                      refreshPlayerHp();
+                      setIsExploreOpen(false);
+                      router.push(`/biome?type=${biomeId}`);
+                    }}
+                  >
+                    <Feather name="map-pin" size={14} color="#fff" />
+                    <Text style={styles.craftButtonText}>Go</Text>
+                  </Pressable>
+                </View>
               );
             })}
           </View>
@@ -3227,7 +4141,7 @@ export default function RpgScreen() {
       )}
 
       {isCharacterOpen && !buildItem && (
-        <View style={styles.characterPanel}>
+        <View style={[styles.characterPanel, { top: 128 + safeAreaInsets.top, right: 20 + safeAreaInsets.right }]}>
           <View style={styles.characterHeader}>
             <View style={styles.characterPortrait}>
               <Feather name="user" size={30} color="#fff2bb" />
@@ -3267,6 +4181,21 @@ export default function RpgScreen() {
               </View>
               <Text style={styles.characterBarValue}>{playerHp.energy}/{playerHp.energy_max}</Text>
             </View>
+          </View>
+          <View style={styles.characterCalendarRow}>
+            <Feather name={seasonInfo.icon} size={14} color={seasonInfo.color} />
+            <Text style={styles.characterCalendarText}>
+              {seasonInfo.label} · Day {calendar.current_day} · Year {calendar.current_year}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sleep until the next day"
+              style={styles.characterSleepButton}
+              onPress={handleSleep}
+            >
+              <Feather name="moon" size={13} color="#fff" />
+              <Text style={styles.characterSleepButtonText}>Sleep</Text>
+            </Pressable>
           </View>
           <View style={styles.characterSlots}>
             <Pressable
@@ -3324,7 +4253,7 @@ export default function RpgScreen() {
         </View>
       )}
 
-      <View style={styles.actionBtns}>
+      <View style={[styles.actionBtns, { bottom: 40 + safeAreaInsets.bottom, right: 20 + safeAreaInsets.right }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
@@ -3432,6 +4361,7 @@ export default function RpgScreen() {
         onPlantSeed={handleBackpackPlantSeed}
         onSellItem={handleSellItem}
         onSellAllItem={handleSellAllItem}
+        onUseOnNearestPlot={handleUseOnNearestPlot}
       />
       <RpgArchive
         isOpen={isArchiveOpen}
@@ -3460,6 +4390,22 @@ const styles = StyleSheet.create({
     height: DEFAULT_TILE_SIZE,
     borderWidth: 1,
     borderColor: 'rgba(9,20,12,0.18)',
+  },
+  zoneOverlay: {
+    position: 'absolute',
+  },
+  zoneDebugLabel: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoneDebugLabelText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+    textShadowColor: '#000',
+    textShadowRadius: 2,
+    textShadowOffset: { width: 0, height: 0 },
   },
   placementCell: {
     position: 'absolute',
@@ -3571,8 +4517,10 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 100,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    rowGap: 8,
   },
   backBtn: {
     width: 40,
@@ -3600,6 +4548,7 @@ const styles = StyleSheet.create({
   },
   currencyStack: {
     alignItems: 'flex-end',
+    marginLeft: 'auto',
   },
   currencyPill: {
     flexDirection: 'row',
@@ -3648,9 +4597,10 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   hudActions: {
-    marginTop: 8,
+    position: 'absolute',
+    zIndex: 100,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     gap: 8,
   },
   iconHudBtn: {
@@ -3697,7 +4647,7 @@ const styles = StyleSheet.create({
   },
   hotbar: {
     position: 'absolute',
-    bottom: 104,
+    bottom: 170,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -3985,6 +4935,33 @@ const styles = StyleSheet.create({
     fontSize: 10,
     textAlign: 'right',
   },
+  characterCalendarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  characterCalendarText: {
+    flex: 1,
+    color: '#cbd5e1',
+    fontFamily: fonts.ui.regular,
+    fontSize: 11,
+  },
+  characterSleepButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#4b3a8f',
+  },
+  characterSleepButtonText: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+  },
   characterSlots: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -4098,6 +5075,31 @@ const styles = StyleSheet.create({
   },
   recipeList: {
     gap: 8,
+  },
+  craftingPageControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    marginBottom: 8,
+  },
+  craftingPageText: {
+    color: '#f7e6a5',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+    minWidth: 36,
+    textAlign: 'center',
+  },
+  pageButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  pageDisabled: {
+    opacity: 0.35,
   },
   recipeCard: {
     borderRadius: 8,

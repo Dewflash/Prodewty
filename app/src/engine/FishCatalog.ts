@@ -18,7 +18,7 @@ export const FISH_CATALOG: Record<string, FishDefinition> = {
     sellPrice: 30,
     seasons: ['spring', 'summer', 'autumn'],
     timeRange: [0, 24],
-    allowedZones: ['farm', 'forest']
+    allowedZones: ['sanctuary', 'forest']
   },
   'rpg_catfish': {
     itemId: 'rpg_catfish',
@@ -27,7 +27,7 @@ export const FISH_CATALOG: Record<string, FishDefinition> = {
     sellPrice: 200,
     seasons: ['spring', 'autumn'],
     timeRange: [6, 24],
-    allowedZones: ['town', 'forest']
+    allowedZones: ['sanctuary', 'forest']
   },
   'rpg_pufferfish': {
     itemId: 'rpg_pufferfish',

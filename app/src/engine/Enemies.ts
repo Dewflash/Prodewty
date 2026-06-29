@@ -1,6 +1,8 @@
 import type { RpgDrop } from './RpgObjectCatalog';
 
-export type EnemyDefId = 'dungeon_orc' | 'dungeon_orc_brute' | 'dungeon_orc_chieftain';
+// Capped at 2 enemy types for now — variety/difficulty tuning is a later
+// conversation, not part of this combat-foundation pass (2026-06-30).
+export type EnemyDefId = 'dungeon_orc' | 'dungeon_orc_brute';
 
 export type EnemyDefinition = {
   defId: EnemyDefId;
@@ -18,7 +20,6 @@ export type EnemyDefinition = {
 
 const ORC_SPRITE = require('../../assets/game/craftpix-net-363992-free-top-down-orc-game-character-pixel-art/Tiled_files/orc3_idle_with_shadow.png');
 const ORC_BRUTE_SPRITE = require('../../assets/game/craftpix-net-363992-free-top-down-orc-game-character-pixel-art/Tiled_files/orc1_idle_with_shadow.png');
-const ORC_CHIEFTAIN_SPRITE = require('../../assets/game/craftpix-net-363992-free-top-down-orc-game-character-pixel-art/Tiled_files/orc2_idle_with_shadow.png');
 
 export const DUNGEON_ENEMY_DEFS: Record<EnemyDefId, EnemyDefinition> = {
   dungeon_orc: {
@@ -51,23 +52,6 @@ export const DUNGEON_ENEMY_DEFS: Record<EnemyDefId, EnemyDefinition> = {
     frameWidth: 64,
     frameHeight: 64,
   },
-  dungeon_orc_chieftain: {
-    defId: 'dungeon_orc_chieftain',
-    name: 'Orc Chieftain',
-    maxHp: 120,
-    atk: 14,
-    aggroRange: 7,
-    coins: 80,
-    drops: [
-      { itemId: 'rpg_crystal_shards', chance: 0.9, min: 2, max: 4 },
-      { itemId: 'rpg_wood', chance: 0.7, min: 2, max: 4 },
-      { itemId: 'rpg_water_drops', chance: 0.5, min: 1, max: 2 },
-    ],
-    sprite: ORC_CHIEFTAIN_SPRITE,
-    frameWidth: 64,
-    frameHeight: 64,
-    isBoss: true,
-  },
 };
 
 export type EnemySpawn = { uid: string; defId: EnemyDefId; row: number; col: number };
@@ -80,5 +64,4 @@ export const DUNGEON_ENEMY_SPAWNS: EnemySpawn[] = [
   { uid: 'orc-5', defId: 'dungeon_orc', row: 4, col: 14 },
   { uid: 'brute-1', defId: 'dungeon_orc_brute', row: 17, col: 17 },
   { uid: 'brute-2', defId: 'dungeon_orc_brute', row: 3, col: 3 },
-  { uid: 'chieftain-1', defId: 'dungeon_orc_chieftain', row: 18, col: 9 },
 ];

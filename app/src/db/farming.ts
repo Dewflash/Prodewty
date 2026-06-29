@@ -12,6 +12,8 @@ export type FarmingPlot = {
   planted_seed_id: string | null;
   growth_stage: number;
   planted_at: string | null;
+  is_fertilized: boolean;
+  auto_water_charges: number;
 };
 
 // Async Write Queue to serialize database writes
@@ -164,6 +166,72 @@ export async function waterPlot(row: number, col: number): Promise<'ok' | 'no_en
   });
 }
 
+export async function applyFertilizer(row: number, col: number): Promise<'ok' | 'no_plot' | 'already_fertilized' | 'no_item' | 'db_error'> {
+  return dbQueue.enqueue(() => {
+    try {
+      db.execSync('BEGIN TRANSACTION');
+
+      const plot = db.getFirstSync<FarmingPlot>('SELECT * FROM farming_plots WHERE row = ? AND col = ?', row, col);
+      if (!plot) {
+        db.execSync('ROLLBACK');
+        return 'no_plot';
+      }
+      if (plot.is_fertilized) {
+        db.execSync('ROLLBACK');
+        return 'already_fertilized';
+      }
+
+      const inventoryCheck = db.getFirstSync<{ quantity: number }>(
+        "SELECT quantity FROM user_inventory WHERE item_id = 'rpg_fertiliser' AND quantity > 0 LIMIT 1",
+      );
+      if (!inventoryCheck) {
+        db.execSync('ROLLBACK');
+        return 'no_item';
+      }
+
+      db.runSync("UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = 'rpg_fertiliser'");
+      db.runSync('UPDATE farming_plots SET is_fertilized = 1 WHERE id = ?', plot.id);
+
+      db.execSync('COMMIT');
+      return 'ok';
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      return 'db_error';
+    }
+  });
+}
+
+export async function useSprinkler(row: number, col: number): Promise<'ok' | 'no_plot' | 'no_item' | 'db_error'> {
+  return dbQueue.enqueue(() => {
+    try {
+      db.execSync('BEGIN TRANSACTION');
+
+      const plot = db.getFirstSync<FarmingPlot>('SELECT * FROM farming_plots WHERE row = ? AND col = ?', row, col);
+      if (!plot) {
+        db.execSync('ROLLBACK');
+        return 'no_plot';
+      }
+
+      const inventoryCheck = db.getFirstSync<{ quantity: number }>(
+        "SELECT quantity FROM user_inventory WHERE item_id = 'rpg_sprinkler' AND quantity > 0 LIMIT 1",
+      );
+      if (!inventoryCheck) {
+        db.execSync('ROLLBACK');
+        return 'no_item';
+      }
+
+      db.runSync("UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = 'rpg_sprinkler'");
+      db.runSync('UPDATE farming_plots SET auto_water_charges = auto_water_charges + 3 WHERE id = ?', plot.id);
+
+      db.execSync('COMMIT');
+      return 'ok';
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      return 'db_error';
+    }
+  });
+}
+
 export function processOvernightFarming(newSeason?: string): void {
   try {
     db.execSync('BEGIN TRANSACTION');
@@ -185,17 +253,22 @@ export function processOvernightFarming(newSeason?: string): void {
         continue;
       }
 
-      if (p.is_watered && def) {
+      // A Sprinkler's auto_water_charges count as watered for that night,
+      // without needing manual waterPlot — one charge burns per night.
+      const wateredByCharge = !p.is_watered && p.auto_water_charges > 0;
+      const chargeSpend = wateredByCharge ? 'auto_water_charges = auto_water_charges - 1, ' : '';
+
+      if ((p.is_watered || wateredByCharge) && def) {
         // Growth happens
         const maxStage = 2; // RpgGrowthStage max is 2
         if (p.current_stage < maxStage) {
           db.runSync(
-            'UPDATE farming_plots SET growth_stage = growth_stage + 1, is_watered = 0 WHERE id = ?',
+            `UPDATE farming_plots SET ${chargeSpend}growth_stage = growth_stage + 1, is_watered = 0 WHERE id = ?`,
             p.id
           );
         } else {
           // Already fully grown, just un-water
-          db.runSync('UPDATE farming_plots SET is_watered = 0 WHERE id = ?', p.id);
+          db.runSync(`UPDATE farming_plots SET ${chargeSpend}is_watered = 0 WHERE id = ?`, p.id);
         }
       } else {
         // Not watered, no growth, just un-water just in case
@@ -227,8 +300,9 @@ export async function harvestPlot(row: number, col: number): Promise<'ok' | 'no_
         return 'not_ready';
       }
 
-      // Determine yield
-      const yieldAmount = Math.random() < 0.2 ? 2 : 1; // 20% chance for double crop
+      // Determine yield — Fertiliser guarantees the double-crop outcome
+      // instead of leaving it to the usual 20% chance.
+      const yieldAmount = plot.is_fertilized || Math.random() < 0.2 ? 2 : 1;
       const harvestItemId = cropDef.harvest.drops[0]?.itemId;
       
       if (harvestItemId) {
@@ -244,7 +318,7 @@ export async function harvestPlot(row: number, col: number): Promise<'ok' | 'no_
       }
 
       // Reset plot
-      db.runSync('UPDATE farming_plots SET planted_seed_id = NULL, growth_stage = 0, is_watered = 0, planted_at = NULL WHERE id = ?', plot.id);
+      db.runSync('UPDATE farming_plots SET planted_seed_id = NULL, growth_stage = 0, is_watered = 0, is_fertilized = 0, planted_at = NULL WHERE id = ?', plot.id);
       
       db.execSync('COMMIT');
       

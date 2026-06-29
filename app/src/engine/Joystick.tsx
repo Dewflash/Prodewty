@@ -6,13 +6,15 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 
 interface JoystickProps {
   onMove: (dx: number, dy: number) => void;
   onRelease: () => void;
+  bottomInset?: number;
+  leftInset?: number;
 }
 
 const JOYSTICK_SIZE = 120;
 const KNOB_SIZE = 50;
 const MAX_RADIUS = (JOYSTICK_SIZE - KNOB_SIZE) / 2;
 
-export function Joystick({ onMove, onRelease }: JoystickProps) {
+export function Joystick({ onMove, onRelease, bottomInset = 0, leftInset = 0 }: JoystickProps) {
   const knobX = useSharedValue(0);
   const knobY = useSharedValue(0);
 
@@ -51,7 +53,7 @@ export function Joystick({ onMove, onRelease }: JoystickProps) {
   });
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { bottom: 40 + bottomInset, left: 40 + leftInset }]}>
       <GestureDetector gesture={panGesture}>
         <View style={styles.base}>
           <Animated.View style={[styles.knob, animatedKnobStyle]} />
@@ -64,8 +66,6 @@ export function Joystick({ onMove, onRelease }: JoystickProps) {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 40,
-    left: 40,
     zIndex: 100,
   },
   base: {

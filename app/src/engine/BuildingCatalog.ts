@@ -8,6 +8,7 @@ export type BuildingRole = 'Workshop' | 'Factory' | 'ToolShed' | 'Market' | 'Tow
 
 export type BuildingType =
   | 'Coop' | 'Barn' | 'Furnace' | 'Loom' | 'CheesePress' | 'MayonnaiseMachine'
+  | 'FertiliserMixer' | 'IrrigationBench' | 'VendorStall'
   | 'Workshop' | 'Factory' | 'ToolShed' | 'Market' | 'TownHall' | 'Library';
 
 export type BuildingDefinition = {
@@ -26,7 +27,11 @@ export type BuildingDefinition = {
   requiredBuildingRole?: BuildingRole;
 };
 
-export const BUILDING_CATALOG: Record<string, BuildingDefinition> = {
+// TESTING (2026-06-30): all building/station costs zeroed so big buildings
+// can be placed freely while testing. Set to false to restore real costs.
+const TESTING_FREE_BUILDINGS = true;
+
+const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
   rpg_coop: {
     id: 'rpg_coop',
     name: 'Chicken Coop',
@@ -93,6 +98,39 @@ export const BUILDING_CATALOG: Record<string, BuildingDefinition> = {
     colHeight: 1,
     requiredBuildingRole: 'Factory',
   },
+  rpg_fertiliser_mixer: {
+    id: 'rpg_fertiliser_mixer',
+    name: 'Fertiliser Mixer',
+    type: 'FertiliserMixer',
+    priceCoins: 180,
+    priceWood: 50,
+    priceStone: 10,
+    colWidth: 1,
+    colHeight: 1,
+    requiredBuildingRole: 'ToolShed',
+  },
+  rpg_irrigation_bench: {
+    id: 'rpg_irrigation_bench',
+    name: 'Irrigation Bench',
+    type: 'IrrigationBench',
+    priceCoins: 220,
+    priceWood: 40,
+    priceStone: 30,
+    colWidth: 1,
+    colHeight: 1,
+    requiredBuildingRole: 'ToolShed',
+  },
+  rpg_vendor_stall: {
+    id: 'rpg_vendor_stall',
+    name: 'Vendor Stall',
+    type: 'VendorStall',
+    priceCoins: 300,
+    priceWood: 60,
+    priceStone: 20,
+    colWidth: 1,
+    colHeight: 1,
+    requiredBuildingRole: 'Market',
+  },
 
   // ── The 6 empty-shell buildings ──────────────────────────────────────────
   rpg_blacksmith_hut: {
@@ -119,7 +157,7 @@ export const BUILDING_CATALOG: Record<string, BuildingDefinition> = {
   },
   rpg_tool_shed: {
     id: 'rpg_tool_shed',
-    name: 'Tool Shed',
+    name: "Tinker's Hollow",
     type: 'ToolShed',
     priceCoins: 1200,
     priceWood: 180,
@@ -162,6 +200,15 @@ export const BUILDING_CATALOG: Record<string, BuildingDefinition> = {
     role: 'Library',
   },
 };
+
+export const BUILDING_CATALOG: Record<string, BuildingDefinition> = TESTING_FREE_BUILDINGS
+  ? Object.fromEntries(
+      Object.entries(BUILDING_CATALOG_BASE).map(([id, def]) => [
+        id,
+        { ...def, priceCoins: 0, priceWood: 0, priceStone: 0 },
+      ]),
+    )
+  : BUILDING_CATALOG_BASE;
 
 export function getBuildingDef(id: string): BuildingDefinition | null {
   return BUILDING_CATALOG[id] || null;

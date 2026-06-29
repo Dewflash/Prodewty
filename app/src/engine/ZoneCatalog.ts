@@ -1,49 +1,47 @@
-export type ZoneId = 'farm' | 'town' | 'forest' | 'beach' | 'mountain' | 'desert';
+// Region model (RPG_ARCHITECTURE_AUDIT.md, confirmed 2026-06-28): Sanctuary
+// is home base, not a travel-gated zone — 'farm'/'town' folded into it.
+// Expedition is the unsafe "real-world exploration" region, made of 4
+// biome zones reached via energy-cost travel from Sanctuary.
+export type ZoneId = 'sanctuary' | 'forest' | 'beach' | 'mountain' | 'desert';
 
 export type ZoneDefinition = {
   id: ZoneId;
   name: string;
   description: string;
-  connections: Partial<Record<ZoneId, number>>; // Destination ZoneId -> AP Cost
+  connections: Partial<Record<ZoneId, number>>; // Destination ZoneId -> energy cost
 };
 
 export const ZONE_CATALOG: Record<ZoneId, ZoneDefinition> = {
-  'farm': {
-    id: 'farm',
-    name: 'Your Farm',
-    description: 'Home sweet home. Plant crops and raise animals here.',
-    connections: { 'town': 2, 'forest': 2, 'mountain': 3 }
-  },
-  'town': {
-    id: 'town',
-    name: 'Pelican Town',
-    description: 'The bustling center of community life.',
-    connections: { 'farm': 2, 'beach': 2, 'mountain': 2 }
+  'sanctuary': {
+    id: 'sanctuary',
+    name: 'Sanctuary',
+    description: 'Home base. Safe — farming, crafting, and villagers live here.',
+    connections: { 'forest': 2, 'beach': 3, 'mountain': 3, 'desert': 5 },
   },
   'forest': {
     id: 'forest',
-    name: 'Cindersap Forest',
+    name: 'The Forest',
     description: 'A dense forest perfect for foraging.',
-    connections: { 'farm': 2, 'beach': 3 }
+    connections: { 'sanctuary': 2 },
   },
   'beach': {
     id: 'beach',
     name: 'The Beach',
     description: 'Listen to the waves and catch ocean fish.',
-    connections: { 'town': 2, 'forest': 3 }
+    connections: { 'sanctuary': 3 },
   },
   'mountain': {
     id: 'mountain',
     name: 'The Mountain',
     description: 'Home to the mines and a clear lake.',
-    connections: { 'farm': 3, 'town': 2 }
+    connections: { 'sanctuary': 3 },
   },
   'desert': {
     id: 'desert',
-    name: 'Calico Desert',
+    name: 'The Desert',
     description: 'A harsh, arid landscape.',
-    connections: { 'town': 10 } // Maybe requires a bus ticket later, but for now just high AP
-  }
+    connections: { 'sanctuary': 5 },
+  },
 };
 
 export function getZoneDef(id: string): ZoneDefinition | null {

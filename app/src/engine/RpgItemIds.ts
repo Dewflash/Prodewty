@@ -55,3 +55,28 @@ export const RPG_SQUID_ITEM_ID = 'rpg_squid';
 // Cooked Food
 export const RPG_SALAD_ITEM_ID = 'rpg_salad';
 export const RPG_OMELET_ITEM_ID = 'rpg_omelet';
+
+// Tool Shed goods
+export const RPG_FERTILISER_ITEM_ID = 'rpg_fertiliser';
+export const RPG_SPRINKLER_ITEM_ID = 'rpg_sprinkler';
+
+// Biome tree seeds — only obtainable as a chop-drop from that biome's tree
+export const RPG_WHISPERWOOD_SEED_ITEM_ID = 'rpg_whisperwood_seed';
+export const RPG_DRIFTWOOD_SEED_ITEM_ID = 'rpg_driftwood_seed';
+export const RPG_STONEBARK_SEED_ITEM_ID = 'rpg_stonebark_seed';
+export const RPG_THORNROOT_SEED_ITEM_ID = 'rpg_thornroot_seed';
+
+// Fundamental construction materials (2026-06-30)
+export const RPG_MUD_ITEM_ID = 'rpg_mud';
+export const RPG_METAL_ITEM_ID = 'rpg_metal';
+export const RPG_STICK_ITEM_ID = 'rpg_stick';
+// Crafted structure pieces — placed to form a perimeter around a cleared
+// area to build a recognized structure (Pond/Garden/Building plot).
+export const RPG_WOODEN_POLE_ITEM_ID = 'rpg_wooden_pole';
+export const RPG_BRICK_ITEM_ID = 'rpg_brick';
+export const RPG_STONE_WALL_ITEM_ID = 'rpg_stone_wall';
+// "Entrance" pieces — walk-through perimeter pieces, valid in any
+// structure's ring (Pond/Garden/Building plot) in place of a wall piece.
+export const RPG_DOOR_ITEM_ID = 'rpg_door';
+export const RPG_ROPE_ITEM_ID = 'rpg_rope';
+export const RPG_GATE_ITEM_ID = 'rpg_gate';

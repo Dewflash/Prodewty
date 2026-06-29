@@ -85,7 +85,7 @@ export const EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = {
     itemId: 'rpg_pickaxe_basic',
     name: 'Pickaxe',
     slot: 'tool',
-    description: 'Break rocks and ore. Also used to carve a channel into a river.',
+    description: 'Mine Rock Veins for Stone and Coal.',
     stats: {},
   },
   rpg_hoe_basic: {
@@ -100,6 +100,20 @@ export const EQUIPMENT_CATALOG: Record<string, EquipmentDefinition> = {
     name: 'Watering Can',
     slot: 'tool',
     description: 'Water a planted crop.',
+    stats: {},
+  },
+  rpg_rake_basic: {
+    itemId: 'rpg_rake_basic',
+    name: 'Rake',
+    slot: 'tool',
+    description: 'Clears grass into sandy land.',
+    stats: {},
+  },
+  rpg_shovel_basic: {
+    itemId: 'rpg_shovel_basic',
+    name: 'Shovel',
+    slot: 'tool',
+    description: 'Dig grass into a river channel.',
     stats: {},
   },
 };

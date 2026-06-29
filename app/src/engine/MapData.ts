@@ -13,18 +13,23 @@ export enum TileType {
   BRIDGE = 5,
   PATH = 6,
   TILLED = 7,
+  SAND = 8,
 }
 
 // 0: Walkable, 1: Blocked
+// WATER is walkable, not blocked — stepping into it sends you back to
+// spawn (see the frame-callback water check in rpg.tsx) rather than just
+// stopping you. Bridge tiles are the actual safe way across.
 export const TILE_COLLISION: Record<TileType, boolean> = {
   [TileType.GRASS]: false,
   [TileType.WALL]: true,
-  [TileType.WATER]: true,
+  [TileType.WATER]: false,
   [TileType.PORTAL_DUNGEON]: false,
   [TileType.PORTAL_SANCTUARY]: false,
   [TileType.BRIDGE]: false,
   [TileType.PATH]: false,
   [TileType.TILLED]: false,
+  [TileType.SAND]: false,
 };
 
 function makeMap(

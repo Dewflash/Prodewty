@@ -5,7 +5,7 @@ import { getZoneDef, ZoneId } from '../engine/ZoneCatalog';
 export function travelToZone(destinationId: ZoneId): 'ok' | 'no_energy' | 'invalid_destination' | 'db_error' {
   try {
     const rpg = getRPGState() as any;
-    const currentZone = (rpg.current_zone || 'farm') as ZoneId;
+    const currentZone = (rpg.current_zone || 'sanctuary') as ZoneId;
 
     if (currentZone === destinationId) return 'ok';
 
@@ -30,5 +30,5 @@ export function travelToZone(destinationId: ZoneId): 'ok' | 'no_energy' | 'inval
 
 export function getCurrentZone(): ZoneId {
   const rpg = getRPGState() as any;
-  return (rpg.current_zone || 'farm') as ZoneId;
+  return (rpg.current_zone || 'sanctuary') as ZoneId;
 }

@@ -1737,7 +1737,7 @@ function runMigrations() {
   }
 
   if (version < 87) {
-    try { db.runSync("ALTER TABLE rpg_state ADD COLUMN current_zone TEXT NOT NULL DEFAULT 'farm'"); } catch {}
+    try { db.runSync("ALTER TABLE rpg_state ADD COLUMN current_zone TEXT NOT NULL DEFAULT 'sanctuary'"); } catch {}
     db.execSync('PRAGMA user_version = 87');
   }
 
@@ -1749,6 +1749,87 @@ function runMigrations() {
   if (version < 89) {
     addExtendedSkillPointsColumns();
     db.execSync('PRAGMA user_version = 89');
+  }
+
+  if (version < 90) {
+    // 'farm'/'town' zones were folded into Sanctuary (RPG_ARCHITECTURE_AUDIT.md
+    // region model) — reassign any rows still on the old zone ids.
+    try {
+      db.runSync(
+        "UPDATE rpg_state SET current_zone = 'sanctuary' WHERE current_zone IN ('farm', 'town')",
+      );
+    } catch {}
+    db.execSync('PRAGMA user_version = 90');
+  }
+
+  if (version < 91) {
+    // Tool Shed stations (Fertiliser Mixer / Irrigation Bench) need per-plot
+    // state to apply their effects against farming_plots.
+    try { db.runSync('ALTER TABLE farming_plots ADD COLUMN is_fertilized INTEGER NOT NULL DEFAULT 0'); } catch {}
+    try { db.runSync('ALTER TABLE farming_plots ADD COLUMN auto_water_charges INTEGER NOT NULL DEFAULT 0'); } catch {}
+    db.execSync('PRAGMA user_version = 91');
+  }
+
+  if (version < 92) {
+    // Blueprints are global one-time-ever drops (RPG resource dynamics
+    // spec, 2026-06-30) — once a blueprint_id appears here, it never
+    // drops again from anyone/anything.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_blueprint_drops (
+        blueprint_id TEXT PRIMARY KEY,
+        dropped_at TEXT NOT NULL
+      );
+    `);
+    db.execSync('PRAGMA user_version = 92');
+  }
+
+  if (version < 93) {
+    // Recognized player-built structures (Pond first) — a structure is a
+    // flood-filled region of dug water fully enclosed by Stone Wall pieces.
+    // tile_key is "row:col"; one row per tile that's part of a recognized pond.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sanctuary_ponds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tile_key TEXT NOT NULL UNIQUE
+      );
+    `);
+    db.execSync('PRAGMA user_version = 93');
+  }
+
+  if (version < 94) {
+    // Building plot — a flood-filled region of raked sand fully enclosed
+    // by Brick pieces (same shape as sanctuary_ponds, swapped material).
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sanctuary_building_plots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tile_key TEXT NOT NULL UNIQUE
+      );
+    `);
+    db.execSync('PRAGMA user_version = 94');
+  }
+
+  if (version < 95) {
+    // Replaces sanctuary_ponds/sanctuary_building_plots' flat tile_key
+    // rows (which had no concept of "which tiles belong to the same
+    // instance") with real zone rows. interior_cells/perimeter_cells are
+    // JSON arrays of "row:col" strings — kept as two separate arrays (not
+    // one merged cell_set) so a breach check ("did the tile that just got
+    // mined belong to a zone's wall?") never needs to re-derive the ring,
+    // only look the cell up. state lets a breached zone stay addressable
+    // (buildings inside flagged inactive) instead of being deleted outright.
+    // Legacy tables are intentionally left in place for one cycle as a
+    // backfill source/safety net — see migrateLegacyZones in rpg.tsx.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sanctuary_zones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'active',
+        interior_cells TEXT NOT NULL,
+        perimeter_cells TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    db.execSync('PRAGMA user_version = 95');
   }
 }
 

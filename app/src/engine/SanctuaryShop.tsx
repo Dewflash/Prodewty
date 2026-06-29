@@ -18,7 +18,7 @@ type OwnedRow = {
   quantity: number;
 };
 
-type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave' | 'mechanism' | 'animal';
+type ShopFilter = 'all' | 'tree' | 'mushroom' | 'structure' | 'crystal' | 'bush' | 'cactus' | 'cave' | 'mechanism' | 'animal' | 'building' | 'material';
 type ShopSort = 'name' | 'rarity' | 'price';
 
 interface Props {
@@ -45,6 +45,8 @@ const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'cave', label: 'Cave' },
   { id: 'mechanism', label: 'Mechanisms' },
   { id: 'animal', label: 'Animals' },
+  { id: 'building', label: 'Buildings' },
+  { id: 'material', label: 'Materials' },
 ];
 const SHOP_SORTS: { id: ShopSort; label: string }[] = [
   { id: 'name', label: 'Name' },
@@ -58,6 +60,9 @@ function matchesShopFilter(tags: string[] | undefined, filter: ShopFilter) {
   }
   if (filter === 'mechanism') {
     return !!tags?.some(tag => ['mechanism', 'lever', 'gate', 'trap', 'hazard'].includes(tag));
+  }
+  if (filter === 'building') {
+    return !!tags?.some(tag => tag === 'building' || tag === 'station');
   }
   return !!tags?.includes(filter);
 }

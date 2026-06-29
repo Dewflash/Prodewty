@@ -204,7 +204,11 @@ Nothing in either system matches what you described today exactly:
   | Expedition Gate | "Explorer Tent" | Already exists ("grants access to uncharted worlds"); placed at corners of the Sanctuary map |
   | Archive | "Museum" | Same system, two names depending on context |
   | Donate (`museum.ts`'s `donateToMuseum`) | "Inspect" | Re-flavored: bring the item back in your inventory, submit it to the Library, research on it |
-  | Tool Shed, Factory, Library, Market, Town Hall | *(unnamed frontend flavor TBD)* | Still need flavor names; backend roles are fixed |
+  | ToolShed | "Tinker's Hollow" | Set 2026-06-28 in `BuildingCatalog.ts` |
+  | Factory | "Artisan Mill" | Already set in `BuildingCatalog.ts` |
+  | Library | "Forgotten Chamber" | Already set in `BuildingCatalog.ts` |
+  | Market | "Wanderer's Bazaar" | Already set in `BuildingCatalog.ts` |
+  | TownHall | "Village Hearth" | Already set in `BuildingCatalog.ts` |
 
   This table should grow as more buildings/mechanics get frontend names —
   treat it as the single source of truth for "what does the code call this
