@@ -1618,6 +1618,10 @@ export const RPG_ITEM_CATALOG = {
     name: 'Rock Marmot', kind: 'resource', featherIcon: 'hexagon', rarity: 'uncommon',
     sourceLabel: 'Catching', tags: ['critter'], description: 'A burly marmot from the Mountains.',
   },
+  rpg_slime_gel: {
+    name: 'Slime Gel', kind: 'resource', featherIcon: 'droplet', rarity: 'common',
+    sourceLabel: 'Combat', tags: ['monster_drop'], description: 'Gooey residue from a slain Forest Slime. Sells well; a potent fertiliser in time.',
+  },
   rpg_watering_can_basic: {
     name: 'Watering Can',
     kind: 'tool',
@@ -1828,6 +1832,7 @@ const RESOURCE_SELL_PRICES: Record<string, number> = {
   rpg_sand_crab: 22,
   rpg_dune_lizard: 50,
   rpg_rock_marmot: 60,
+  rpg_slime_gel: 18,
 };
 
 export function getResourceSellPrice(itemId: string | null): number {

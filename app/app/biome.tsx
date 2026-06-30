@@ -14,6 +14,13 @@ import { crittersForBiome } from '../src/engine/CritterCatalog';
 import { resolveNetCatch } from '../src/engine/CatchLogic';
 import { getInventoryQuantity, addInventoryItem } from '../src/db/garden';
 import { recordRpgDiscovery } from '../src/db/rpgDiscovery';
+import { db } from '../src/db/schema';
+import { type GuardianDefinition } from '../src/engine/BiomeGuardianCatalog';
+import {
+  guardianForBiome, guardianSpawnCount,
+  nextChaserState, chaserVelocity, nextTurretState, turretShouldFire,
+  playerAttackDamage, applyDamage, isDead,
+} from '../src/engine/BiomeCombatLogic';
 
 const AVATAR_SIZE = 28;
 const TREE_SIZE = 48;
@@ -23,6 +30,21 @@ const CHOP_COOLDOWN_MS = 900;
 const TREE_COUNT = 6;
 const CATCH_RANGE = 50;
 const CATCH_COOLDOWN_MS = 1000;
+const ATTACK_RANGE = 56;       // how close the player must be to swing
+const ENEMY_HIT_COOLDOWN_MS = 1100; // min gap between an enemy's hits on the player
+const TURRET_FIRE_COOLDOWN_MS = 1600;
+
+type LiveGuardian = {
+  id: number;
+  hp: number;
+  x: number;
+  y: number;
+  anchorX: number;
+  anchorY: number;
+  state: string;
+  wanderAngle: number;
+  lastHitAt: number;
+};
 // Where critters sit (ratios of field). Offset from trees so they don't
 // overlap. A biome shows up to this many critter slots, filled from the
 // biome's catalog (repeating if it has fewer species).
@@ -85,38 +107,157 @@ export default function BiomeScreen() {
   const caughtCrittersRef = useRef<Record<number, boolean>>({});
   const hasNet = getInventoryQuantity('rpg_net') > 0;
 
+  // --- Combat (Phase 5 Biome Guardians) -------------------------------
+  const guardianDef = guardianForBiome(zoneId);
+  // Player stats + HP loaded once from rpg_state; biomes are ephemeral so
+  // there's no enemy persistence — they regenerate on each travel-in.
+  const playerStats = useRef(db.getFirstSync<{ strength: number; focus: number; agility: number; wisdom: number; resilience: number; hp: number; hp_max: number }>(
+    'SELECT strength, focus, agility, wisdom, resilience, hp, hp_max FROM rpg_state WHERE id = 1',
+  ) ?? { strength: 1, focus: 1, agility: 1, wisdom: 1, resilience: 1, hp: 100, hp_max: 100 });
+  const [playerHp, setPlayerHp] = useState(playerStats.current.hp);
+  const playerHpRef = useRef(playerStats.current.hp);
+  const deadRef = useRef(false);
+
+  const guardiansRef = useRef<LiveGuardian[]>([]);
+  // Spawn guardians once near the trees (high-value nodes), per the danger
+  // gradient. Built in a ref-initialiser so it's stable across renders.
+  const [guardians, setGuardians] = useState<LiveGuardian[]>(() => {
+    if (!guardianDef) return [];
+    const count = guardianSpawnCount(zoneId, TREE_COUNT);
+    const spawned: LiveGuardian[] = [];
+    for (let i = 0; i < count; i++) {
+      const node = treePositions[i % treePositions.length];
+      // Offset within a small radius of the guarded node.
+      const ax = node.x + TREE_SIZE / 2 + (Math.random() - 0.5) * 70;
+      const ay = node.y + TREE_SIZE / 2 + (Math.random() - 0.5) * 70;
+      spawned.push({
+        id: i, hp: guardianDef.maxHp, x: ax, y: ay, anchorX: ax, anchorY: ay,
+        state: guardianDef.behaviour === 'turret' ? 'camouflage' : 'wander',
+        wanderAngle: Math.random() * Math.PI * 2, lastHitAt: 0,
+      });
+    }
+    guardiansRef.current = spawned;
+    return spawned;
+  });
+  const [nearestGuardianId, setNearestGuardianId] = useState<number | null>(null);
+
+  const avatarCenterRef = useRef({ x: fieldWidth / 4 + AVATAR_SIZE / 2, y: fieldHeight / 2 + AVATAR_SIZE / 2 });
+
   useEffect(() => {
     const interval = setInterval(() => {
       const { dx, dy } = direction.current;
-      if (dx === 0 && dy === 0) return;
-      setAvatarPos(prev => {
-        const nextX = Math.max(0, Math.min(fieldWidth - AVATAR_SIZE, prev.x + dx * SPEED * 0.016));
-        const nextY = Math.max(0, Math.min(fieldHeight - AVATAR_SIZE, prev.y + dy * SPEED * 0.016));
-        const centerX = nextX + AVATAR_SIZE / 2;
-        const centerY = nextY + AVATAR_SIZE / 2;
-
-        let closestIndex: number | null = null;
-        let closestDist = Infinity;
-        treePositions.forEach((pos, index) => {
-          const dist = Math.hypot(centerX - (pos.x + TREE_SIZE / 2), centerY - (pos.y + TREE_SIZE / 2));
-          if (dist < closestDist) { closestDist = dist; closestIndex = index; }
+      // Avatar moves only when the joystick is engaged, but everything
+      // below (proximity, guardian AI) must tick every frame regardless.
+      if (dx !== 0 || dy !== 0) {
+        setAvatarPos(prev => {
+          const nextX = Math.max(0, Math.min(fieldWidth - AVATAR_SIZE, prev.x + dx * SPEED * 0.016));
+          const nextY = Math.max(0, Math.min(fieldHeight - AVATAR_SIZE, prev.y + dy * SPEED * 0.016));
+          avatarCenterRef.current = { x: nextX + AVATAR_SIZE / 2, y: nextY + AVATAR_SIZE / 2 };
+          return { x: nextX, y: nextY };
         });
-        setNearestTreeIndex(closestDist <= CHOP_RANGE ? closestIndex : null);
+      }
+      const centerX = avatarCenterRef.current.x;
+      const centerY = avatarCenterRef.current.y;
 
-        // Nearest un-caught critter in range.
-        let critterIndex: number | null = null;
-        let critterDist = Infinity;
-        critterSpawns.forEach((c, index) => {
-          if (caughtCrittersRef.current[index]) return;
-          const dist = Math.hypot(centerX - (c.x + AVATAR_SIZE / 2), centerY - (c.y + AVATAR_SIZE / 2));
-          if (dist < critterDist) { critterDist = dist; critterIndex = index; }
-        });
-        setNearestCritterIndex(critterDist <= CATCH_RANGE ? critterIndex : null);
-        return { x: nextX, y: nextY };
+      let closestIndex: number | null = null;
+      let closestDist = Infinity;
+      treePositions.forEach((pos, index) => {
+        const dist = Math.hypot(centerX - (pos.x + TREE_SIZE / 2), centerY - (pos.y + TREE_SIZE / 2));
+        if (dist < closestDist) { closestDist = dist; closestIndex = index; }
       });
+      setNearestTreeIndex(closestDist <= CHOP_RANGE ? closestIndex : null);
+
+      let critterIndex: number | null = null;
+      let critterDist = Infinity;
+      critterSpawns.forEach((c, index) => {
+        if (caughtCrittersRef.current[index]) return;
+        const dist = Math.hypot(centerX - (c.x + AVATAR_SIZE / 2), centerY - (c.y + AVATAR_SIZE / 2));
+        if (dist < critterDist) { critterDist = dist; critterIndex = index; }
+      });
+      setNearestCritterIndex(critterDist <= CATCH_RANGE ? critterIndex : null);
+
+      tickGuardians(centerX, centerY);
     }, 16);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldWidth, fieldHeight]);
+
+  // One frame of guardian AI: move/attack each guardian against the player
+  // and damage the player on contact/fire. Pure decisions come from
+  // BiomeCombatLogic; this just applies them to the live entities.
+  const tickGuardians = (px: number, py: number) => {
+    if (!guardianDef || guardiansRef.current.length === 0 || deadRef.current) return;
+    const now = Date.now();
+    let nearest: number | null = null;
+    let nearestDist = Infinity;
+    let damageToPlayer = 0;
+
+    guardiansRef.current.forEach(g => {
+      const gcx = g.x + AVATAR_SIZE / 2;
+      const gcy = g.y + AVATAR_SIZE / 2;
+      const dist = Math.hypot(px - gcx, py - gcy);
+      if (dist < nearestDist) { nearestDist = dist; nearest = g.id; }
+
+      if (guardianDef.behaviour === 'chaser') {
+        const state = nextChaserState(dist, guardianDef);
+        g.state = state;
+        const v = chaserVelocity(state, { x: g.x, y: g.y }, { x: g.anchorX, y: g.anchorY }, { x: px - AVATAR_SIZE / 2, y: py - AVATAR_SIZE / 2 }, SPEED, guardianDef, g.wanderAngle);
+        g.x = Math.max(0, Math.min(fieldWidth - AVATAR_SIZE, g.x + v.dx * 0.016));
+        g.y = Math.max(0, Math.min(fieldHeight - AVATAR_SIZE, g.y + v.dy * 0.016));
+        if (Math.random() < 0.02) g.wanderAngle = Math.random() * Math.PI * 2; // occasional new drift
+        if (state === 'attack' && now - g.lastHitAt > ENEMY_HIT_COOLDOWN_MS) {
+          g.lastHitAt = now;
+          damageToPlayer += guardianDef.atk;
+        }
+      } else {
+        const state = nextTurretState(dist, guardianDef);
+        g.state = state;
+        if (turretShouldFire(state, now - g.lastHitAt, TURRET_FIRE_COOLDOWN_MS)) {
+          g.lastHitAt = now;
+          damageToPlayer += guardianDef.atk;
+        }
+      }
+    });
+
+    setNearestGuardianId(nearestDist <= ATTACK_RANGE ? nearest : null);
+    setGuardians([...guardiansRef.current]);
+    if (damageToPlayer > 0) hurtPlayer(damageToPlayer);
+  };
+
+  const hurtPlayer = (dmg: number) => {
+    const next = applyDamage(playerHpRef.current, dmg);
+    playerHpRef.current = next;
+    setPlayerHp(next);
+    db.runSync('UPDATE rpg_state SET hp = ? WHERE id = 1', next);
+    if (isDead(next) && !deadRef.current) {
+      deadRef.current = true;
+      setToast('You were overwhelmed — retreating to the Sanctuary…');
+      setTimeout(() => router.back(), 1300);
+    }
+  };
+
+  const handleAttack = () => {
+    if (nearestGuardianId === null || !guardianDef || deadRef.current) return;
+    const g = guardiansRef.current.find(x => x.id === nearestGuardianId);
+    if (!g) return;
+    const dmg = playerAttackDamage(playerStats.current);
+    g.hp = applyDamage(g.hp, dmg);
+    if (isDead(g.hp)) {
+      // Drop loot to inventory.
+      guardianDef.drops.forEach((d: GuardianDefinition['drops'][number]) => {
+        if (Math.random() <= d.chance) {
+          const qty = d.min + Math.floor(Math.random() * (d.max - d.min + 1));
+          if (qty > 0) { addInventoryItem(d.itemId, qty); recordRpgDiscovery(d.itemId, 'forage'); }
+        }
+      });
+      guardiansRef.current = guardiansRef.current.filter(x => x.id !== g.id);
+      setNearestGuardianId(null);
+      flashToast(`Defeated the ${guardianDef.name}!`);
+    } else {
+      flashToast(`Hit the ${guardianDef.name} (${g.hp}/${guardianDef.maxHp})`);
+    }
+    setGuardians([...guardiansRef.current]);
+  };
 
   const handleChop = () => {
     if (nearestTreeIndex === null) return;
@@ -173,6 +314,14 @@ export default function BiomeScreen() {
           <Feather name="arrow-left" size={22} color="#fff" />
         </Pressable>
         <Text style={styles.title}>{zoneDef?.name ?? 'Biome'}</Text>
+        {guardianDef && (
+          <View style={styles.hpBar}>
+            <Feather name="heart" size={12} color="#e8607a" />
+            <View style={styles.hpTrack}>
+              <View style={[styles.hpFill, { width: `${Math.max(0, (playerHp / playerStats.current.hp_max) * 100)}%` }]} />
+            </View>
+          </View>
+        )}
       </View>
 
       <View style={[styles.field, { height: fieldHeight, top: insets.top + 70 }]}>
@@ -192,10 +341,39 @@ export default function BiomeScreen() {
             </View>
           )
         ))}
+
+        {guardianDef && guardians.map(g => {
+          const camouflaged = g.state === 'camouflage';
+          return (
+            <View key={`guardian-${g.id}`} pointerEvents="none" style={[styles.guardianWrap, { left: g.x, top: g.y, opacity: camouflaged ? 0.4 : 1 }]}>
+              <View style={[styles.guardian, { backgroundColor: guardianDef.color, borderColor: g.state === 'aggro' || g.state === 'attack' ? '#fff2bb' : '#1a1a1a' }]}>
+                <Feather name={guardianDef.featherIcon as any} size={16} color="#0b140c" />
+              </View>
+              {!camouflaged && (
+                <View style={styles.guardianHpTrack}>
+                  <View style={[styles.guardianHpFill, { width: `${Math.max(0, (g.hp / guardianDef.maxHp) * 100)}%` }]} />
+                </View>
+              )}
+            </View>
+          );
+        })}
+
         <View pointerEvents="none" style={[styles.avatar, { left: avatarPos.x, top: avatarPos.y }]} />
       </View>
 
-      {nearestTreeIndex !== null && tree && nearestCritterIndex === null && (
+      {nearestGuardianId !== null && guardianDef && !deadRef.current && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Attack ${guardianDef.name}`}
+          style={[styles.attackBtn, { bottom: 140 + insets.bottom }]}
+          onPress={handleAttack}
+        >
+          <Feather name="zap" size={18} color="#fff" />
+          <Text style={styles.chopText}>Attack {guardianDef.name}</Text>
+        </Pressable>
+      )}
+
+      {nearestGuardianId === null && nearestTreeIndex !== null && tree && nearestCritterIndex === null && (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Chop ${tree.name}`}
@@ -207,7 +385,7 @@ export default function BiomeScreen() {
         </Pressable>
       )}
 
-      {nearestCritterIndex !== null && (
+      {nearestGuardianId === null && nearestCritterIndex !== null && (
         hasNet ? (
           <Pressable
             accessibilityRole="button"
@@ -339,6 +517,59 @@ const styles = StyleSheet.create({
     color: '#0b140c',
     fontFamily: fonts.ui.bold,
     fontSize: fontSize.sm,
+  },
+  guardianWrap: {
+    position: 'absolute',
+    alignItems: 'center',
+  },
+  guardian: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guardianHpTrack: {
+    width: AVATAR_SIZE,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 2,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    overflow: 'hidden',
+  },
+  guardianHpFill: {
+    height: 4,
+    backgroundColor: '#e8607a',
+  },
+  attackBtn: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#c0392b',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 100,
+  },
+  hpBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+  },
+  hpTrack: {
+    width: 90,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    overflow: 'hidden',
+  },
+  hpFill: {
+    height: 8,
+    backgroundColor: '#e8607a',
   },
   toast: {
     position: 'absolute',
