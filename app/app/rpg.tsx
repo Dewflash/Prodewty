@@ -31,7 +31,7 @@ import {
   type ShopCatalogItem,
 } from '../src/engine/RpgObjectCatalog';
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
-import { DungeonMap, getResponsiveTileSize, SanctuaryMap, TILE_COLLISION, TILE_SIZE as DEFAULT_TILE_SIZE, TileType } from '../src/engine/MapData';
+import { DungeonMap, getResponsiveTileSize, getTileDisplayName, SanctuaryMap, TILE_COLLISION, TILE_SIZE as DEFAULT_TILE_SIZE, TileType } from '../src/engine/MapData';
 import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
 import { FLOOR_TILE_COORD, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
 import { db } from '../src/db/schema';
@@ -151,7 +151,15 @@ type BuildItem = {
 // build-mode flow, but the confirm action edits the tile instead of
 // spawning a sanctuary_objects row. See "Universal placement rule" in
 // RPG_ARCHITECTURE.md.
-const TERRAIN_EDIT_ITEM_IDS = ['rpg_bridge_kit', 'rpg_path_kit'] as const;
+const TERRAIN_EDIT_ITEM_IDS = ['rpg_bridge_kit', 'rpg_path_kit', 'rpg_stone_slab', 'rpg_wood_tile'] as const;
+// Which tile each terrain-edit item paints. Stone Slab / Wood Tile are
+// craftable building floors (Sanctuary spec); Bridge/Path are the originals.
+const TERRAIN_EDIT_TILE: Record<string, TileType> = {
+  rpg_bridge_kit: TileType.BRIDGE,
+  rpg_path_kit: TileType.PATH,
+  rpg_stone_slab: TileType.STONE_SLAB,
+  rpg_wood_tile: TileType.WOOD_TILE,
+};
 // Real food-crop seeds (turnip/cabbage/pumpkin, src/db/farming.ts's
 // farming_plots) vs decorative CraftPix tree/flower seeds (garden_plots,
 // the original Sanctuary system) — distinguished by sourceLabel since
@@ -192,6 +200,10 @@ const MASTERY_LABELS: Record<SkillType, string> = {
 function terrainEditAllowsTile(itemId: string, tile: TileType): boolean {
   if (itemId === 'rpg_bridge_kit') return tile === TileType.WATER;
   if (itemId === 'rpg_path_kit') return tile === TileType.GRASS || tile === TileType.TILLED;
+  // Building floors lay over open ground (grass/sand/tilled), not water.
+  if (itemId === 'rpg_stone_slab' || itemId === 'rpg_wood_tile') {
+    return tile === TileType.GRASS || tile === TileType.SAND || tile === TileType.TILLED;
+  }
   return false;
 }
 type PlacementReason =
@@ -503,6 +515,11 @@ export default function RpgScreen() {
   const buildVisHeight = useSharedValue(0);
   const targetRow = useSharedValue(-999);
   const targetCol = useSharedValue(-999);
+  // Foot-tile tracking for the tile-inspector HUD — mirrors the worklet's
+  // foot cell into React state only when it changes (not every frame).
+  const footTileRow = useSharedValue(-999);
+  const footTileCol = useSharedValue(-999);
+  const [currentTileType, setCurrentTileType] = useState<TileType>(TileType.GRASS);
 
   const selectedObject = useMemo(
     () => (
@@ -1012,6 +1029,14 @@ export default function RpgScreen() {
     setInteractionPrompt(resolveInteractionTargetAt(row, col));
   }, [resolveInteractionTargetAt]);
 
+  // Tile-inspector HUD: resolve the tile the player is standing on
+  // (override first, then base map) and mirror it into React state.
+  const updateCurrentTileFromFoot = useCallback((row: number, col: number) => {
+    const override = terrainOverrides[`${row}:${col}`];
+    const base = SanctuaryMap[row]?.[col];
+    setCurrentTileType((override ?? base ?? TileType.GRASS) as TileType);
+  }, [terrainOverrides]);
+
   const resolveCurrentInteractionTarget = useCallback((): ResolvedInteractionTarget => {
     const tile = getTargetedTile();
     return {
@@ -1350,7 +1375,7 @@ export default function RpgScreen() {
           showWorldToast({ text: 'No item left', item, tone: 'warn' });
           return;
         }
-        const nextTile = buildItem.itemId === 'rpg_bridge_kit' ? TileType.BRIDGE : TileType.PATH;
+        const nextTile = TERRAIN_EDIT_TILE[buildItem.itemId] ?? TileType.PATH;
         setSanctuaryTile(row, col, nextTile);
         recordRpgDiscovery(buildItem.itemId, 'place');
         showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
@@ -1743,6 +1768,15 @@ export default function RpgScreen() {
     }
   }, []);
 
+  // While it's raining, fill ditches → water and tilled → wet soil. Keyed
+  // on terrainOverrides too so a ditch/till made DURING rain converts
+  // right away; applyRainTerrain is idempotent so this is a cheap no-op
+  // once everything's already converted.
+  useEffect(() => {
+    if (isRaining) applyRainTerrain();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRaining, terrainOverrides]);
+
   useEffect(() => {
     if (activeZone !== 'dungeon') return;
     const interval = setInterval(() => {
@@ -1893,6 +1927,13 @@ export default function RpgScreen() {
       avatarY.value = TILE_SIZE * 2;
       runOnJS(showWorldToast)({ text: 'Swept back to shore!', tone: 'warn' });
       return;
+    }
+
+    // HUD: report the tile under the player's feet when it changes.
+    if (ownRow !== footTileRow.value || ownCol !== footTileCol.value) {
+      footTileRow.value = ownRow;
+      footTileCol.value = ownCol;
+      runOnJS(updateCurrentTileFromFoot)(ownRow, ownCol);
     }
 
     let col = ownCol;
@@ -2822,6 +2863,52 @@ export default function RpgScreen() {
     return nextOverrides;
   };
 
+  // Rain transition (Sanctuary spec): when it's raining, every dug DITCH
+  // fills to WATER and every TILLED tile becomes WET_SOIL. Wet soil also
+  // waters any crop sitting on it — that's how "wet soil contributes to
+  // growth" (rain auto-waters), without farming.ts needing terrain access.
+  // Idempotent: re-running while raining is a no-op once everything's
+  // converted. Runs on load and whenever isRaining flips true.
+  const applyRainTerrain = () => {
+    const changes: { row: number; col: number; tile: TileType }[] = [];
+    Object.entries(terrainOverrides).forEach(([key, t]) => {
+      if (t === TileType.DITCH) {
+        const [r, c] = key.split(':').map(Number);
+        changes.push({ row: r, col: c, tile: TileType.WATER });
+      } else if (t === TileType.TILLED) {
+        const [r, c] = key.split(':').map(Number);
+        changes.push({ row: r, col: c, tile: TileType.WET_SOIL });
+      }
+    });
+    if (changes.length === 0) return;
+
+    const next = { ...terrainOverrides };
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      for (const ch of changes) {
+        const key = `${ch.row}:${ch.col}`;
+        next[key] = ch.tile;
+        db.runSync(
+          'INSERT OR REPLACE INTO sanctuary_terrain_overrides (row, col, tile_type) VALUES (?, ?, ?)',
+          ch.row, ch.col, ch.tile,
+        );
+        // Wet soil waters the crop on it (rain bonus).
+        if (ch.tile === TileType.WET_SOIL) {
+          db.runSync('UPDATE farming_plots SET is_watered = 1 WHERE row = ? AND col = ?', ch.row, ch.col);
+        }
+      }
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to apply rain terrain', e);
+      return;
+    }
+    setTerrainOverrides(next);
+    const newMap = applyTerrainOverrides(SanctuaryMap, next);
+    applyMovementCollision(mapObjects, 'sanctuary', newMap);
+    showWorldToast({ text: 'The rain fills your ditches and wets the soil', tone: 'success' });
+  };
+
   // Any object tagged as a structure piece (Stone Wall/Brick/Wooden Pole)
   // or an entrance (Door/Rope/Gate) can seal a zone ring — declaration is
   // free-form (the perimeter material no longer dictates the zone type),
@@ -3098,11 +3185,14 @@ export default function RpgScreen() {
     if (!spendToolEnergy('rpg_shovel_basic')) return;
     db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', DIG_COST);
     refreshCoins();
-    const nextOverrides = setSanctuaryTile(row, col, TileType.WATER);
+    // Digging now creates a dry DITCH, not water — it only fills to WATER
+    // after rain (see applyRainTerrain). This is the Sanctuary spec's
+    // two-step pond: dig the ditch, then let rain fill it.
+    const nextOverrides = setSanctuaryTile(row, col, TileType.DITCH);
     addSandboxInventoryItem('rpg_mud', 1 + Math.floor(Math.random() * 2), 'forage');
     bumpInventoryRevision();
     scanForZoneCandidates(undefined, nextOverrides);
-    showWorldToast({ text: `Dug a channel — water flows in, mud collected (-${DIG_COST} coins)`, tone: 'success' });
+    showWorldToast({ text: `Dug a ditch — it'll fill with water after rain. Mud collected (-${DIG_COST} coins)`, tone: 'success' });
   };
 
   const plowTile = (row: number, col: number) => {
@@ -3333,6 +3423,10 @@ export default function RpgScreen() {
       case TileType.PATH: return '#c2a06b';
       case TileType.TILLED: return '#6b4a2e';
       case TileType.SAND: return '#d9c08a';
+      case TileType.DITCH: return '#7a6a4a'; // dry dug channel — fills to WATER after rain
+      case TileType.WET_SOIL: return '#4a3420'; // darker, damp tilled soil
+      case TileType.STONE_SLAB: return '#8a8f92';
+      case TileType.WOOD_TILE: return '#a9763f';
       default: return '#1b1f1b';
     }
   }
@@ -3744,6 +3838,13 @@ export default function RpgScreen() {
           )}
         </View>
       </View>
+
+      {activeZone === 'sanctuary' && (
+        <View style={[styles.tileInspector, { top: safeAreaInsets.top + 120, right: 12 + safeAreaInsets.right }]} pointerEvents="none">
+          <Feather name="map-pin" size={12} color="#cde8c2" />
+          <Text style={styles.tileInspectorText}>{getTileDisplayName(currentTileType)}</Text>
+        </View>
+      )}
 
       {!buildItem && (
         <View style={[styles.hudActions, { top: safeAreaInsets.top + 56, left: 20 + safeAreaInsets.left }]}>
@@ -4549,6 +4650,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.54)',
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  tileInspector: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(205,232,194,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  tileInspectorText: {
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
+    color: '#cde8c2',
   },
   weatherTextStack: {
     marginLeft: 6,

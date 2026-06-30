@@ -80,3 +80,14 @@ export const RPG_STONE_WALL_ITEM_ID = 'rpg_stone_wall';
 export const RPG_DOOR_ITEM_ID = 'rpg_door';
 export const RPG_ROPE_ITEM_ID = 'rpg_rope';
 export const RPG_GATE_ITEM_ID = 'rpg_gate';
+
+// Sanctuary spec (2026-06-30) — basic furniture/decor, building materials,
+// craftable floors, and the woodworking table (the first thing crafted).
+export const RPG_WOODWORKING_TABLE_ITEM_ID = 'rpg_woodworking_table';
+export const RPG_BED_ITEM_ID = 'rpg_bed';
+export const RPG_WOODEN_PIKE_ITEM_ID = 'rpg_wooden_pike';
+export const RPG_WOODEN_FENCE_ITEM_ID = 'rpg_wooden_fence';
+export const RPG_STRAW_ITEM_ID = 'rpg_straw';
+export const RPG_WOOD_PANEL_ITEM_ID = 'rpg_wood_panel';
+export const RPG_STONE_SLAB_ITEM_ID = 'rpg_stone_slab';
+export const RPG_WOOD_TILE_ITEM_ID = 'rpg_wood_tile';

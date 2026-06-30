@@ -122,6 +122,71 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     ]
   },
 
+  // Sanctuary spec (2026-06-30) — all hand-craftable (no requiredBuilding).
+  // The Woodworking Table is the bootstrap "first craft": wood only.
+  'recipe_woodworking_table': {
+    recipeId: 'recipe_woodworking_table',
+    outputItemId: 'rpg_woodworking_table',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_wood', quantity: 8 }],
+  },
+  'recipe_bed': {
+    recipeId: 'recipe_bed',
+    outputItemId: 'rpg_bed',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 5 },
+      { itemId: 'rpg_straw', quantity: 3 },
+    ],
+  },
+  'recipe_wooden_pike': {
+    recipeId: 'recipe_wooden_pike',
+    outputItemId: 'rpg_wooden_pike',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_wood', quantity: 3 }],
+  },
+  'recipe_wooden_fence': {
+    recipeId: 'recipe_wooden_fence',
+    outputItemId: 'rpg_wooden_fence',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_wood', quantity: 1 },
+      { itemId: 'rpg_stick', quantity: 2 },
+    ],
+  },
+  'recipe_straw': {
+    recipeId: 'recipe_straw',
+    outputItemId: 'rpg_straw',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_hay', quantity: 1 }],
+  },
+  'recipe_wood_panel': {
+    recipeId: 'recipe_wood_panel',
+    outputItemId: 'rpg_wood_panel',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_wood_plank', quantity: 2 }],
+  },
+  'recipe_stone_slab': {
+    recipeId: 'recipe_stone_slab',
+    outputItemId: 'rpg_stone_slab',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_stone', quantity: 2 }],
+  },
+  'recipe_wood_tile': {
+    recipeId: 'recipe_wood_tile',
+    outputItemId: 'rpg_wood_tile',
+    outputQuantity: 2,
+    timeMinutes: 0.1,
+    ingredients: [{ itemId: 'rpg_wood_plank', quantity: 1 }],
+  },
+
   // Decorative Sanctuary objects — ported from rpg.tsx's old instant-craft
   // list (2026-06-28). No station required, unlike the resource recipes
   // above — these were never described as production-line goods.

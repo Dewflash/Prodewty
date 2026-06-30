@@ -14,6 +14,15 @@ export enum TileType {
   PATH = 6,
   TILLED = 7,
   SAND = 8,
+  // Rain-gated terrain (Sanctuary spec 2026-06-30): a DITCH (dug by the
+  // Shovel) fills to WATER after rain; TILLED soil becomes WET_SOIL after
+  // rain (a growth bonus — crops on it count as watered). Both are dry,
+  // walkable intermediate states until rain transitions them.
+  DITCH = 9,
+  WET_SOIL = 10,
+  // Craftable building floors (stone slab / wood tile) — vs natural grass.
+  STONE_SLAB = 11,
+  WOOD_TILE = 12,
 }
 
 // 0: Walkable, 1: Blocked
@@ -30,7 +39,34 @@ export const TILE_COLLISION: Record<TileType, boolean> = {
   [TileType.PATH]: false,
   [TileType.TILLED]: false,
   [TileType.SAND]: false,
+  // DITCH is walkable while dry; once rain fills it to WATER, the WATER
+  // rule (walk-in → respawn) takes over. WET_SOIL/floors are walkable.
+  [TileType.DITCH]: false,
+  [TileType.WET_SOIL]: false,
+  [TileType.STONE_SLAB]: false,
+  [TileType.WOOD_TILE]: false,
 };
+
+// Friendly tile names for the tile-inspector HUD (Sanctuary spec).
+export const TILE_DISPLAY_NAME: Record<TileType, string> = {
+  [TileType.GRASS]: 'Grass',
+  [TileType.WALL]: 'Wall',
+  [TileType.WATER]: 'Water',
+  [TileType.PORTAL_DUNGEON]: 'Dungeon Portal',
+  [TileType.PORTAL_SANCTUARY]: 'Sanctuary Portal',
+  [TileType.BRIDGE]: 'Bridge',
+  [TileType.PATH]: 'Path',
+  [TileType.TILLED]: 'Tilled Soil',
+  [TileType.SAND]: 'Sand',
+  [TileType.DITCH]: 'Ditch',
+  [TileType.WET_SOIL]: 'Wet Soil',
+  [TileType.STONE_SLAB]: 'Stone Slab',
+  [TileType.WOOD_TILE]: 'Wood Tile',
+};
+
+export function getTileDisplayName(type: TileType): string {
+  return TILE_DISPLAY_NAME[type] ?? 'Ground';
+}
 
 function makeMap(
   rows: number,
