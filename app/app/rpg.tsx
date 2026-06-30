@@ -1719,6 +1719,38 @@ export default function RpgScreen() {
       // be visible via closure until next render.
       migrateLegacyZones();
       const loadedZones = refreshSanctuaryZones();
+
+      // One-time cleanup (2026-06-30): remove orphaned WATER/DITCH tiles
+      // left over from old pond-building experiments — anything not part
+      // of a declared Pond zone is reverted to grass. (Walking into that
+      // stray water used to crash the app; the crash is fixed separately,
+      // this just clears the junk grid the user asked to remove.) Gated so
+      // it runs once and never touches a properly declared Pond.
+      const orphanCleanupDone = db.getFirstSync<{ item_id: string }>(
+        "SELECT item_id FROM rpg_discoveries WHERE item_id = 'system.sanctuary_orphan_water_cleanup_v1' LIMIT 1",
+      );
+      if (!orphanCleanupDone) {
+        const pondCells = new Set(
+          loadedZones.filter(z => z.type === 'pond').flatMap(z => [...z.interiorCells, ...z.perimeterCells]),
+        );
+        const orphans = Object.entries(loadedOverrides).filter(([key, t]) =>
+          (t === TileType.WATER || t === TileType.DITCH) && !pondCells.has(key),
+        );
+        if (orphans.length > 0) {
+          db.execSync('BEGIN TRANSACTION');
+          orphans.forEach(([key]) => {
+            const [r, c] = key.split(':').map(Number);
+            db.runSync('DELETE FROM sanctuary_terrain_overrides WHERE row = ? AND col = ?', r, c);
+            delete loadedOverrides[key];
+          });
+          db.execSync('COMMIT');
+          setTerrainOverrides({ ...loadedOverrides });
+        }
+        db.runSync(
+          "INSERT OR REPLACE INTO rpg_discoveries (item_id, source, last_seen_at) VALUES ('system.sanctuary_orphan_water_cleanup_v1', 'system', datetime('now', 'localtime'))",
+        );
+      }
+
       const loadedObjects = db.getAllSync<MapObject>('SELECT * FROM sanctuary_objects');
       scanForZoneCandidates(loadedObjects, loadedOverrides, loadedZones);
 
