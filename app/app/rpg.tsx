@@ -504,6 +504,10 @@ export default function RpgScreen() {
   const pinchStartScale = useSharedValue(1);
   const collisionMap = useSharedValue<number[]>([]);
   const waterMap = useSharedValue<number[]>([]);
+  // Guards the water-hazard respawn so it fires at most once per ~1.5s
+  // instead of every frame — an unguarded per-frame respawn floods
+  // runOnJS(showWorldToast) with React state updates and can hard-crash.
+  const lastWaterRespawn = useSharedValue(0);
   const mapCols = useSharedValue(mapColsCount);
   const mapRows = useSharedValue(mapRowsCount);
   const buildActive = useSharedValue(0);
@@ -1925,7 +1929,13 @@ export default function RpgScreen() {
     ) {
       avatarX.value = TILE_SIZE * 2;
       avatarY.value = TILE_SIZE * 2;
-      runOnJS(showWorldToast)({ text: 'Swept back to shore!', tone: 'warn' });
+      // Debounce: only toast/notify once per entry, never every frame.
+      // Use the frame timestamp (worklet-safe) rather than Date.now().
+      const ts = frameInfo.timeSinceFirstFrame;
+      if (ts - lastWaterRespawn.value > 1500) {
+        lastWaterRespawn.value = ts;
+        runOnJS(showWorldToast)({ text: 'Swept back to shore!', tone: 'warn' });
+      }
       return;
     }
 
