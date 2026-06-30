@@ -1590,6 +1590,34 @@ export const RPG_ITEM_CATALOG = {
     sourceLabel: 'Tools',
     description: 'A basic fishing rod. Equip it and cast into a declared Pond to fish.',
   },
+  rpg_net: {
+    name: 'Net',
+    kind: 'tool',
+    featherIcon: 'wind',
+    rarity: 'common',
+    sourceLabel: 'Crafting',
+    description: 'Carry one into a biome to catch wandering critters.',
+  },
+  rpg_forest_beetle: {
+    name: 'Forest Beetle', kind: 'resource', featherIcon: 'circle', rarity: 'common',
+    sourceLabel: 'Catching', tags: ['critter'], description: 'A glossy beetle caught in the Forest. Sells for a little.',
+  },
+  rpg_wild_rabbit: {
+    name: 'Wild Rabbit', kind: 'resource', featherIcon: 'github', rarity: 'uncommon',
+    sourceLabel: 'Catching', tags: ['critter'], description: 'A quick rabbit netted in the Forest.',
+  },
+  rpg_sand_crab: {
+    name: 'Sand Crab', kind: 'resource', featherIcon: 'aperture', rarity: 'common',
+    sourceLabel: 'Catching', tags: ['critter'], description: 'A skittering crab from the Beach.',
+  },
+  rpg_dune_lizard: {
+    name: 'Dune Lizard', kind: 'resource', featherIcon: 'zap', rarity: 'uncommon',
+    sourceLabel: 'Catching', tags: ['critter'], description: 'A sun-warmed lizard from the Desert.',
+  },
+  rpg_rock_marmot: {
+    name: 'Rock Marmot', kind: 'resource', featherIcon: 'hexagon', rarity: 'uncommon',
+    sourceLabel: 'Catching', tags: ['critter'], description: 'A burly marmot from the Mountains.',
+  },
   rpg_watering_can_basic: {
     name: 'Watering Can',
     kind: 'tool',
@@ -1793,6 +1821,13 @@ const RESOURCE_SELL_PRICES: Record<string, number> = {
   [RPG_ANCIENT_SEED_ITEM_ID]: 50,
   [RPG_FERTILISER_ITEM_ID]: 10,
   [RPG_SPRINKLER_ITEM_ID]: 15,
+  // Net-caught biome critters (Phase 3B) — sell prices mirror CritterCatalog
+  // so catching has a real coin sink, same loop as fish.
+  rpg_forest_beetle: 14,
+  rpg_wild_rabbit: 38,
+  rpg_sand_crab: 22,
+  rpg_dune_lizard: 50,
+  rpg_rock_marmot: 60,
 };
 
 export function getResourceSellPrice(itemId: string | null): number {

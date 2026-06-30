@@ -1811,6 +1811,11 @@ export default function RpgScreen() {
       db.runSync(
         "INSERT INTO user_inventory (item_id, quantity) VALUES ('rpg_sprinkler', 2) ON CONFLICT(item_id) DO NOTHING",
       );
+      // Net granted for testing biome critter-catching without crafting one
+      // first (same testability rationale as the seeds/tools above).
+      db.runSync(
+        "INSERT INTO user_inventory (item_id, quantity) VALUES ('rpg_net', 1) ON CONFLICT(item_id) DO NOTHING",
+      );
       bumpInventoryRevision();
     } catch (e) {
       console.warn('Failed to load RPG sandbox state', e);

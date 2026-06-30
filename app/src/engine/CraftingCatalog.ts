@@ -186,6 +186,16 @@ export const CRAFTING_CATALOG: Record<string, CraftingRecipe> = {
     timeMinutes: 0.1,
     ingredients: [{ itemId: 'rpg_wood_plank', quantity: 1 }],
   },
+  'recipe_net': {
+    recipeId: 'recipe_net',
+    outputItemId: 'rpg_net',
+    outputQuantity: 1,
+    timeMinutes: 0.1,
+    ingredients: [
+      { itemId: 'rpg_stick', quantity: 4 },
+      { itemId: 'rpg_fiber', quantity: 3 },
+    ],
+  },
 
   // Decorative Sanctuary objects — ported from rpg.tsx's old instant-craft
   // list (2026-06-28). No station required, unlike the resource recipes
