@@ -91,6 +91,8 @@ import {
   isTillableGardenCell,
   isPerimeterFullyWalled,
 } from '../src/engine/ZoneLogic';
+import { eligibleFish, rollFish, resolveCatch } from '../src/engine/FishingLogic';
+import { type FishDefinition } from '../src/engine/FishCatalog';
 
 const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
@@ -243,7 +245,7 @@ type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 // src/db/equipment.ts, src/engine/ToolCatalog.ts) — not local React state.
 // Bridge Kit/Path are NOT tools; they're placeable Backpack items (see
 // TERRAIN_EDIT_ITEM_IDS above) per the Universal Placement Rule.
-const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe_basic', 'rpg_watering_can_basic', 'rpg_rake_basic', 'rpg_shovel_basic'];
+const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe_basic', 'rpg_watering_can_basic', 'rpg_rake_basic', 'rpg_shovel_basic', 'rpg_bamboo_pole'];
 // Granted free on first load. Bridge/Path kits are temporarily included
 // here too — until Crafting (Phase 5) gives a real acquisition path,
 // there'd be no way to test terrain-edit placement otherwise.
@@ -460,6 +462,14 @@ export default function RpgScreen() {
   const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
   const [terrainOverrides, setTerrainOverrides] = useState<Record<string, TileType>>({});
   const [equippedToolItemId, setEquippedToolItemId] = useState<string | null>(null);
+  // Fishing (Phase 3A) — a small state machine: idle → casting (waiting
+  // for a bite) → bite (reel window open) → done. hookedFish is the fish
+  // that bit; reactedRef guards a single reel per bite.
+  const [fishingState, setFishingState] = useState<'idle' | 'casting' | 'bite'>('idle');
+  const [hookedFish, setHookedFish] = useState<FishDefinition | null>(null);
+  const fishingCastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fishingBiteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fishingRodRef = useRef<string | null>(null);
   const worldToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const worldCellReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -651,8 +661,10 @@ export default function RpgScreen() {
     refreshCalendar();
     refreshPlayerHp();
     refreshGardenPlots();
+    // Clutter (weeds/twigs) regrows nightly; stone/ore veins are ONE-TIME
+    // (Sanctuary spec) — once mined they're gone, pushing the player to
+    // the renewable biomes. So no rock-vein respawn here.
     respawnStarterSpawns(STARTER_CLUTTER_SPAWNS);
-    respawnStarterSpawns(STARTER_ROCK_VEIN_SPAWNS);
     refreshMapObjects();
     bumpInventoryRevision();
     showWorldToast({ text: 'You wake up refreshed — a new day begins', tone: 'success' });
@@ -1689,8 +1701,9 @@ export default function RpgScreen() {
         );
         if (daysPassed > 0) {
           fastForwardTime(daysPassed);
+          // Clutter regrows over missed days; ore veins are one-time (see
+          // handleSleep) — no rock-vein respawn.
           respawnStarterSpawns(STARTER_CLUTTER_SPAWNS);
-          respawnStarterSpawns(STARTER_ROCK_VEIN_SPAWNS);
         }
       }
       refreshCalendar();
@@ -1812,6 +1825,13 @@ export default function RpgScreen() {
     if (isRaining) applyRainTerrain();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRaining, terrainOverrides]);
+
+  // Clear any pending fishing timers on unmount so a cast/bite can't fire
+  // setState after the screen is gone.
+  useEffect(() => () => {
+    if (fishingCastTimer.current) clearTimeout(fishingCastTimer.current);
+    if (fishingBiteTimer.current) clearTimeout(fishingBiteTimer.current);
+  }, []);
 
   useEffect(() => {
     if (activeZone !== 'dungeon') return;
@@ -3290,10 +3310,101 @@ export default function RpgScreen() {
     });
   };
 
+  // Fishing only works at a DECLARED Pond — a WATER tile that belongs to
+  // an active pond zone. (Decorative ditch-water that was never declared a
+  // Pond doesn't count; this is what gives the Pond declaration a payoff.)
+  // Checks the player's own cell + 4 neighbours so you can fish from the
+  // bank without standing in the water.
+  const findAdjacentPondWater = (row: number, col: number): boolean => {
+    const pondCells = new Set(
+      sanctuaryZones.filter(z => z.type === 'pond' && z.state === 'active')
+        .flatMap(z => z.interiorCells),
+    );
+    const candidates = [
+      `${row}:${col}`, `${row - 1}:${col}`, `${row + 1}:${col}`, `${row}:${col - 1}`, `${row}:${col + 1}`,
+    ];
+    return candidates.some(key => {
+      if (!pondCells.has(key)) return false;
+      const [r, c] = key.split(':').map(Number);
+      const t = (terrainOverrides[key] ?? SanctuaryMap[r]?.[c]) as TileType;
+      return t === TileType.WATER;
+    });
+  };
+
+  const clearFishingTimers = () => {
+    if (fishingCastTimer.current) { clearTimeout(fishingCastTimer.current); fishingCastTimer.current = null; }
+    if (fishingBiteTimer.current) { clearTimeout(fishingBiteTimer.current); fishingBiteTimer.current = null; }
+  };
+
+  const startFishing = (rodItemId: string) => {
+    if (fishingState !== 'idle') return;
+    if (!spendToolEnergy(rodItemId)) return;
+    // Pick the fish that will bite up-front (deterministic given the
+    // window); null = nothing biting now (wrong season/time).
+    const hour = new Date().getHours();
+    const fish = rollFish(eligibleFish('sanctuary', currentSeason, hour), Math.random);
+    fishingRodRef.current = rodItemId;
+    setFishingState('casting');
+    showWorldToast({ text: 'You cast your line…', tone: 'muted' });
+    // Bite after a random 1.5–4s wait.
+    const waitMs = 1500 + Math.floor(Math.random() * 2500);
+    fishingCastTimer.current = setTimeout(() => {
+      if (!fish) {
+        setFishingState('idle');
+        showWorldToast({ text: 'Nothing biting right now — try another season or time.', tone: 'muted' });
+        return;
+      }
+      setHookedFish(fish);
+      setFishingState('bite');
+      showWorldToast({ text: `Something's biting — reel it in!`, tone: 'warn' });
+      // Reel window: ~1.8s to tap Reel before it escapes.
+      fishingBiteTimer.current = setTimeout(() => {
+        setFishingState(prev => {
+          if (prev === 'bite') {
+            showWorldToast({ text: 'It got away…', tone: 'muted' });
+            setHookedFish(null);
+            return 'idle';
+          }
+          return prev;
+        });
+      }, 1800);
+    }, waitMs);
+  };
+
+  const reelFish = () => {
+    if (fishingState !== 'bite' || !hookedFish) return;
+    clearFishingTimers();
+    const rodTier = getToolDef(fishingRodRef.current ?? '')?.tier ?? 'Basic';
+    const landed = resolveCatch(rodTier, hookedFish, true, Math.random);
+    if (landed) {
+      addSandboxInventoryItem(hookedFish.itemId, 1, 'forage');
+      bumpInventoryRevision();
+      showWorldToast({ text: `Caught a ${hookedFish.name}!`, item: getRpgItem(hookedFish.itemId), tone: 'success' });
+    } else {
+      showWorldToast({ text: `The ${hookedFish.name} slipped off the hook.`, tone: 'muted' });
+    }
+    setHookedFish(null);
+    setFishingState('idle');
+  };
+
   const useEquippedTool = (row: number, col: number) => {
     const tile = mapData[row]?.[col];
     const plot = gardenPlots.find(item => item.row === row && item.col === col);
     const toolType = equippedToolItemId ? getToolDef(equippedToolItemId)?.type : null;
+
+    if (toolType === 'FishingRod') {
+      if (fishingState !== 'idle') {
+        // A second Interact while a fish is biting = reel.
+        if (fishingState === 'bite') reelFish();
+        return;
+      }
+      if (!findAdjacentPondWater(row, col)) {
+        showWorldToast({ text: 'Stand by a declared Pond to fish', tone: 'warn' });
+        return;
+      }
+      startFishing(equippedToolItemId!);
+      return;
+    }
 
     if (toolType === 'WateringCan') {
       const farmPlot = getFarmingPlotAt(row, col);
@@ -3909,6 +4020,27 @@ export default function RpgScreen() {
         <View style={[styles.tileInspector, { top: safeAreaInsets.top + 120, right: 12 + safeAreaInsets.right }]} pointerEvents="none">
           <Feather name="map-pin" size={12} color="#cde8c2" />
           <Text style={styles.tileInspectorText}>{getTileDisplayName(currentTileType)}</Text>
+        </View>
+      )}
+
+      {activeZone === 'sanctuary' && fishingState !== 'idle' && (
+        <View style={[styles.fishingPrompt, { bottom: 150 + safeAreaInsets.bottom }]}>
+          {fishingState === 'casting' ? (
+            <View style={styles.fishingPromptRow} pointerEvents="none">
+              <Feather name="anchor" size={16} color="#cde8c2" />
+              <Text style={styles.fishingPromptText}>Waiting for a bite…</Text>
+            </View>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reel in the fish"
+              style={styles.fishingReelButton}
+              onPress={reelFish}
+            >
+              <Feather name="alert-circle" size={18} color="#0b140c" />
+              <Text style={styles.fishingReelText}>REEL!</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
@@ -4745,6 +4877,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(205,232,194,0.4)',
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  fishingPrompt: {
+    position: 'absolute',
+    alignSelf: 'center',
+    alignItems: 'center',
+  },
+  fishingPromptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  fishingPromptText: {
+    fontFamily: fonts.ui.bold,
+    fontSize: 13,
+    color: '#cde8c2',
+  },
+  fishingReelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#f1c40f',
+  },
+  fishingReelText: {
+    fontFamily: fonts.ui.bold,
+    fontSize: 16,
+    color: '#0b140c',
   },
   tileInspectorText: {
     fontFamily: fonts.ui.bold,

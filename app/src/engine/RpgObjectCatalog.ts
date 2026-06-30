@@ -1582,6 +1582,14 @@ export const RPG_ITEM_CATALOG = {
     sourceLabel: 'Tools',
     description: 'Dig grass into a river channel. Stepping into deep water sends you back to spawn.',
   },
+  rpg_bamboo_pole: {
+    name: 'Bamboo Pole',
+    kind: 'tool',
+    featherIcon: 'anchor',
+    rarity: 'common',
+    sourceLabel: 'Tools',
+    description: 'A basic fishing rod. Equip it and cast into a declared Pond to fish.',
+  },
   rpg_watering_can_basic: {
     name: 'Watering Can',
     kind: 'tool',

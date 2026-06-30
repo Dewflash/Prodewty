@@ -51,7 +51,9 @@
     "validate:rpg": "node scripts/validate-rpg-content.js",
     "test:zones": "npx tsx src/engine/ZoneLogic.test.ts",
     "test:farming": "npx tsx src/db/farmingOvernight.integration.test.ts",
-    "test:phase2": "npm run test:zones && npm run test:farming"
+    "test:phase2": "npm run test:zones && npm run test:farming",
+    "test:fishing": "npx tsx src/engine/FishingLogic.test.ts",
+    "test:all": "npm run test:zones && npm run test:farming && npm run test:fishing"
   },
   "private": true
 }
