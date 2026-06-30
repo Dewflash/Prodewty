@@ -3491,6 +3491,30 @@ export default function RpgScreen() {
             })
           ))}
 
+          {/* A labelled tag on each DECLARED zone — this is what
+              distinguishes a real Pond/Garden/Building Plot from loose
+              decorative terrain (e.g. a ditch that filled with water but
+              was never declared a Pond). Anchored at the zone's top-left
+              interior cell. */}
+          {activeZone === 'sanctuary' && sanctuaryZones.filter(z => z.state === 'active').map(zone => {
+            const cells = zone.interiorCells.map(k => k.split(':').map(Number));
+            if (cells.length === 0) return null;
+            const anchor = cells.reduce((best, [r, c]) => (
+              r < best[0] || (r === best[0] && c < best[1]) ? [r, c] : best
+            ), cells[0]);
+            const icon = zone.type === 'pond' ? 'droplet' : zone.type === 'garden' ? 'feather' : 'home';
+            return (
+              <View
+                key={`zone-label-${zone.id}`}
+                pointerEvents="none"
+                style={[styles.zoneLabel, { left: anchor[1] * TILE_SIZE + 2, top: anchor[0] * TILE_SIZE - 16 }]}
+              >
+                <Feather name={icon} size={9} color="#0b140c" />
+                <Text style={styles.zoneLabelText}>{ZONE_TYPE_LABEL[zone.type]}</Text>
+              </View>
+            );
+          })}
+
           {TESTING_SHOW_ZONE_MAP && activeZone === 'sanctuary' && [...zoneCellMap.entries()].map(([key, zoneId]) => {
             const [row, col] = key.split(':').map(Number);
             return (
@@ -4473,6 +4497,23 @@ const styles = StyleSheet.create({
   },
   zoneOverlay: {
     position: 'absolute',
+  },
+  zoneLabel: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(11,20,12,0.35)',
+  },
+  zoneLabelText: {
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+    color: '#0b140c',
   },
   zoneDebugLabel: {
     position: 'absolute',
