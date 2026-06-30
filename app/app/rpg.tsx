@@ -89,6 +89,7 @@ import {
   buildZoneCellMap,
   expectedZoneCellMapSize,
   isTillableGardenCell,
+  isPerimeterFullyWalled,
 } from '../src/engine/ZoneLogic';
 
 const DUNGEON_ENTRY_COST = 20;
@@ -1391,6 +1392,11 @@ export default function RpgScreen() {
       const freshObjects = refreshMapObjects();
       const placedTags = getItem(buildItem.itemId)?.tags;
       if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
+        // A placed perimeter piece can either re-seal a breached zone
+        // (repair) or close a brand-new ring (fresh candidate). Check
+        // repair first so re-walling a breach restores it rather than
+        // being ignored.
+        restoreBreachedZonesIfRepaired(freshObjects);
         scanForZoneCandidates(freshObjects);
       }
     } catch (e) {
@@ -2977,6 +2983,28 @@ export default function RpgScreen() {
       text: `${ZONE_TYPE_LABEL[zone.type]} breached! Repair the perimeter to restore it.`,
       tone: 'warn',
     });
+  };
+
+  // Repair flow (the inverse of breach): a breached zone keeps its full
+  // recorded perimeterCells, so re-placing a structure/entrance piece on
+  // every one of those cells re-seals the ring and flips it back to
+  // 'active'. Runs after any perimeter-piece placement. objectsOverride is
+  // the freshly-refreshed mapObjects so the just-placed piece is included.
+  const restoreBreachedZonesIfRepaired = (objectsOverride?: MapObject[]) => {
+    const breached = sanctuaryZones.filter(z => z.state === 'breached');
+    if (breached.length === 0) return;
+    const perimeterCells = new Set(
+      (objectsOverride ?? mapObjects).filter(isZonePerimeterObject).map(o => `${o.row}:${o.col}`),
+    );
+    let anyRestored = false;
+    for (const zone of breached) {
+      if (isPerimeterFullyWalled(zone, perimeterCells)) {
+        db.runSync('UPDATE sanctuary_zones SET state = ? WHERE id = ?', 'active', zone.id);
+        anyRestored = true;
+        showWorldToast({ text: `${ZONE_TYPE_LABEL[zone.type]} restored!`, tone: 'success' });
+      }
+    }
+    if (anyRestored) refreshSanctuaryZones();
   };
 
   // One-time migration: the old sanctuary_ponds/sanctuary_building_plots

@@ -8,6 +8,7 @@ import {
   buildZoneCellMap,
   expectedZoneCellMapSize,
   isTillableGardenCell,
+  isPerimeterFullyWalled,
   activeGardenCellSet,
   cellKey,
   type ZoneRecordLike,
@@ -107,6 +108,20 @@ console.log('Phase 2 gate — Hoe tillable only inside active Garden:');
   check('NOT tillable inside a pond', isTillableGardenCell(zones, 6, 6) === false);
   check('NOT tillable outside any zone', isTillableGardenCell(zones, 1, 1) === false);
   check('NOT tillable on a garden perimeter (wall) cell', isTillableGardenCell(zones, 3, 4) === false);
+}
+
+console.log('Repair — breached zone re-seals only when every perimeter cell is filled:');
+{
+  const zone: ZoneRecordLike = {
+    id: 1, type: 'garden', state: 'breached',
+    interiorCells: ['4:4'], perimeterCells: ['3:3', '3:4', '3:5', '4:3', '4:5', '5:3', '5:4', '5:5'],
+  };
+  const missingOne = new Set(zone.perimeterCells.filter(c => c !== '3:4')); // gap still open
+  check('still breached while a perimeter cell is missing', isPerimeterFullyWalled(zone, missingOne) === false);
+  const allFilled = new Set(zone.perimeterCells); // wall replaced
+  check('restorable once every perimeter cell is filled again', isPerimeterFullyWalled(zone, allFilled) === true);
+  const extraElsewhere = new Set([...missingOne, '9:9']); // a piece placed somewhere irrelevant
+  check('a piece placed on the WRONG cell does not restore it', isPerimeterFullyWalled(zone, extraElsewhere) === false);
 }
 
 console.log('Phase 2 freeze — active-garden cell set drives overnight growth:');

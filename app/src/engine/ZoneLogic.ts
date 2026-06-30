@@ -146,6 +146,15 @@ export function isTillableGardenCell(zones: ZoneRecordLike[], row: number, col: 
 }
 
 /**
+ * Repair check: a breached zone retains its full recorded perimeterCells,
+ * so it is re-sealed (and can flip back to 'active') exactly when every one
+ * of those cells is occupied by a perimeter piece again.
+ */
+export function isPerimeterFullyWalled(zone: ZoneRecordLike, presentPerimeterCells: Set<CellKey>): boolean {
+  return zone.perimeterCells.every(cell => presentPerimeterCells.has(cell));
+}
+
+/**
  * Cells belonging to an ACTIVE Garden — crops grow only inside these. A
  * breached Garden's cells are absent, so crops inside it freeze (used by
  * processOvernightFarming).
