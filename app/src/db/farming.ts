@@ -3,6 +3,7 @@ import { getRPGState } from './rpg';
 import { sqlNow } from '../utils/date';
 import { getCropForSeed } from '../engine/RpgObjectCatalog';
 import { addSkillPoints } from './skills';
+import { activeGardenCellSet, type ZoneRecordLike, type ZoneType, type ZoneState } from '../engine/ZoneLogic';
 
 export type FarmingPlot = {
   id: number;
@@ -232,16 +233,53 @@ export async function useSprinkler(row: number, col: number): Promise<'ok' | 'no
   });
 }
 
+// Cells that belong to an ACTIVE Garden zone (Phase 2). Food crops only
+// grow inside an active Garden; if the Garden is breached (a perimeter
+// piece removed) its cells drop out of this set and any crops inside
+// freeze — they don't die or advance — until the Garden is restored.
+// Computed at night from sanctuary_zones rather than stored per-plot, so
+// there's no schema change and no zone_id to keep in sync on every till.
+// The actual set-building is the unit-tested activeGardenCellSet (see
+// ZoneLogic.test.ts) — this just loads the rows from the DB.
+function getActiveGardenCells(): Set<string> {
+  try {
+    const rows = db.getAllSync<{ id: number; type: string; state: string; interior_cells: string; perimeter_cells: string }>(
+      'SELECT id, type, state, interior_cells, perimeter_cells FROM sanctuary_zones',
+    );
+    const zones: ZoneRecordLike[] = rows.map(r => ({
+      id: r.id,
+      type: r.type as ZoneType,
+      state: r.state as ZoneState,
+      interiorCells: JSON.parse(r.interior_cells),
+      perimeterCells: JSON.parse(r.perimeter_cells),
+    }));
+    return activeGardenCellSet(zones);
+  } catch (e) {
+    console.warn('Failed to read active garden cells', e);
+    return new Set<string>();
+  }
+}
+
 export function processOvernightFarming(newSeason?: string): void {
   try {
     db.execSync('BEGIN TRANSACTION');
-    
+
+    const activeGardenCells = getActiveGardenCells();
+
     // Watered plots grow their crop
     const plots = db.getAllSync<FarmingPlot & { crop_item_id: string | null; current_stage: number }>('SELECT *, planted_seed_id as crop_item_id, growth_stage as current_stage FROM farming_plots');
-    
+
     for (const p of plots) {
       if (!p.crop_item_id) {
         db.runSync('UPDATE farming_plots SET is_watered = 0 WHERE id = ?', p.id);
+        continue;
+      }
+
+      // Freeze growth if this plot is not inside an active Garden zone
+      // (e.g. its Garden was breached). Keep the water flag intact so it
+      // resumes growing the moment the Garden is restored — no progress
+      // lost, none gained.
+      if (!activeGardenCells.has(`${p.row}:${p.col}`)) {
         continue;
       }
 
@@ -334,23 +372,9 @@ export async function harvestPlot(row: number, col: number): Promise<'ok' | 'no_
 
 
 
-export function processOvernightGrowth(): void {
-  // Every night, if a plot is watered and has a seed, increase its growth stage.
-  // Then reset all water status to 0.
-  try {
-    db.execSync('BEGIN TRANSACTION');
-    
-    db.runSync(`
-      UPDATE farming_plots 
-      SET growth_stage = growth_stage + 1
-      WHERE is_watered = 1 AND planted_seed_id IS NOT NULL
-    `);
-
-    db.runSync('UPDATE farming_plots SET is_watered = 0');
-    
-    db.execSync('COMMIT');
-  } catch (e) {
-    try { db.execSync('ROLLBACK'); } catch {}
-    console.warn('Failed to process overnight crop growth', e);
-  }
-}
+// NOTE: a second overnight-growth function (processOvernightGrowth) was
+// removed here 2026-06-30. It was dead code (never called — sleepOvernight
+// uses processOvernightFarming) and, worse, it advanced growth with no
+// maxStage cap, no season check, and no Garden zone gate — so wiring it
+// would have silently defeated the Phase 2 Garden freeze. processOvernight-
+// Farming above is the single source of truth for nightly crop growth.

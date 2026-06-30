@@ -84,6 +84,12 @@ import { travelToZone } from '../src/db/zones';
 import { getZoneDef } from '../src/engine/ZoneCatalog';
 import { getBiomeTree } from '../src/engine/BiomeTreeCatalog';
 import { logicalToday } from '../src/db/dayBoundary';
+import {
+  findEnclosedRegions,
+  buildZoneCellMap,
+  expectedZoneCellMapSize,
+  isTillableGardenCell,
+} from '../src/engine/ZoneLogic';
 
 const DUNGEON_ENTRY_COST = 20;
 const AVATAR_SIZE = 64;
@@ -396,31 +402,18 @@ export default function RpgScreen() {
   const [sanctuaryZones, setSanctuaryZones] = useState<SanctuaryZoneRecord[]>([]);
   const [pendingZoneCandidates, setPendingZoneCandidates] = useState<PendingZoneCandidate[]>([]);
 
-  const zonesById = useMemo(() => {
-    const map: Record<number, SanctuaryZoneRecord> = {};
-    sanctuaryZones.forEach(zone => { map[zone.id] = zone; });
-    return map;
-  }, [sanctuaryZones]);
-
   // O(1) tile->zone lookup. Only 'active' zones are mapped — a breach
   // pulls its cells out of this Map entirely (per spec), so a Hoe/Shovel
   // zone-gate check or a building's containment check both naturally see
   // "not in an active zone" without a separate state check.
   const zoneCellMap = useMemo(() => {
-    const map = new Map<string, number>();
-    sanctuaryZones.forEach(zone => {
-      if (zone.state !== 'active') return;
-      zone.interiorCells.forEach(key => map.set(key, zone.id));
-      zone.perimeterCells.forEach(key => map.set(key, zone.id));
-    });
+    const map = buildZoneCellMap(sanctuaryZones);
     // Verification hook: if the Map's size doesn't match the sum of every
     // active zone's recorded cells, two zones are silently claiming the
     // same tile (overlapping declarations / a key collision). Surface it
     // immediately rather than letting it manifest as a confusing gameplay
-    // bug three systems later.
-    const expectedSize = sanctuaryZones
-      .filter(zone => zone.state === 'active')
-      .reduce((sum, zone) => sum + zone.interiorCells.length + zone.perimeterCells.length, 0);
+    // bug three systems later. (buildZoneCellMap is unit-tested.)
+    const expectedSize = expectedZoneCellMapSize(sanctuaryZones);
     if (map.size !== expectedSize) {
       console.warn(
         `[zones] cellMap size mismatch: ${map.size} entries built, ${expectedSize} expected — zones may overlap`,
@@ -2858,15 +2851,15 @@ export default function RpgScreen() {
     // repaired/redeclared, not silently rediscovered as a new candidate.
     const alreadyZoned = new Set(zones.flatMap(z => [...z.interiorCells, ...z.perimeterCells]));
 
-    const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
     const rows = SanctuaryMap.length;
     const cols = SanctuaryMap[0].length;
 
     // "Open" = a cell the player could walk through that is NOT a barrier.
     // Barriers are: out of bounds, collision tiles (incl. the map's outer
     // wall), the player's own perimeter pieces, and cells owned by an
-    // existing zone. The exterior flood and the enclosed grouping below
-    // both move only through open cells.
+    // existing zone. The flood-from-outside algorithm itself lives in the
+    // unit-tested findEnclosedRegions (ZoneLogic.ts) — this just supplies
+    // the map-aware isOpen predicate.
     const isOpen = (r: number, c: number) => {
       if (r < 0 || c < 0 || r >= rows || c >= cols) return false;
       const key = `${r}:${c}`;
@@ -2875,71 +2868,7 @@ export default function RpgScreen() {
       return !TILE_COLLISION[tile];
     };
 
-    // Step 1 — flood the EXTERIOR. This is the "flood from the outside"
-    // approach, which is correct by construction and replaces the old
-    // seed-from-each-wall + size-cap heuristic that produced phantom
-    // sliver zones. Seed from the open ring just inside the map's outer
-    // wall (the main play area always touches it) and flood through every
-    // open cell. Everything reachable from there is, by definition, NOT
-    // enclosed — including the whole open map, so a breach gap can never
-    // turn the map into one giant zone. Consequence (intentional): a
-    // zone must be sealed ENTIRELY by perimeter pieces; the map edge
-    // cannot serve as one of its walls.
-    const exterior = new Set<string>();
-    const stack: [number, number][] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const onInnerRing = r === 1 || c === 1 || r === rows - 2 || c === cols - 2;
-        if (onInnerRing && isOpen(r, c)) stack.push([r, c]);
-      }
-    }
-    while (stack.length > 0) {
-      const [r, c] = stack.pop()!;
-      const key = `${r}:${c}`;
-      if (exterior.has(key)) continue;
-      exterior.add(key);
-      for (const [dr, dc] of deltas) {
-        if (isOpen(r + dr, c + dc) && !exterior.has(`${r + dr}:${c + dc}`)) {
-          stack.push([r + dr, c + dc]);
-        }
-      }
-    }
-
-    // Step 2 — every open cell NOT in the exterior is enclosed. Group
-    // them into connected components; each component is one zone
-    // candidate, with its bordering perimeter pieces recorded.
-    const visited = new Set<string>();
-    const results: PendingZoneCandidate[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const key = `${r}:${c}`;
-        if (!isOpen(r, c) || exterior.has(key) || visited.has(key)) continue;
-
-        const component: string[] = [];
-        const perimeterTouched = new Set<string>();
-        const compStack: [number, number][] = [[r, c]];
-        while (compStack.length > 0) {
-          const [cr, cc] = compStack.pop()!;
-          const ck = `${cr}:${cc}`;
-          if (visited.has(ck)) continue;
-          visited.add(ck);
-          component.push(ck);
-          for (const [dr, dc] of deltas) {
-            const nKey = `${cr + dr}:${cc + dc}`;
-            if (perimeterCoords.has(nKey)) {
-              perimeterTouched.add(nKey);
-            } else if (isOpen(cr + dr, cc + dc) && !exterior.has(nKey)) {
-              compStack.push([cr + dr, cc + dc]);
-            }
-          }
-        }
-
-        if (perimeterTouched.size > 0 && component.length > 0) {
-          results.push({ interiorCells: component, perimeterCells: [...perimeterTouched] });
-        }
-      }
-    }
-    return results;
+    return findEnclosedRegions(perimeterCoords, isOpen, rows, cols);
   };
 
   const scanForZoneCandidates = (
@@ -2979,6 +2908,7 @@ export default function RpgScreen() {
     building_plot: 'Building Plot',
   };
 
+
   const declareZone = (candidate: PendingZoneCandidate, type: SanctuaryZoneType) => {
     db.runSync(
       'INSERT INTO sanctuary_zones (type, state, interior_cells, perimeter_cells, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -2987,7 +2917,10 @@ export default function RpgScreen() {
     refreshSanctuaryZones();
     const candidateId = zoneCandidateKey(candidate);
     setPendingZoneCandidates(prev => prev.filter(c => zoneCandidateKey(c) !== candidateId));
-    showWorldToast({ text: `${ZONE_TYPE_LABEL[type]} declared!`, tone: 'success' });
+    const hint = type === 'garden'
+      ? 'Garden declared! Equip a Hoe and till the soil inside to grow food.'
+      : `${ZONE_TYPE_LABEL[type]} declared!`;
+    showWorldToast({ text: hint, tone: 'success' });
   };
 
   const promptZoneDeclaration = (candidate: PendingZoneCandidate) => {
@@ -3261,6 +3194,14 @@ export default function RpgScreen() {
       return;
     }
     if (toolType === 'Hoe') {
+      // Phase 2 zone gate: food farming only happens inside a declared,
+      // active Garden zone. (Shovel/Rake stay un-gated — they shape the
+      // terrain you use to BUILD a zone, so they can't require one.)
+      // isTillableGardenCell is the unit-tested predicate (ZoneLogic.ts).
+      if (!isTillableGardenCell(sanctuaryZones, row, col)) {
+        showWorldToast({ text: 'Tilling only works inside a Garden — ring an area and declare it a Garden first', tone: 'warn' });
+        return;
+      }
       if (tile !== TileType.GRASS) {
         showWorldToast({ text: 'Hoe only works on grass', tone: 'warn' });
         return;

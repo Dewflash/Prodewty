@@ -48,7 +48,10 @@
     "web": "expo start --web",
     "postinstall": "patch-package",
     "android": "expo run:android",
-    "validate:rpg": "node scripts/validate-rpg-content.js"
+    "validate:rpg": "node scripts/validate-rpg-content.js",
+    "test:zones": "npx tsx src/engine/ZoneLogic.test.ts",
+    "test:farming": "npx tsx src/db/farmingOvernight.integration.test.ts",
+    "test:phase2": "npm run test:zones && npm run test:farming"
   },
   "private": true
 }
