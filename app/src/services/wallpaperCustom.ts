@@ -1,6 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Directory, File, Paths } from 'expo-file-system';
-import { getColors } from 'react-native-image-colors';
 import { getSetting, setSetting, deleteSettingsByPrefix } from '../db/settings';
 import { colors } from '../theme/colors';
 import { hexToRgb, complementaryRgb, rgbToRgba, contrastOf } from '../utils/color';
@@ -10,6 +9,22 @@ const SETTING_KEY = 'custom_wallpaper';
 const PALETTE_PREFIX = 'wallpaper_palette_';
 const OVERLAY_KEY = `${PALETTE_PREFIX}overlay`;
 const TEXT_KEY = `${PALETTE_PREFIX}text`;
+
+type ImageColorsResult =
+  | { platform: 'ios'; background: string }
+  | { platform: string; dominant: string };
+
+type ImageColorsModule = {
+  getColors: (uri: string, options: { fallback: string; cache: boolean; quality: 'low' | 'high' }) => Promise<ImageColorsResult>;
+};
+
+function loadImageColors(): ImageColorsModule | null {
+  try {
+    return require('react-native-image-colors') as ImageColorsModule;
+  } catch {
+    return null;
+  }
+}
 
 // Local file URI of the user-uploaded wallpaper, or null if none has been
 // uploaded (falls back to the flat colors.bg background).
@@ -43,8 +58,11 @@ export function getWallpaperTextColor(): string {
 // reads during render.
 async function analyzeWallpaperColors(uri: string): Promise<void> {
   try {
-    const result = await getColors(uri, { fallback: '#1E293B', cache: false, quality: 'low' });
-    const dominantHex = result.platform === 'ios' ? result.background : result.dominant;
+    const imageColors = loadImageColors();
+    if (!imageColors) throw new Error('ImageColors native module unavailable');
+
+    const result = await imageColors.getColors(uri, { fallback: '#1E293B', cache: false, quality: 'low' });
+    const dominantHex = 'background' in result ? result.background : result.dominant;
     const overlay = complementaryRgb(hexToRgb(dominantHex));
     setSetting(OVERLAY_KEY, rgbToRgba(overlay, 0.85));
     setSetting(TEXT_KEY, contrastOf(overlay, colors.textOnSurface, colors.bg));

@@ -25,15 +25,32 @@ import {
   getPlaceableItem,
   getResourceSellPrice,
   getRpgItem,
+  getSanctuaryDesignRole,
+  getSanctuaryLayoutFitLabels,
   RPG_UI_FRAMES,
   type RpgDrop,
   type RpgItemDefinition,
   type ShopCatalogItem,
 } from '../src/engine/RpgObjectCatalog';
+import { SanctuaryFootprintPreview } from '../src/engine/SanctuaryFootprintPreview';
 import { RPG_ARCHIVE_FRAMES } from '../src/engine/RpgAssetRegistry';
 import { DungeonMap, getResponsiveTileSize, getTileDisplayName, SanctuaryMap, TILE_COLLISION, TILE_SIZE as DEFAULT_TILE_SIZE, TileType } from '../src/engine/MapData';
 import { DUNGEON_ENEMY_DEFS, DUNGEON_ENEMY_SPAWNS, type EnemyDefId } from '../src/engine/Enemies';
-import { FLOOR_TILE_COORD, TilesetTile, WALL_TILE_COORD, WaterTile } from '../src/engine/TileArt';
+import {
+  FLOOR_TILE_COORD,
+  getSanctuaryTerrainPreviewColor,
+  SanctuaryTerrainTile,
+  TilesetTile,
+  WALL_TILE_COORD,
+  WaterTile,
+} from '../src/engine/TileArt';
+import {
+  canSanctuaryTerrainPaintTile,
+  getSanctuaryTerrainPaintBlockedHint,
+  getSanctuaryTerrainPaintTarget,
+  getSanctuaryTerrainPaintUsageLabel,
+  SANCTUARY_TERRAIN_PAINT_ITEM_IDS,
+} from '../src/engine/SanctuaryTerrainPaintPreview';
 import { db } from '../src/db/schema';
 import {
   advanceGardenPlotWithInventoryItem,
@@ -142,26 +159,26 @@ type SanctuaryZoneRecord = {
   perimeterCells: string[];
 };
 type PendingZoneCandidate = { interiorCells: string[]; perimeterCells: string[] };
+type ZoneRepairCell = { key: string; row: number; col: number };
+type PendingZoneProfile = {
+  suggestedType: SanctuaryZoneType;
+  label: string;
+  detail: string;
+  icon: keyof typeof Feather.glyphMap;
+};
 type BuildItem = {
   mode: 'place' | 'edit' | 'plant' | 'terrain';
   itemId: string;
   label: string;
   objectId: number | null;
+  purpose?: 'repair';
 };
 
 // Terrain-edit Backpack items (Bridge Kit, Path) — placed via the normal
 // build-mode flow, but the confirm action edits the tile instead of
 // spawning a sanctuary_objects row. See "Universal placement rule" in
 // RPG_ARCHITECTURE.md.
-const TERRAIN_EDIT_ITEM_IDS = ['rpg_bridge_kit', 'rpg_path_kit', 'rpg_stone_slab', 'rpg_wood_tile'] as const;
-// Which tile each terrain-edit item paints. Stone Slab / Wood Tile are
-// craftable building floors (Sanctuary spec); Bridge/Path are the originals.
-const TERRAIN_EDIT_TILE: Record<string, TileType> = {
-  rpg_bridge_kit: TileType.BRIDGE,
-  rpg_path_kit: TileType.PATH,
-  rpg_stone_slab: TileType.STONE_SLAB,
-  rpg_wood_tile: TileType.WOOD_TILE,
-};
+const TERRAIN_EDIT_ITEM_IDS = SANCTUARY_TERRAIN_PAINT_ITEM_IDS;
 // Real food-crop seeds (turnip/cabbage/pumpkin, src/db/farming.ts's
 // farming_plots) vs decorative CraftPix tree/flower seeds (garden_plots,
 // the original Sanctuary system) — distinguished by sourceLabel since
@@ -200,13 +217,7 @@ const MASTERY_LABELS: Record<SkillType, string> = {
 };
 
 function terrainEditAllowsTile(itemId: string, tile: TileType): boolean {
-  if (itemId === 'rpg_bridge_kit') return tile === TileType.WATER;
-  if (itemId === 'rpg_path_kit') return tile === TileType.GRASS || tile === TileType.TILLED;
-  // Building floors lay over open ground (grass/sand/tilled), not water.
-  if (itemId === 'rpg_stone_slab' || itemId === 'rpg_wood_tile') {
-    return tile === TileType.GRASS || tile === TileType.SAND || tile === TileType.TILLED;
-  }
-  return false;
+  return canSanctuaryTerrainPaintTile(itemId, tile);
 }
 type PlacementReason =
   | 'Ready'
@@ -307,8 +318,26 @@ const SEASON_CONFIG: Record<SeasonId, { label: string; icon: keyof typeof Feathe
     hint: '+Crystal Shards on harvest',
   },
 };
+const SANCTUARY_SEASON_AMBIENCE: Record<SeasonId, { backgroundColor: string; borderColor: string }> = {
+  spring: {
+    backgroundColor: 'rgba(126,217,87,0.06)',
+    borderColor: 'rgba(126,217,87,0.16)',
+  },
+  summer: {
+    backgroundColor: 'rgba(241,196,15,0.055)',
+    borderColor: 'rgba(241,196,15,0.14)',
+  },
+  autumn: {
+    backgroundColor: 'rgba(214,125,49,0.06)',
+    borderColor: 'rgba(214,125,49,0.16)',
+  },
+  winter: {
+    backgroundColor: 'rgba(112,214,255,0.065)',
+    borderColor: 'rgba(112,214,255,0.17)',
+  },
+};
 
-type InteractionTargetKind = 'object' | 'plot' | 'farmplot' | 'portal' | 'enemy';
+type InteractionTargetKind = 'object' | 'plot' | 'farmplot' | 'portal' | 'enemy' | 'pending_zone' | 'repair_gap';
 type InteractionTargetCell = { row: number; col: number };
 type LiveEnemy = { uid: string; defId: EnemyDefId; row: number; col: number; hp: number };
 type InteractionTarget = {
@@ -323,6 +352,9 @@ type InteractionTarget = {
   plot?: GardenPlot;
   farmPlot?: FarmingPlot;
   enemy?: LiveEnemy;
+  pendingZone?: PendingZoneCandidate;
+  repairZone?: SanctuaryZoneRecord;
+  repairCell?: ZoneRepairCell;
 };
 type ResolvedInteractionTarget = {
   row: number;
@@ -452,6 +484,7 @@ export default function RpgScreen() {
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
+  const [preferredBuildAnchor, setPreferredBuildAnchor] = useState<{ row: number; col: number } | null>(null);
   const [isRaining, setIsRaining] = useState(false);
   const [interactingObjectId, setInteractingObjectId] = useState<number | null>(null);
   const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);
@@ -554,9 +587,92 @@ export default function RpgScreen() {
       }
     : null;
   const buildCatalogItem = getItem(buildItem?.itemId ?? null);
+  const selectedObjectItem = selectedObject ? getItem(selectedObject.type) : null;
   const buildSeedItem = buildItem?.mode === 'plant' ? getRpgItem(buildItem.itemId) : null;
+  const buildTerrainTile = buildItem?.mode === 'terrain' ? getSanctuaryTerrainPaintTarget(buildItem.itemId) ?? TileType.PATH : null;
+  const buildTerrainPaintUsageLabel = buildItem?.mode === 'terrain' ? getSanctuaryTerrainPaintUsageLabel(buildItem.itemId) : null;
+  const buildPreviewItem = buildCatalogItem ?? buildSeedItem;
+  const buildDesignRole = getSanctuaryDesignRole(buildPreviewItem);
+  const buildLayoutFits = getSanctuaryLayoutFitLabels(buildPreviewItem);
+  const buildFootprintCols = buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.colWidth ?? 1;
+  const buildFootprintRows = buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.colHeight ?? 1;
+  const buildFootprintLabel = buildItem?.purpose === 'repair'
+    ? 'Repair'
+    : buildItem?.mode === 'plant' ? 'Planting' : buildItem?.mode === 'edit' ? 'Moving' : buildItem?.mode === 'terrain' ? 'Terrain' : 'Footprint';
   const buildGhostWidth = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visWidth ?? 0) * TILE_SIZE;
   const buildGhostHeight = (buildItem?.mode === 'plant' ? 1 : buildCatalogItem?.visHeight ?? 0) * TILE_SIZE;
+  const buildGhostFootprintWidth = buildFootprintCols * TILE_SIZE;
+  const buildGhostFootprintHeight = buildFootprintRows * TILE_SIZE;
+  const buildGhostFootprintLeft = (buildGhostWidth - buildGhostFootprintWidth) / 2;
+  const buildStockQuantity = buildItem && buildItem.mode !== 'edit' ? getInventoryQuantity(buildItem.itemId) : null;
+  const buildStockLabel = buildStockQuantity === null
+    ? ''
+    : buildStockQuantity > 0
+      ? `${buildStockQuantity} left`
+      : 'none left';
+  const placementStatusLabel = placementReport?.valid ? 'Ready' : placementReport?.reason ?? 'Unavailable';
+  const terrainPlacementSourceTile = buildItem?.mode === 'terrain' && placementReport
+    ? (mapData[placementReport.row]?.[placementReport.col] ?? TileType.GRASS) as TileType
+    : null;
+  const placementStatusHint = placementReport?.valid
+    ? buildItem?.mode === 'plant'
+      ? 'Plant here'
+      : buildItem?.mode === 'edit'
+        ? 'Move here'
+        : buildItem?.mode === 'terrain'
+          ? buildTerrainPaintUsageLabel ?? 'Paint tile'
+          : buildItem?.purpose === 'repair'
+            ? 'Repair gap'
+          : 'Place here'
+    : placementReport?.reason === 'Terrain' && buildItem?.mode === 'plant'
+      ? 'Needs tilled soil'
+      : placementReport?.reason === 'Terrain' && buildItem?.mode === 'terrain' && terrainPlacementSourceTile !== null
+        ? getSanctuaryTerrainPaintBlockedHint(buildItem.itemId, terrainPlacementSourceTile)
+        : placementReport?.reason === 'Terrain'
+          ? 'Wrong ground'
+          : placementReport?.reason === 'Occupied'
+            ? 'Space blocked'
+            : placementReport?.reason === 'Avatar'
+              ? 'Move away'
+              : placementReport?.reason === 'Traps avatar'
+                ? 'Keep an exit'
+                : placementReport?.reason === 'Blocks portal'
+                  ? 'Keep portal open'
+                  : 'Unavailable';
+
+  const getFootprintGroundType = (row: number, col: number, width: number, height: number): TileType => {
+    const anchorRow = clamp(row + height - 1, 0, Math.max(0, mapData.length - 1));
+    const anchorCol = clamp(col + Math.floor(width / 2), 0, Math.max(0, (mapData[anchorRow]?.length ?? 1) - 1));
+    return (mapData[anchorRow]?.[anchorCol] ?? mapData[row]?.[col] ?? TileType.GRASS) as TileType;
+  };
+
+  const getPlacementTerrainWashStyle = (type: TileType) => ({
+    backgroundColor: getSanctuaryTerrainPreviewColor(type),
+  });
+
+  const getSanctuaryTerrainNeighbors = (row: number, col: number) => ({
+    north: (mapData[row - 1]?.[col] ?? mapData[row]?.[col] ?? TileType.GRASS) as TileType,
+    east: (mapData[row]?.[col + 1] ?? mapData[row]?.[col] ?? TileType.GRASS) as TileType,
+    south: (mapData[row + 1]?.[col] ?? mapData[row]?.[col] ?? TileType.GRASS) as TileType,
+    west: (mapData[row]?.[col - 1] ?? mapData[row]?.[col] ?? TileType.GRASS) as TileType,
+  });
+
+  const getSanctuaryTerrainVariant = (row: number, col: number, type: TileType) => (
+    (row * 31 + col * 17 + type * 13) % 4
+  );
+
+  const placementGroundType = placementReport
+    ? getFootprintGroundType(placementReport.row, placementReport.col, buildFootprintCols, buildFootprintRows)
+    : TileType.GRASS;
+  const placementTerrainWashStyle = getPlacementTerrainWashStyle(placementGroundType);
+  const seedGhostSoilStyle = getPlacementTerrainWashStyle(TileType.TILLED);
+  const terrainPaintFromTile = buildTerrainTile !== null ? placementGroundType : null;
+  const terrainPaintPreviewRow = placementReport?.row ?? 0;
+  const terrainPaintPreviewCol = placementReport?.col ?? 0;
+  const placementTotalCells = placementReport?.cells.length ?? buildFootprintCols * buildFootprintRows;
+  const placementClearCells = placementReport?.cells.filter(cell => cell.valid).length ?? 0;
+  const buildFootprintSummary = `${buildFootprintCols}x${buildFootprintRows}`;
+  const placementGroundLabel = getTileDisplayName(placementGroundType);
 
   const getObjectMechanicState = (obj: MapObject): 'open_gate' | 'disabled_trap' | null => {
     const item = getItem(obj.type);
@@ -572,6 +688,17 @@ export default function RpgScreen() {
     }
     return null;
   };
+
+  const getObjectGroundType = (obj: MapObject): TileType => {
+    const item = getItem(obj.type);
+    const width = item?.colWidth ?? 1;
+    const height = item?.colHeight ?? 1;
+    return getFootprintGroundType(obj.row, obj.col, width, height);
+  };
+  const selectedObjectGroundLabel = selectedObject ? getTileDisplayName(getObjectGroundType(selectedObject)) : '';
+  const selectedObjectFootprintLabel = selectedObjectItem
+    ? `${selectedObjectItem.colWidth}x${selectedObjectItem.colHeight}`
+    : '1x1';
 
   const isObjectMechanicallyPassable = (obj: MapObject) => getObjectMechanicState(obj) !== null;
 
@@ -844,6 +971,7 @@ export default function RpgScreen() {
     itemId: string,
     objectId: number | null = null,
     origin?: { row: number; col: number },
+    purpose?: BuildItem['purpose'],
   ) => {
     const item = getItem(itemId);
     if (!item || activeZone !== 'sanctuary') return;
@@ -860,7 +988,7 @@ export default function RpgScreen() {
     } else {
       const avatarBaseCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
       const avatarBaseRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
-      const nearby = findNearbyValidBuildAnchor(itemId, avatarBaseRow + 2, avatarBaseCol);
+      const nearby = findNearbyValidBuildAnchor(itemId, avatarBaseRow + 2, avatarBaseCol, mode, ignoreObjectId);
       anchor = nearby ?? { row: avatarBaseRow + 2, col: avatarBaseCol };
       anchor = setBuildAnchor(anchor.row, anchor.col, item);
     }
@@ -869,7 +997,7 @@ export default function RpgScreen() {
     joyY.value = 0;
     avatarIsPlaying.value = false;
     setInteractionPrompt(null);
-    setBuildItem({ mode, itemId, label: item.name, objectId });
+    setBuildItem({ mode, itemId, label: item.name, objectId, purpose });
     setPlacementReport(analyzePlacement(anchor.row, anchor.col, itemId, ignoreObjectId, mode));
     setIsShopOpen(false);
     setIsBackpackOpen(false);
@@ -950,10 +1078,43 @@ export default function RpgScreen() {
     gardenPlots.find(plot => plot.row === row && plot.col === col) ?? null
   );
 
+  const isZonePerimeterItemType = (itemId: string) => {
+    const tags = getItem(itemId)?.tags;
+    return !!tags && (tags.includes('structure_piece') || tags.includes('entrance'));
+  };
+
+  const getRepairGapAtTile = (row: number, col: number) => {
+    if (getObjectAtTile(row, col)) return null;
+    const key = `${row}:${col}`;
+    const currentPerimeterCells = new Set(
+      mapObjects.filter(obj => isZonePerimeterItemType(obj.type)).map(obj => `${obj.row}:${obj.col}`),
+    );
+    if (currentPerimeterCells.has(key)) return null;
+    const zone = sanctuaryZones.find(candidate => (
+      candidate.state === 'breached' && candidate.perimeterCells.includes(key)
+    ));
+    return zone ? { zone, cell: { key, row, col } } : null;
+  };
+
   const resolveInteractionTargetAt = useCallback((row: number, col: number): InteractionTarget | null => {
     if (buildItem) return null;
 
     if (activeZone === 'sanctuary') {
+      const repairGap = getRepairGapAtTile(row, col);
+      if (repairGap) {
+        const repairHint = getZoneRepairMaterialHint(repairGap.zone);
+        return {
+          kind: 'repair_gap',
+          row,
+          col,
+          cells: [{ row, col }],
+          label: `Repair ${ZONE_TYPE_LABEL[repairGap.zone.type]}`,
+          detail: repairHint,
+          repairZone: repairGap.zone,
+          repairCell: repairGap.cell,
+        };
+      }
+
       const object = getObjectAtTile(row, col);
       if (object) {
         const item = getPlaceableItem(object.type);
@@ -1015,6 +1176,23 @@ export default function RpgScreen() {
         };
       }
 
+      const pendingZone = pendingZoneCandidates.find(candidate => candidate.interiorCells.includes(`${row}:${col}`));
+      if (pendingZone) {
+        const profile = getPendingZoneProfile(pendingZone);
+        return {
+          kind: 'pending_zone',
+          row,
+          col,
+          cells: pendingZone.interiorCells.map(key => {
+            const [cellRow, cellCol] = key.split(':').map(Number);
+            return { row: cellRow, col: cellCol };
+          }),
+          label: profile.label,
+          detail: profile.detail,
+          pendingZone,
+        };
+      }
+
       if (SanctuaryMap[row]?.[col] === TileType.PORTAL_DUNGEON) {
         return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Dungeon portal', detail: 'Portal' };
       }
@@ -1039,7 +1217,7 @@ export default function RpgScreen() {
       return { kind: 'portal', row, col, cells: [{ row, col }], label: 'Sanctuary portal', detail: 'Portal' };
     }
     return null;
-  }, [activeZone, buildItem, enemies, gardenPlots, mapObjects]);
+  }, [activeZone, buildItem, enemies, gardenPlots, mapData, mapObjects, pendingZoneCandidates, sanctuaryZones]);
 
   const updateInteractionPromptFromTile = useCallback((row: number, col: number) => {
     setInteractionPrompt(resolveInteractionTargetAt(row, col));
@@ -1293,6 +1471,7 @@ export default function RpgScreen() {
     preferredRow: number,
     preferredCol: number,
     mode: BuildItem['mode'] = 'place',
+    ignoreObjectId: number | null = null,
   ) => {
     for (let radius = 0; radius <= 6; radius++) {
       for (let row = preferredRow - radius; row <= preferredRow + radius; row++) {
@@ -1300,7 +1479,7 @@ export default function RpgScreen() {
           if (Math.abs(row - preferredRow) !== radius && Math.abs(col - preferredCol) !== radius) {
             continue;
           }
-          if (isPlacementValid(row, col, itemId, null, mode)) return { row, col };
+          if (isPlacementValid(row, col, itemId, ignoreObjectId, mode)) return { row, col };
         }
       }
     }
@@ -1311,6 +1490,54 @@ export default function RpgScreen() {
     if (!buildItem) return;
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
     setPlacementReport(analyzePlacement(row, col, buildItem.itemId, ignoreObjectId, buildItem.mode));
+  };
+
+  const nudgeBuildPlacement = (deltaRow: number, deltaCol: number) => {
+    if (!buildItem) return;
+    const minCol = -Math.max(1, buildColWidth.value);
+    const minRow = -Math.max(1, buildColHeight.value);
+    const maxCol = mapCols.value;
+    const maxRow = mapRows.value;
+    const nextCol = clamp(buildCol.value + deltaCol, minCol, maxCol);
+    const nextRow = clamp(buildRow.value + deltaRow, minRow, maxRow);
+    buildCol.value = nextCol;
+    buildRow.value = nextRow;
+    updateBuildReport(nextRow, nextCol);
+  };
+
+  const snapBuildPlacementToNearestValid = () => {
+    if (!buildItem) return;
+    const item = buildItem.mode === 'plant'
+      ? { colWidth: 1, colHeight: 1 }
+      : getItem(buildItem.itemId);
+    if (!item) return;
+
+    const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
+    const anchor = findNearbyValidBuildAnchor(
+      buildItem.itemId,
+      buildRow.value,
+      buildCol.value,
+      buildItem.mode,
+      ignoreObjectId,
+    );
+    if (!anchor) {
+      showWorldToast({ text: `No valid spot near ${buildItem.label}`, item: getRpgItem(buildItem.itemId), tone: 'warn' });
+      return;
+    }
+
+    const nextAnchor = setBuildAnchor(anchor.row, anchor.col, item);
+    updateBuildReport(nextAnchor.row, nextAnchor.col);
+    showWorldToast({ text: `Found spot for ${buildItem.label}`, item: getRpgItem(buildItem.itemId), tone: 'muted' });
+  };
+
+  const resetBuildPlacementToObjectOrigin = () => {
+    if (buildItem?.mode !== 'edit' || !selectedObject) return;
+    const item = selectedObjectItem ?? getItem(buildItem.itemId);
+    if (!item) return;
+
+    const anchor = setBuildAnchor(selectedObject.row, selectedObject.col, item);
+    updateBuildReport(anchor.row, anchor.col);
+    showWorldToast({ text: `Reset ${buildItem.label}`, item: getRpgItem(buildItem.itemId), tone: 'muted' });
   };
 
   const confirmBuildPlacement = () => {
@@ -1381,7 +1608,20 @@ export default function RpgScreen() {
           'UPDATE sanctuary_objects SET row = ?, col = ? WHERE id = ?',
           row, col, buildItem.objectId,
         );
+        const movedObjectBefore = selectedObject;
+        const freshObjects = refreshMapObjects();
+        const movedTags = getItem(buildItem.itemId)?.tags;
+        if (movedTags?.includes('structure_piece') || movedTags?.includes('entrance')) {
+          let freshZones = sanctuaryZones;
+          if (movedObjectBefore) {
+            freshZones = breachZoneIfPerimeterRemoved(movedObjectBefore, freshZones);
+          }
+          freshZones = restoreBreachedZonesIfRepaired(freshObjects, freshZones);
+          scanForZoneCandidates(freshObjects, undefined, freshZones);
+        }
+        clearBuildMode();
         showWorldToast({ text: `Moved ${buildItem.label}`, item, tone: 'success' });
+        return;
       } else if (buildItem.mode === 'terrain') {
         const result = db.runSync(
           'UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ? AND quantity > 0',
@@ -1391,11 +1631,23 @@ export default function RpgScreen() {
           showWorldToast({ text: 'No item left', item, tone: 'warn' });
           return;
         }
-        const nextTile = TERRAIN_EDIT_TILE[buildItem.itemId] ?? TileType.PATH;
+        const nextTile = getSanctuaryTerrainPaintTarget(buildItem.itemId) ?? TileType.PATH;
         setSanctuaryTile(row, col, nextTile);
         recordRpgDiscovery(buildItem.itemId, 'place');
-        showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
         bumpInventoryRevision();
+        const remainingQuantity = getInventoryQuantity(buildItem.itemId);
+        if (remainingQuantity > 0) {
+          setPlacementReport({
+            row,
+            col,
+            valid: false,
+            reason: 'Terrain',
+            cells: report.cells.map(cell => ({ ...cell, valid: false, reason: 'Terrain' })),
+          });
+          showWorldToast({ text: `Painted ${buildItem.label} (${remainingQuantity} left)`, item, tone: 'success' });
+          return;
+        }
+        showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
         clearBuildMode();
         return;
       } else {
@@ -1417,28 +1669,40 @@ export default function RpgScreen() {
         recordRpgDiscovery(buildItem.itemId, 'place');
 
         const buildingDef = getBuildingDef(buildItem.itemId);
+        let placementToastText = buildItem.purpose === 'repair'
+          ? `Repaired gap with ${buildItem.label}`
+          : `Placed ${buildItem.label}`;
         if (buildingDef) {
           const construction = startConstruction(insertResult.lastInsertRowId, buildItem.itemId);
           if (construction.ok) {
-            showWorldToast({ text: `Construction started: ${buildItem.label}`, item, tone: 'success' });
-          } else {
-            showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
+            placementToastText = `Construction started: ${buildItem.label}`;
           }
-        } else {
-          showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });
         }
-      }
-      bumpInventoryRevision();
-      clearBuildMode();
-      const freshObjects = refreshMapObjects();
-      const placedTags = getItem(buildItem.itemId)?.tags;
-      if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
-        // A placed perimeter piece can either re-seal a breached zone
-        // (repair) or close a brand-new ring (fresh candidate). Check
-        // repair first so re-walling a breach restores it rather than
-        // being ignored.
-        restoreBreachedZonesIfRepaired(freshObjects);
-        scanForZoneCandidates(freshObjects);
+
+        bumpInventoryRevision();
+        const freshObjects = refreshMapObjects();
+        const placedTags = getItem(buildItem.itemId)?.tags;
+        if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
+          const freshZones = restoreBreachedZonesIfRepaired(freshObjects);
+          scanForZoneCandidates(freshObjects, undefined, freshZones);
+        }
+
+        const remainingQuantity = getInventoryQuantity(buildItem.itemId);
+        if (remainingQuantity > 0) {
+          setPlacementReport({
+            row,
+            col,
+            valid: false,
+            reason: 'Occupied',
+            cells: report.cells.map(cell => ({ ...cell, valid: false, reason: 'Occupied' })),
+          });
+          showWorldToast({ text: `${placementToastText} (${remainingQuantity} left)`, item, tone: 'success' });
+          return;
+        }
+
+        clearBuildMode();
+        showWorldToast({ text: placementToastText, item, tone: 'success' });
+        return;
       }
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
@@ -1466,8 +1730,9 @@ export default function RpgScreen() {
       db.execSync('COMMIT');
       bumpInventoryRevision();
       clearBuildMode();
-      refreshMapObjects();
-      breachZoneIfPerimeterRemoved(selectedObject);
+      const freshObjects = refreshMapObjects();
+      const freshZones = breachZoneIfPerimeterRemoved(selectedObject);
+      scanForZoneCandidates(freshObjects, undefined, freshZones);
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
       console.warn('Failed to stash object', e);
@@ -1482,11 +1747,74 @@ export default function RpgScreen() {
 
   const handleBackpackPlaceItem = (itemId: string) => {
     const mode = (TERRAIN_EDIT_ITEM_IDS as readonly string[]).includes(itemId) ? 'terrain' : 'place';
-    beginBuildMode(mode, itemId);
+    const repairAnchor = preferredBuildAnchor;
+    if (repairAnchor && (mode !== 'place' || !isZonePerimeterItemType(itemId))) {
+      const repairGap = getRepairGapAtTile(repairAnchor.row, repairAnchor.col);
+      const repairHint = repairGap ? getZoneRepairMaterialHint(repairGap.zone) : 'wall, door, rope, or gate';
+      showWorldToast({ text: `Choose ${repairHint.toLowerCase()} for this gap`, item: getRpgItem(itemId), tone: 'warn' });
+      return;
+    }
+    setPreferredBuildAnchor(null);
+    beginBuildMode(
+      mode,
+      itemId,
+      null,
+      mode === 'place' ? repairAnchor ?? undefined : undefined,
+      repairAnchor && mode === 'place' ? 'repair' : undefined,
+    );
   };
 
   const handleBackpackPlantSeed = (itemId: string) => {
     beginPlantMode(itemId);
+  };
+
+  const purchaseShopItem = (itemId: string, price: number) => {
+    try {
+      const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
+      const item = getRpgItem(itemId);
+      const buildingDef = getBuildingDef(itemId);
+      const woodCost = buildingDef?.priceWood ?? 0;
+      const stoneCost = buildingDef?.priceStone ?? 0;
+
+      if (!state || state.coins < price) {
+        const shortfall = Math.max(0, price - (state?.coins ?? 0));
+        showWorldToast({ text: `Need ${shortfall} more coins`, item, tone: 'warn' });
+        return { ok: false as const, message: `Need ${shortfall} more coins` };
+      }
+      if (woodCost > 0 && getInventoryQuantity(RPG_WOOD_ITEM_ID) < woodCost) {
+        showWorldToast({ text: `Need ${woodCost} wood`, item, tone: 'warn' });
+        return { ok: false as const, message: `Need ${woodCost} wood` };
+      }
+      if (stoneCost > 0 && getInventoryQuantity(RPG_STONE_ITEM_ID) < stoneCost) {
+        showWorldToast({ text: `Need ${stoneCost} stone`, item, tone: 'warn' });
+        return { ok: false as const, message: `Need ${stoneCost} stone` };
+      }
+
+      db.execSync('BEGIN TRANSACTION');
+      db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
+      if (woodCost > 0) addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -woodCost, 'inventory');
+      if (stoneCost > 0) addSandboxInventoryItem(RPG_STONE_ITEM_ID, -stoneCost, 'inventory');
+      db.runSync(
+        `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
+         ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
+        itemId,
+      );
+      db.execSync('COMMIT');
+      recordRpgDiscovery(itemId, 'buy');
+      refreshCoins();
+      bumpInventoryRevision();
+      showWorldToast({
+        text: `Bought ${item?.name ?? itemId}`,
+        item,
+        tone: 'success',
+      });
+      return { ok: true as const, message: `Bought ${item?.name ?? itemId}` };
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to purchase item', e);
+      showWorldToast({ text: 'Buy failed', item: getRpgItem(itemId), tone: 'warn' });
+      return { ok: false as const, message: 'Buy failed. Try again.' };
+    }
   };
 
   // A completed Vendor Stall (Market station) bumps sell prices — the
@@ -1888,11 +2216,12 @@ export default function RpgScreen() {
   useEffect(() => {
     const item = getItem(buildItem?.itemId ?? null);
     const isPlanting = buildItem?.mode === 'plant';
+    const isTerrainEditing = buildItem?.mode === 'terrain';
     buildActive.value = buildItem ? 1 : 0;
-    buildColWidth.value = isPlanting ? 1 : item?.colWidth ?? 0;
-    buildColHeight.value = isPlanting ? 1 : item?.colHeight ?? 0;
-    buildVisWidth.value = isPlanting ? 1 : item?.visWidth ?? 0;
-    buildVisHeight.value = isPlanting ? 1 : item?.visHeight ?? 0;
+    buildColWidth.value = isPlanting || isTerrainEditing ? 1 : item?.colWidth ?? 0;
+    buildColHeight.value = isPlanting || isTerrainEditing ? 1 : item?.colHeight ?? 0;
+    buildVisWidth.value = isPlanting || isTerrainEditing ? 1 : item?.visWidth ?? 0;
+    buildVisHeight.value = isPlanting || isTerrainEditing ? 1 : item?.visHeight ?? 0;
   }, [buildItem]);
 
   useEffect(() => {
@@ -1903,7 +2232,7 @@ export default function RpgScreen() {
     if (!buildItem) return;
     const ignoreObjectId = buildItem.mode === 'edit' ? buildItem.objectId : null;
     setPlacementReport(analyzePlacement(buildRow.value, buildCol.value, buildItem.itemId, ignoreObjectId, buildItem.mode));
-  }, [buildItem, mapObjects, gardenPlots, activeZone]);
+  }, [buildItem, mapObjects, gardenPlots, activeZone, mapData, mapColsCount, mapRowsCount]);
 
   useEffect(() => {
     if (buildItem) {
@@ -2067,6 +2396,22 @@ export default function RpgScreen() {
       height,
       opacity: 0.72,
       zIndex: buildRow.value + buildColHeight.value + 1001,
+    };
+  });
+
+  const buildFootprintStyle = useAnimatedStyle(() => {
+    if (!buildActive.value || buildColWidth.value <= 0 || buildColHeight.value <= 0) {
+      return { opacity: 0, position: 'absolute', left: 0, top: 0, width: 0, height: 0 };
+    }
+
+    return {
+      position: 'absolute',
+      left: buildCol.value * TILE_SIZE,
+      top: buildRow.value * TILE_SIZE,
+      width: buildColWidth.value * TILE_SIZE,
+      height: buildColHeight.value * TILE_SIZE,
+      opacity: 1,
+      zIndex: buildRow.value + buildColHeight.value + 1000,
     };
   });
 
@@ -2981,8 +3326,7 @@ export default function RpgScreen() {
   // free-form (the perimeter material no longer dictates the zone type),
   // so detection only needs one tag check instead of three per-type ones.
   const isZonePerimeterObject = (obj: MapObject) => {
-    const tags = getItem(obj.type)?.tags;
-    return !!tags && (tags.includes('structure_piece') || tags.includes('entrance'));
+    return isZonePerimeterItemType(obj.type);
   };
 
   const zoneCandidateKey = (candidate: PendingZoneCandidate) => [...candidate.interiorCells].sort().join(',');
@@ -3068,6 +3412,57 @@ export default function RpgScreen() {
     building_plot: 'Building Plot',
   };
 
+  const ZONE_TYPE_ICON: Record<SanctuaryZoneType, keyof typeof Feather.glyphMap> = {
+    pond: 'droplet',
+    garden: 'feather',
+    building_plot: 'home',
+  };
+
+  const getZoneRepairMaterialHint = (zone: Pick<SanctuaryZoneRecord, 'type'>) => {
+    switch (zone.type) {
+      case 'pond':
+        return 'Stone wall or entrance';
+      case 'building_plot':
+        return 'Brick or entrance';
+      case 'garden':
+      default:
+        return 'Pole or entrance';
+    }
+  };
+
+  const getPendingZoneProfile = (candidate: PendingZoneCandidate): PendingZoneProfile => {
+    let waterLike = 0;
+    let soilLike = 0;
+    let floorLike = 0;
+    candidate.interiorCells.forEach(key => {
+      const [row, col] = key.split(':').map(Number);
+      const tile = (mapData[row]?.[col] ?? TileType.GRASS) as TileType;
+      if (tile === TileType.WATER || tile === TileType.DITCH) {
+        waterLike += 1;
+      } else if (tile === TileType.SAND || tile === TileType.PATH || tile === TileType.STONE_SLAB || tile === TileType.WOOD_TILE) {
+        floorLike += 1;
+      } else {
+        soilLike += 1;
+      }
+    });
+
+    const suggestedType: SanctuaryZoneType = waterLike > 0 && waterLike >= soilLike && waterLike >= floorLike
+      ? 'pond'
+      : floorLike > soilLike
+        ? 'building_plot'
+        : 'garden';
+    const dominant = suggestedType === 'pond'
+      ? `${waterLike} water`
+      : suggestedType === 'building_plot'
+        ? `${floorLike} floor`
+        : `${soilLike} growable`;
+    return {
+      suggestedType,
+      label: `Possible ${ZONE_TYPE_LABEL[suggestedType]}`,
+      detail: `${candidate.interiorCells.length} tiles / ${dominant}`,
+      icon: ZONE_TYPE_ICON[suggestedType],
+    };
+  };
 
   const declareZone = (candidate: PendingZoneCandidate, type: SanctuaryZoneType) => {
     db.runSync(
@@ -3084,9 +3479,10 @@ export default function RpgScreen() {
   };
 
   const promptZoneDeclaration = (candidate: PendingZoneCandidate) => {
+    const profile = getPendingZoneProfile(candidate);
     Alert.alert(
       'Declare Zone',
-      `This enclosed area (${candidate.interiorCells.length} tiles) can become a Pond, Garden, or Building Plot.`,
+      `This enclosed area (${candidate.interiorCells.length} tiles) can become a Pond, Garden, or Building Plot.\n\nBest fit: ${ZONE_TYPE_LABEL[profile.suggestedType]} (${profile.detail}).`,
       [
         { text: 'Pond', onPress: () => declareZone(candidate, 'pond') },
         { text: 'Garden', onPress: () => declareZone(candidate, 'garden') },
@@ -3126,17 +3522,21 @@ export default function RpgScreen() {
   // cells drop out of zoneCellMap immediately (the memo only maps
   // 'active' zones), but the DB row persists so a future repair flow can
   // resolve it back to 'active' without redeclaring from scratch.
-  const breachZoneIfPerimeterRemoved = (object: MapObject) => {
-    if (!isZonePerimeterObject(object)) return;
+  const breachZoneIfPerimeterRemoved = (
+    object: MapObject,
+    zonesOverride: SanctuaryZoneRecord[] = sanctuaryZones,
+  ): SanctuaryZoneRecord[] => {
+    if (!isZonePerimeterObject(object)) return zonesOverride;
     const key = `${object.row}:${object.col}`;
-    const zone = sanctuaryZones.find(z => z.state === 'active' && z.perimeterCells.includes(key));
-    if (!zone) return;
+    const zone = zonesOverride.find(z => z.state === 'active' && z.perimeterCells.includes(key));
+    if (!zone) return zonesOverride;
     db.runSync('UPDATE sanctuary_zones SET state = ? WHERE id = ?', 'breached', zone.id);
-    refreshSanctuaryZones();
+    const refreshedZones = refreshSanctuaryZones();
     showWorldToast({
       text: `${ZONE_TYPE_LABEL[zone.type]} breached! Repair the perimeter to restore it.`,
       tone: 'warn',
     });
+    return refreshedZones;
   };
 
   // Repair flow (the inverse of breach): a breached zone keeps its full
@@ -3144,9 +3544,12 @@ export default function RpgScreen() {
   // every one of those cells re-seals the ring and flips it back to
   // 'active'. Runs after any perimeter-piece placement. objectsOverride is
   // the freshly-refreshed mapObjects so the just-placed piece is included.
-  const restoreBreachedZonesIfRepaired = (objectsOverride?: MapObject[]) => {
-    const breached = sanctuaryZones.filter(z => z.state === 'breached');
-    if (breached.length === 0) return;
+  const restoreBreachedZonesIfRepaired = (
+    objectsOverride?: MapObject[],
+    zonesOverride: SanctuaryZoneRecord[] = sanctuaryZones,
+  ): SanctuaryZoneRecord[] => {
+    const breached = zonesOverride.filter(z => z.state === 'breached');
+    if (breached.length === 0) return zonesOverride;
     const perimeterCells = new Set(
       (objectsOverride ?? mapObjects).filter(isZonePerimeterObject).map(o => `${o.row}:${o.col}`),
     );
@@ -3158,7 +3561,21 @@ export default function RpgScreen() {
         showWorldToast({ text: `${ZONE_TYPE_LABEL[zone.type]} restored!`, tone: 'success' });
       }
     }
-    if (anyRestored) refreshSanctuaryZones();
+    if (anyRestored) return refreshSanctuaryZones();
+    return zonesOverride;
+  };
+
+  const getMissingPerimeterCellsForZone = (zone: SanctuaryZoneRecord) => {
+    if (zone.state !== 'breached') return [];
+    const currentPerimeterCells = new Set(
+      mapObjects.filter(isZonePerimeterObject).map(obj => `${obj.row}:${obj.col}`),
+    );
+    return zone.perimeterCells
+      .filter(key => !currentPerimeterCells.has(key))
+      .map(key => {
+        const [row, col] = key.split(':').map(Number);
+        return { key, row, col };
+      });
   };
 
   // One-time migration: the old sanctuary_ponds/sanctuary_building_plots
@@ -3539,6 +3956,26 @@ export default function RpgScreen() {
         return;
       }
 
+      if (resolvedTarget?.kind === 'repair_gap' && resolvedTarget.repairCell) {
+        setPreferredBuildAnchor({ row: resolvedTarget.repairCell.row, col: resolvedTarget.repairCell.col });
+        setIsShopOpen(false);
+        setIsArchiveOpen(false);
+        setIsCharacterOpen(false);
+        setIsCraftingOpen(false);
+        setIsExploreOpen(false);
+        setIsBackpackOpen(true);
+        const repairHint = resolvedTarget.repairZone
+          ? getZoneRepairMaterialHint(resolvedTarget.repairZone)
+          : 'wall or door';
+        showWorldToast({ text: `Choose ${repairHint.toLowerCase()} to repair this gap`, tone: 'muted' });
+        return;
+      }
+
+      if (resolvedTarget?.kind === 'pending_zone' && resolvedTarget.pendingZone) {
+        promptZoneDeclaration(resolvedTarget.pendingZone);
+        return;
+      }
+
       const ownFoot = getAvatarFootCell();
       const ownKey = `${ownFoot.row}:${ownFoot.col}`;
       const pendingHere = pendingZoneCandidates.find(c => c.interiorCells.includes(ownKey));
@@ -3570,6 +4007,15 @@ export default function RpgScreen() {
     }
   }
 
+  function getBreachedZoneOverlayColor(type: SanctuaryZoneType) {
+    switch (type) {
+      case 'pond': return 'rgba(112,214,255,0.2)';
+      case 'garden': return 'rgba(255,141,122,0.22)';
+      case 'building_plot': return 'rgba(255,210,102,0.2)';
+      default: return 'rgba(255,141,122,0.2)';
+    }
+  }
+
   function getTileColor(type: TileType) {
     switch (type) {
       case TileType.GRASS: return '#5c8f56';
@@ -3589,6 +4035,13 @@ export default function RpgScreen() {
     }
   }
 
+  const preferredRepairGap = preferredBuildAnchor
+    ? getRepairGapAtTile(preferredBuildAnchor.row, preferredBuildAnchor.col)
+    : null;
+  const preferredRepairMaterialHint = preferredRepairGap
+    ? getZoneRepairMaterialHint(preferredRepairGap.zone)
+    : null;
+
   return (
     <View style={styles.container}>
       <GlobalTicker />
@@ -3597,7 +4050,16 @@ export default function RpgScreen() {
           {mapData.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.mapRow}>
               {row.map((tile, colIndex) => (
-                activeZone === 'dungeon' && (tile === TileType.GRASS || tile === TileType.WALL) ? (
+                activeZone === 'sanctuary' ? (
+                  <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
+                    <SanctuaryTerrainTile
+                      type={tile as TileType}
+                      tileSize={TILE_SIZE}
+                      neighbors={getSanctuaryTerrainNeighbors(rowIndex, colIndex)}
+                      variant={getSanctuaryTerrainVariant(rowIndex, colIndex, tile as TileType)}
+                    />
+                  </View>
+                ) : activeZone === 'dungeon' && (tile === TileType.GRASS || tile === TileType.WALL) ? (
                   <View key={`tile-${rowIndex}-${colIndex}`} style={[styles.tile, { width: TILE_SIZE, height: TILE_SIZE }]}>
                     <TilesetTile {...(tile === TileType.WALL ? WALL_TILE_COORD : FLOOR_TILE_COORD)} tileSize={TILE_SIZE} />
                   </View>
@@ -3615,26 +4077,102 @@ export default function RpgScreen() {
             </View>
           ))}
 
-          {activeZone === 'sanctuary' && pendingZoneCandidates.flatMap(c => c.interiorCells).map(key => {
-            const [row, col] = key.split(':').map(Number);
+          {activeZone === 'sanctuary' && pendingZoneCandidates.map((candidate, candidateIndex) => {
+            const profile = getPendingZoneProfile(candidate);
+            const labelKeys = candidate.interiorCells.length > 0 ? candidate.interiorCells : candidate.perimeterCells;
+            const labelCells = labelKeys.map(k => k.split(':').map(Number));
+            if (labelCells.length === 0) return null;
+            const anchor = labelCells.reduce((best, [r, c]) => (
+              r < best[0] || (r === best[0] && c < best[1]) ? [r, c] : best
+            ), labelCells[0]);
             return (
-              <View
-                key={`zone-pending-${key}`}
-                pointerEvents="none"
-                style={[styles.zoneOverlay, { left: col * TILE_SIZE, top: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, backgroundColor: 'rgba(255,255,255,0.35)' }]}
-              />
+              <React.Fragment key={`zone-pending-${zoneCandidateKey(candidate) || candidateIndex}`}>
+                {candidate.interiorCells.map(key => {
+                  const [row, col] = key.split(':').map(Number);
+                  return (
+                    <View
+                      key={`zone-pending-cell-${key}`}
+                      pointerEvents="none"
+                      style={[
+                        styles.zoneOverlay,
+                        styles.pendingZoneOverlay,
+                        { left: col * TILE_SIZE, top: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+                      ]}
+                    />
+                  );
+                })}
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.pendingZoneLabel,
+                    { left: anchor[1] * TILE_SIZE + 2, top: anchor[0] * TILE_SIZE - 24 },
+                  ]}
+                >
+                  <Feather name={profile.icon} size={9} color="#14351f" />
+                  <View style={styles.pendingZoneLabelStack}>
+                    <Text numberOfLines={1} style={styles.pendingZoneLabelText}>
+                      {profile.label}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.pendingZoneLabelHint}>
+                      {profile.detail}
+                    </Text>
+                  </View>
+                </View>
+              </React.Fragment>
             );
           })}
 
-          {activeZone === 'sanctuary' && sanctuaryZones.filter(z => z.state === 'active').map(zone => (
+          {activeZone === 'sanctuary' && sanctuaryZones.map(zone => (
             [...zone.interiorCells, ...zone.perimeterCells].map(key => {
               const [row, col] = key.split(':').map(Number);
               return (
                 <View
                   key={`zone-${zone.id}-${key}`}
                   pointerEvents="none"
-                  style={[styles.zoneOverlay, { left: col * TILE_SIZE, top: row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE, backgroundColor: getZoneOverlayColor(zone.type) }]}
+                  style={[
+                    styles.zoneOverlay,
+                    zone.state === 'breached' && styles.zoneOverlayBreached,
+                    {
+                      left: col * TILE_SIZE,
+                      top: row * TILE_SIZE,
+                      width: TILE_SIZE,
+                      height: TILE_SIZE,
+                      backgroundColor: zone.state === 'breached' ? getBreachedZoneOverlayColor(zone.type) : getZoneOverlayColor(zone.type),
+                    },
+                  ]}
                 />
+              );
+            })
+          ))}
+
+          {activeZone === 'sanctuary' && sanctuaryZones.flatMap(zone => (
+            getMissingPerimeterCellsForZone(zone).map(cell => {
+              const materialHint = getZoneRepairMaterialHint(zone);
+              return (
+                <View
+                  key={`zone-repair-${zone.id}-${cell.key}`}
+                  pointerEvents="none"
+                  style={[
+                    styles.zoneRepairMarker,
+                    { left: cell.col * TILE_SIZE, top: cell.row * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE },
+                  ]}
+                >
+                  <View style={styles.zoneRepairMarkerPulse} />
+                  <View style={styles.zoneRepairGapArt}>
+                    <View style={[styles.zoneRepairGapPost, styles.zoneRepairGapPostLeft]} />
+                    <View style={[styles.zoneRepairGapPost, styles.zoneRepairGapPostRight]} />
+                    <View style={styles.zoneRepairGapRailTop} />
+                    <View style={styles.zoneRepairGapRailBottom} />
+                  </View>
+                  <View style={styles.zoneRepairMarkerCore}>
+                    <Feather name="plus" size={10} color="#ffefe8" />
+                  </View>
+                  <View style={styles.zoneRepairMaterialBadge}>
+                    <Text numberOfLines={1} adjustsFontSizeToFit style={styles.zoneRepairMaterialText}>
+                      {materialHint}
+                    </Text>
+                  </View>
+                </View>
               );
             })
           ))}
@@ -3644,21 +4182,33 @@ export default function RpgScreen() {
               decorative terrain (e.g. a ditch that filled with water but
               was never declared a Pond). Anchored at the zone's top-left
               interior cell. */}
-          {activeZone === 'sanctuary' && sanctuaryZones.filter(z => z.state === 'active').map(zone => {
-            const cells = zone.interiorCells.map(k => k.split(':').map(Number));
+          {activeZone === 'sanctuary' && sanctuaryZones.map(zone => {
+            const labelKeys = zone.interiorCells.length > 0 ? zone.interiorCells : zone.perimeterCells;
+            const cells = labelKeys.map(k => k.split(':').map(Number));
             if (cells.length === 0) return null;
+            const missingCount = getMissingPerimeterCellsForZone(zone).length;
             const anchor = cells.reduce((best, [r, c]) => (
               r < best[0] || (r === best[0] && c < best[1]) ? [r, c] : best
             ), cells[0]);
-            const icon = zone.type === 'pond' ? 'droplet' : zone.type === 'garden' ? 'feather' : 'home';
+            const icon = zone.state === 'breached'
+              ? 'alert-triangle'
+              : zone.type === 'pond' ? 'droplet' : zone.type === 'garden' ? 'feather' : 'home';
             return (
               <View
                 key={`zone-label-${zone.id}`}
                 pointerEvents="none"
-                style={[styles.zoneLabel, { left: anchor[1] * TILE_SIZE + 2, top: anchor[0] * TILE_SIZE - 16 }]}
+                style={[
+                  styles.zoneLabel,
+                  zone.state === 'breached' && styles.zoneLabelBreached,
+                  { left: anchor[1] * TILE_SIZE + 2, top: anchor[0] * TILE_SIZE - 16 },
+                ]}
               >
                 <Feather name={icon} size={9} color="#0b140c" />
-                <Text style={styles.zoneLabelText}>{ZONE_TYPE_LABEL[zone.type]}</Text>
+                <Text style={styles.zoneLabelText}>
+                  {zone.state === 'breached'
+                    ? `${ZONE_TYPE_LABEL[zone.type]} breach / ${missingCount} gap${missingCount === 1 ? '' : 's'}`
+                    : ZONE_TYPE_LABEL[zone.type]}
+                </Text>
               </View>
             );
           })}
@@ -3689,6 +4239,7 @@ export default function RpgScreen() {
               isInteracting={interactingObjectId === obj.id}
               isTargeted={SHOW_NORMAL_TARGET_DEBUG && interactionPrompt?.kind === 'object' && interactionPrompt.object?.id === obj.id}
               mechanicState={getObjectMechanicState(obj)}
+              groundType={getObjectGroundType(obj)}
               tileSize={TILE_SIZE}
               onMoveRequest={handleObjectLongPress}
             />
@@ -3749,6 +4300,16 @@ export default function RpgScreen() {
                   },
                 ]}
               >
+                <View style={[
+                  styles.gardenSoilInset,
+                  growth.stage === 1 && styles.gardenSoilGrowing,
+                  growth.stage >= 2 && styles.gardenSoilMature,
+                ]} />
+                <View style={styles.gardenFurrowSet}>
+                  <View style={styles.gardenFurrowLine} />
+                  <View style={styles.gardenFurrowLine} />
+                  <View style={styles.gardenFurrowLine} />
+                </View>
                 {cropFrame ? (
                   <RpgSpriteFrameView frame={cropFrame} size={growth.stage >= 2 ? 34 : 28} />
                 ) : (
@@ -3789,6 +4350,17 @@ export default function RpgScreen() {
                 },
               ]}
             >
+              <View style={[
+                styles.gardenSoilInset,
+                plot.growth_stage === 1 && styles.gardenSoilGrowing,
+                plot.growth_stage >= 2 && styles.gardenSoilMature,
+                plot.is_watered && styles.gardenSoilWatered,
+              ]} />
+              <View style={styles.gardenFurrowSet}>
+                <View style={styles.gardenFurrowLine} />
+                <View style={styles.gardenFurrowLine} />
+                <View style={styles.gardenFurrowLine} />
+              </View>
               <RpgItemIcon
                 item={getRpgItem(plot.planted_seed_id)}
                 size={plot.growth_stage >= 2 ? 25 : 22}
@@ -3823,10 +4395,93 @@ export default function RpgScreen() {
             </View>
           )}
 
-          {(buildCatalogItem || buildSeedItem) && (
+          {(buildCatalogItem || buildSeedItem || buildTerrainTile !== null) && (
             <>
-              {buildCatalogItem ? (
-                <Animated.View style={buildGhostStyle}>
+              {buildItem?.mode === 'edit' && selectedObject && (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.editOriginFootprint,
+                    {
+                      left: selectedObject.col * TILE_SIZE,
+                      top: selectedObject.row * TILE_SIZE,
+                      width: (selectedObjectItem?.colWidth ?? 1) * TILE_SIZE,
+                      height: (selectedObjectItem?.colHeight ?? 1) * TILE_SIZE,
+                      zIndex: 999,
+                    },
+                  ]}
+                >
+                  <View style={styles.editOriginAnchor} />
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={styles.editOriginLabel}>from</Text>
+                </View>
+              )}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  buildFootprintStyle,
+                  styles.placementFootprint,
+                  placementReport?.valid ? styles.placementFootprintValid : styles.placementFootprintInvalid,
+                  buildItem?.mode === 'edit' && styles.placementFootprintEdit,
+                  buildItem?.purpose === 'repair' && styles.placementFootprintRepair,
+                ]}
+              >
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.placementTerrainWash,
+                    placementTerrainWashStyle,
+                    !placementReport?.valid && styles.placementTerrainWashInvalid,
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.placementFootprintAnchor,
+                    placementReport?.valid ? styles.placementFootprintAnchorValid : styles.placementFootprintAnchorInvalid,
+                  ]}
+                />
+              </Animated.View>
+              {buildTerrainTile !== null ? (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    buildFootprintStyle,
+                    styles.terrainGhostTile,
+                    !placementReport?.valid && styles.terrainGhostTileInvalid,
+                  ]}
+                >
+                  <SanctuaryTerrainTile
+                    type={buildTerrainTile}
+                    tileSize={TILE_SIZE}
+                    neighbors={placementReport ? getSanctuaryTerrainNeighbors(placementReport.row, placementReport.col) : undefined}
+                    variant={placementReport ? getSanctuaryTerrainVariant(placementReport.row, placementReport.col, buildTerrainTile) : 0}
+                  />
+                  <View pointerEvents="none" style={styles.terrainGhostTileGloss} />
+                </Animated.View>
+              ) : buildCatalogItem ? (
+                <Animated.View
+                  style={[
+                    buildGhostStyle,
+                    styles.buildGhostArt,
+                    !placementReport?.valid && styles.buildGhostArtInvalid,
+                    buildItem?.mode === 'edit' && styles.buildGhostArtEdit,
+                    buildItem?.purpose === 'repair' && styles.buildGhostArtRepair,
+                  ]}
+                >
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.buildGhostGrounding,
+                      placementTerrainWashStyle,
+                      !placementReport?.valid && styles.buildGhostGroundingInvalid,
+                      buildItem?.purpose === 'repair' && styles.buildGhostGroundingRepair,
+                      {
+                        left: buildGhostFootprintLeft,
+                        bottom: 0,
+                        width: buildGhostFootprintWidth,
+                        height: buildGhostFootprintHeight,
+                      },
+                    ]}
+                  />
                   <RpgItemWorldArt
                     item={buildCatalogItem}
                     width={buildGhostWidth}
@@ -3835,29 +4490,87 @@ export default function RpgScreen() {
                   />
                 </Animated.View>
               ) : (
-                <Animated.View style={[buildGhostStyle, styles.seedGhost]}>
+                <Animated.View style={[
+                  buildGhostStyle,
+                  styles.seedGhost,
+                  styles.buildGhostArt,
+                  !placementReport?.valid && styles.buildGhostArtInvalid,
+                ]}>
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.seedGhostSoilInset,
+                      seedGhostSoilStyle,
+                      !placementReport?.valid && styles.seedGhostSoilInvalid,
+                    ]}
+                  />
+                  <View pointerEvents="none" style={styles.seedGhostFurrowSet}>
+                    <View style={styles.seedGhostFurrowLine} />
+                    <View style={styles.seedGhostFurrowLine} />
+                    <View style={styles.seedGhostFurrowLine} />
+                  </View>
                   <RpgItemIcon item={buildSeedItem} size={24} fallbackLabel={buildItem?.itemId ?? 'seed'} />
                 </Animated.View>
               )}
-              {placementReport?.cells.map((cell, index) => (
-                <View
-                  key={`${cell.row}:${cell.col}:${index}`}
-                  pointerEvents="none"
-                  style={[
-                    styles.placementCell,
-                    {
-                      width: TILE_SIZE,
-                      height: TILE_SIZE,
-                      left: cell.col * TILE_SIZE,
-                      top: cell.row * TILE_SIZE,
-                      borderColor: cell.valid ? '#35ff70' : '#ff3b30',
-                      backgroundColor: cell.valid ? 'rgba(53,255,112,0.34)' : 'rgba(255,59,48,0.42)',
-                    },
-                  ]}
-                />
-              ))}
+              {placementReport?.cells.map((cell, index) => {
+                const currentTerrain = (mapData[cell.row]?.[cell.col] ?? TileType.GRASS) as TileType;
+                const previewTerrain = buildTerrainTile !== null && cell.valid ? buildTerrainTile : currentTerrain;
+                return (
+                  <View
+                    key={`${cell.row}:${cell.col}:${index}`}
+                    pointerEvents="none"
+                    style={[
+                      styles.placementCell,
+                      cell.valid ? styles.placementCellValid : styles.placementCellInvalid,
+                      {
+                        width: TILE_SIZE,
+                        height: TILE_SIZE,
+                        left: cell.col * TILE_SIZE,
+                        top: cell.row * TILE_SIZE,
+                      },
+                    ]}
+                  >
+                    {activeZone === 'sanctuary' && (
+                      <View style={styles.placementCellTerrainArt}>
+                        <SanctuaryTerrainTile
+                          type={previewTerrain}
+                          tileSize={TILE_SIZE}
+                          neighbors={getSanctuaryTerrainNeighbors(cell.row, cell.col)}
+                          variant={getSanctuaryTerrainVariant(cell.row, cell.col, previewTerrain)}
+                        />
+                      </View>
+                    )}
+                    <View style={[
+                      styles.placementCellStatusWash,
+                      cell.valid ? styles.placementCellStatusWashValid : styles.placementCellStatusWashInvalid,
+                    ]} />
+                    <View style={[styles.placementCellCorner, styles.placementCellCornerTopLeft, cell.valid ? styles.placementCellCornerValid : styles.placementCellCornerInvalid]} />
+                    <View style={[styles.placementCellCorner, styles.placementCellCornerTopRight, cell.valid ? styles.placementCellCornerValid : styles.placementCellCornerInvalid]} />
+                    <View style={[styles.placementCellCorner, styles.placementCellCornerBottomLeft, cell.valid ? styles.placementCellCornerValid : styles.placementCellCornerInvalid]} />
+                    <View style={[styles.placementCellCorner, styles.placementCellCornerBottomRight, cell.valid ? styles.placementCellCornerValid : styles.placementCellCornerInvalid]} />
+                  </View>
+                );
+              })}
             </>
           )}
+
+          {activeZone === 'sanctuary' && !buildItem && interactionPrompt?.cells.map((cell, index) => (
+            <View
+              key={`sanctuary-focus-${interactionPrompt.kind}-${cell.row}:${cell.col}:${index}`}
+              pointerEvents="none"
+              style={[
+                styles.sanctuaryTargetCell,
+                (interactionPrompt.kind === 'plot' || interactionPrompt.kind === 'farmplot') && styles.sanctuaryTargetCropCell,
+                interactionPrompt.kind === 'portal' && styles.sanctuaryTargetPortalCell,
+                {
+                  width: TILE_SIZE,
+                  height: TILE_SIZE,
+                  left: cell.col * TILE_SIZE,
+                  top: cell.row * TILE_SIZE,
+                },
+              ]}
+            />
+          ))}
 
           {SHOW_NORMAL_TARGET_DEBUG && !buildItem && interactionPrompt?.cells.map((cell, index) => (
             <View
@@ -3931,6 +4644,17 @@ export default function RpgScreen() {
           </Animated.View>
         </Animated.View>
       </GestureDetector>
+
+      {activeZone === 'sanctuary' && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.seasonAmbienceOverlay,
+            SANCTUARY_SEASON_AMBIENCE[currentSeason],
+            isRaining && styles.seasonAmbienceRain,
+          ]}
+        />
+      )}
 
       {activeZone === 'sanctuary' && isRaining && (
         <View pointerEvents="none" style={styles.rainOverlay}>
@@ -4056,6 +4780,7 @@ export default function RpgScreen() {
             accessibilityLabel="Open backpack"
             style={styles.iconHudBtn}
             onPress={() => {
+              setPreferredBuildAnchor(null);
               setIsShopOpen(false);
               setIsArchiveOpen(false);
               setIsCharacterOpen(false);
@@ -4177,7 +4902,7 @@ export default function RpgScreen() {
           <Feather name={buildItem.mode === 'edit' ? 'move' : 'plus-square'} size={15} color="#fff" />
           <Text style={styles.modeText}>
             {placementReport?.valid
-              ? `${buildItem.label}: drag ghost, Interact confirms`
+              ? `${buildItem.label}: drag or nudge, then place${buildStockQuantity !== null && buildStockQuantity > 1 ? ` (${buildStockQuantity} left)` : ''}`
               : placementReport?.reason === 'Terrain' && buildItem.mode === 'plant'
                 ? 'Needs plowed soil — equip the Plow tool first'
                 : `${placementReport?.reason ?? 'Unavailable'}: drag to a clear cell`}
@@ -4193,26 +4918,255 @@ export default function RpgScreen() {
         </View>
       )}
 
+      {buildItem && (
+        <View style={[styles.buildPad, { bottom: (selectedObject ? 158 : 106) + safeAreaInsets.bottom, left: 20 + safeAreaInsets.left }]}>
+          <View style={styles.buildPadHeader}>
+            <View style={[
+              styles.buildStatusDot,
+              placementReport?.valid ? styles.buildStatusDotValid : styles.buildStatusDotInvalid,
+            ]} />
+            <Text numberOfLines={1} style={styles.buildPadTitle}>
+              {placementReport?.valid ? 'Ready' : placementReport?.reason ?? 'Unavailable'}
+            </Text>
+            <Text numberOfLines={1} style={styles.buildPadCoord}>
+              R{placementReport?.row ?? 0} C{placementReport?.col ?? 0}
+            </Text>
+          </View>
+          <View style={[
+            styles.buildPlacementReasonChip,
+            placementReport?.valid ? styles.buildPlacementReasonChipValid : styles.buildPlacementReasonChipInvalid,
+          ]}>
+            <Text numberOfLines={1} style={styles.buildPlacementReasonLabel}>{placementStatusLabel}</Text>
+            <Text numberOfLines={1} style={styles.buildPlacementReasonHint}>{placementStatusHint}</Text>
+          </View>
+          <View style={styles.buildInfoBlock}>
+            <View style={styles.buildItemIdentityRow}>
+              <View style={styles.buildItemIdentityIcon}>
+                <RpgItemIcon item={buildPreviewItem} size={20} fallbackLabel={buildItem.itemId} />
+              </View>
+              <View style={styles.buildItemIdentityTextStack}>
+                <Text numberOfLines={1} style={styles.buildItemIdentityName}>{buildPreviewItem?.name ?? buildItem.label}</Text>
+                <Text numberOfLines={1} style={styles.buildItemIdentityMode}>
+                  {buildItem.purpose === 'repair' ? 'Repairing zone perimeter' : buildItem.mode === 'edit' ? 'Adjusting layout' : buildItem.mode === 'plant' ? 'Future crop plot' : buildItem.mode === 'terrain' ? 'Terrain paint' : 'Sanctuary piece'}
+                </Text>
+              </View>
+              {buildStockQuantity !== null && (
+                <View style={[
+                  styles.buildStockBadge,
+                  buildStockQuantity <= 0 && styles.buildStockBadgeEmpty,
+                ]}>
+                  <Feather name="package" size={9} color={buildStockQuantity > 0 ? '#fff2bb' : '#ffb0a8'} />
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={[
+                    styles.buildStockText,
+                    buildStockQuantity <= 0 && styles.buildStockTextEmpty,
+                  ]}>
+                    {buildStockLabel}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.buildInfoRow}>
+              <Text numberOfLines={1} style={styles.buildInfoMode}>
+                {buildItem.purpose === 'repair' ? 'Repairing' : buildItem.mode === 'edit' ? 'Moving' : buildItem.mode === 'plant' ? 'Planting' : buildItem.mode === 'terrain' ? 'Painting' : 'Placing'}
+              </Text>
+              {buildDesignRole && (
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.buildInfoRole,
+                    buildDesignRole.tone === 'nature' && styles.buildInfoRoleNature,
+                    buildDesignRole.tone === 'farm' && styles.buildInfoRoleFarm,
+                    buildDesignRole.tone === 'ruin' && styles.buildInfoRoleRuin,
+                    buildDesignRole.tone === 'utility' && styles.buildInfoRoleUtility,
+                    buildDesignRole.tone === 'livestock' && styles.buildInfoRoleLivestock,
+                    buildDesignRole.tone === 'resource' && styles.buildInfoRoleResource,
+                  ]}
+                >
+                  {buildDesignRole.label}
+                </Text>
+              )}
+            </View>
+            {buildDesignRole && (
+              <Text numberOfLines={2} style={styles.buildInfoHint}>{buildDesignRole.hint}</Text>
+            )}
+            {buildLayoutFits.length > 0 && (
+              <View style={styles.buildLayoutFitRow}>
+                <Text style={styles.buildLayoutFitLead}>Fits</Text>
+                {buildLayoutFits.map(label => (
+                  <Text key={label} numberOfLines={1} style={styles.buildLayoutFitPill}>
+                    {label}
+                  </Text>
+                ))}
+              </View>
+            )}
+            <View style={styles.buildPlacementStatsRow}>
+              <View style={styles.buildPlacementStatPill}>
+                <Text style={styles.buildPlacementStatLabel}>Size</Text>
+                <Text numberOfLines={1} style={styles.buildPlacementStatValue}>{buildFootprintSummary}</Text>
+              </View>
+              <View style={[
+                styles.buildPlacementStatPill,
+                placementReport?.valid ? styles.buildPlacementStatPillValid : styles.buildPlacementStatPillInvalid,
+              ]}>
+                <Text style={styles.buildPlacementStatLabel}>Clear</Text>
+                <Text numberOfLines={1} style={styles.buildPlacementStatValue}>{placementClearCells}/{placementTotalCells}</Text>
+              </View>
+              <View style={styles.buildPlacementStatPill}>
+                <Text style={styles.buildPlacementStatLabel}>Ground</Text>
+                <Text numberOfLines={1} style={styles.buildPlacementStatValue}>{placementGroundLabel}</Text>
+              </View>
+            </View>
+            {buildTerrainTile !== null && terrainPaintFromTile !== null && (
+              <>
+                <View style={styles.terrainPaintSwapRow}>
+                  <View style={styles.terrainPaintSwatchBlock}>
+                    <View style={styles.terrainPaintSwatch}>
+                      <SanctuaryTerrainTile
+                        type={terrainPaintFromTile}
+                        tileSize={18}
+                        neighbors={placementReport ? getSanctuaryTerrainNeighbors(terrainPaintPreviewRow, terrainPaintPreviewCol) : undefined}
+                        variant={getSanctuaryTerrainVariant(terrainPaintPreviewRow, terrainPaintPreviewCol, terrainPaintFromTile)}
+                      />
+                    </View>
+                    <Text numberOfLines={1} style={styles.terrainPaintSwatchLabel}>{getTileDisplayName(terrainPaintFromTile)}</Text>
+                  </View>
+                  <Feather name="arrow-right" size={12} color="rgba(255,242,187,0.72)" />
+                  <View style={styles.terrainPaintSwatchBlock}>
+                    <View style={[styles.terrainPaintSwatch, styles.terrainPaintSwatchTarget]}>
+                      <SanctuaryTerrainTile
+                        type={buildTerrainTile}
+                        tileSize={18}
+                        neighbors={placementReport ? getSanctuaryTerrainNeighbors(terrainPaintPreviewRow, terrainPaintPreviewCol) : undefined}
+                        variant={getSanctuaryTerrainVariant(terrainPaintPreviewRow, terrainPaintPreviewCol, buildTerrainTile)}
+                      />
+                    </View>
+                    <Text numberOfLines={1} style={styles.terrainPaintSwatchLabel}>{getTileDisplayName(buildTerrainTile)}</Text>
+                  </View>
+                </View>
+                {buildTerrainPaintUsageLabel && (
+                  <Text numberOfLines={1} style={styles.terrainPaintUsageText}>{buildTerrainPaintUsageLabel}</Text>
+                )}
+              </>
+            )}
+            <SanctuaryFootprintPreview
+              colWidth={buildFootprintCols}
+              colHeight={buildFootprintRows}
+              label={buildFootprintLabel}
+            />
+          </View>
+          <View style={styles.buildPadActionRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Find nearest valid spot for ${buildItem.label}`}
+              onPress={snapBuildPlacementToNearestValid}
+              style={styles.findPlacementBtn}
+            >
+              <Feather name="crosshair" size={13} color="#fff2bb" />
+              <Text numberOfLines={1} style={styles.findPlacementText}>Find</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Finish placing ${buildItem.label}`}
+              onPress={clearBuildMode}
+              style={styles.donePlacementBtn}
+            >
+              <Feather name="check-circle" size={13} color="#d9ffd0" />
+              <Text numberOfLines={1} style={styles.donePlacementText}>Done</Text>
+            </Pressable>
+          </View>
+          <View style={styles.nudgeGrid}>
+            <View style={styles.nudgeSpacer} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Nudge ${buildItem.label} up`}
+              style={styles.nudgeBtn}
+              onPress={() => nudgeBuildPlacement(-1, 0)}
+            >
+              <Feather name="arrow-up" size={17} color="#fff2bb" />
+            </Pressable>
+            <View style={styles.nudgeSpacer} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Nudge ${buildItem.label} left`}
+              style={styles.nudgeBtn}
+              onPress={() => nudgeBuildPlacement(0, -1)}
+            >
+              <Feather name="arrow-left" size={17} color="#fff2bb" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={buildItem.mode === 'edit' ? `Move ${buildItem.label}` : buildItem.purpose === 'repair' ? `Repair gap with ${buildItem.label}` : `Place ${buildItem.label}`}
+              accessibilityState={{ disabled: !placementReport?.valid }}
+              disabled={!placementReport?.valid}
+              style={[styles.placeNowBtn, !placementReport?.valid && styles.placeNowBtnDisabled]}
+              onPress={confirmBuildPlacement}
+            >
+              <Feather name={buildItem.mode === 'edit' ? 'move' : 'check'} size={16} color="#14351f" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Nudge ${buildItem.label} right`}
+              style={styles.nudgeBtn}
+              onPress={() => nudgeBuildPlacement(0, 1)}
+            >
+              <Feather name="arrow-right" size={17} color="#fff2bb" />
+            </Pressable>
+            <View style={styles.nudgeSpacer} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Nudge ${buildItem.label} down`}
+              style={styles.nudgeBtn}
+              onPress={() => nudgeBuildPlacement(1, 0)}
+            >
+              <Feather name="arrow-down" size={17} color="#fff2bb" />
+            </Pressable>
+            <View style={styles.nudgeSpacer} />
+          </View>
+        </View>
+      )}
+
       {selectedObject && (
-        <View style={[styles.editBar, { bottom: 104 + safeAreaInsets.bottom, right: 20 + safeAreaInsets.right }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Stash ${buildItem?.label ?? 'object'}`}
-            style={styles.editBtn}
-            onPress={stashEditingObject}
-          >
-            <Feather name="archive" size={17} color="#fff" />
-            <Text style={styles.editText}>Stash</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Cancel moving object"
-            style={styles.editBtn}
-            onPress={clearBuildMode}
-          >
-            <Feather name="x" size={17} color="#fff" />
-            <Text style={styles.editText}>Cancel</Text>
-          </Pressable>
+        <View style={[styles.editPanel, { bottom: 104 + safeAreaInsets.bottom, right: 20 + safeAreaInsets.right }]}>
+          <View style={styles.editPanelSummary}>
+            <View style={styles.editPanelIcon}>
+              <RpgItemIcon item={selectedObjectItem ?? getRpgItem(selectedObject.type)} size={22} fallbackLabel={selectedObject.type} />
+            </View>
+            <View style={styles.editPanelTextStack}>
+              <Text numberOfLines={1} style={styles.editPanelName}>{selectedObjectItem?.name ?? buildItem?.label ?? 'Sanctuary object'}</Text>
+              <Text numberOfLines={1} style={styles.editPanelMeta}>
+                {selectedObjectFootprintLabel} / {selectedObjectGroundLabel} / R{selectedObject.row} C{selectedObject.col}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.editBar}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Reset ${buildItem?.label ?? 'object'} to original spot`}
+              style={styles.editBtn}
+              onPress={resetBuildPlacementToObjectOrigin}
+            >
+              <Feather name="rotate-ccw" size={17} color="#fff" />
+              <Text style={styles.editText}>Reset</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Stash ${buildItem?.label ?? 'object'}`}
+              style={styles.editBtn}
+              onPress={stashEditingObject}
+            >
+              <Feather name="archive" size={17} color="#fff" />
+              <Text style={styles.editText}>Stash</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel moving object"
+              style={styles.editBtn}
+              onPress={clearBuildMode}
+            >
+              <Feather name="x" size={17} color="#fff" />
+              <Text style={styles.editText}>Cancel</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
@@ -4575,61 +5529,37 @@ export default function RpgScreen() {
         isOpen={isShopOpen}
         coins={coins}
         refreshKey={inventoryRevision}
+        canPlace={activeZone === 'sanctuary'}
         onClose={() => setIsShopOpen(false)}
-        onPurchaseRequest={(itemId, price) => {
-          try {
-            const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
-            const item = getRpgItem(itemId);
-            const buildingDef = getBuildingDef(itemId);
-            const woodCost = buildingDef?.priceWood ?? 0;
-            const stoneCost = buildingDef?.priceStone ?? 0;
-
-            if (!state || state.coins < price) {
-              const shortfall = Math.max(0, price - (state?.coins ?? 0));
-              showWorldToast({ text: `Need ${shortfall} more coins`, item, tone: 'warn' });
-              return { ok: false, message: `Need ${shortfall} more coins` };
-            }
-            if (woodCost > 0 && getInventoryQuantity(RPG_WOOD_ITEM_ID) < woodCost) {
-              showWorldToast({ text: `Need ${woodCost} wood`, item, tone: 'warn' });
-              return { ok: false, message: `Need ${woodCost} wood` };
-            }
-            if (stoneCost > 0 && getInventoryQuantity(RPG_STONE_ITEM_ID) < stoneCost) {
-              showWorldToast({ text: `Need ${stoneCost} stone`, item, tone: 'warn' });
-              return { ok: false, message: `Need ${stoneCost} stone` };
-            }
-
-            db.execSync('BEGIN TRANSACTION');
-            db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', price);
-            if (woodCost > 0) addSandboxInventoryItem(RPG_WOOD_ITEM_ID, -woodCost, 'inventory');
-            if (stoneCost > 0) addSandboxInventoryItem(RPG_STONE_ITEM_ID, -stoneCost, 'inventory');
-            db.runSync(
-              `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
-               ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
-              itemId,
-            );
-            db.execSync('COMMIT');
-            recordRpgDiscovery(itemId, 'buy');
-            refreshCoins();
-            bumpInventoryRevision();
-            showWorldToast({
-              text: `Bought ${item?.name ?? itemId}`,
-              item,
-              tone: 'success',
-            });
-            return { ok: true, message: `Bought ${item?.name ?? itemId}` };
-          } catch (e) {
-            try { db.execSync('ROLLBACK'); } catch {}
-            console.warn('Failed to purchase item', e);
-            showWorldToast({ text: 'Buy failed', item: getRpgItem(itemId), tone: 'warn' });
-            return { ok: false, message: 'Buy failed. Try again.' };
+        onPurchaseRequest={purchaseShopItem}
+        onPurchaseAndPlaceRequest={(itemId, price) => {
+          if (!getPlaceableItem(itemId)) {
+            return { ok: false, message: 'Cannot place this item directly' };
           }
+          const result = purchaseShopItem(itemId, price);
+          if (result.ok) {
+            setIsShopOpen(false);
+            setIsBackpackOpen(false);
+            setIsArchiveOpen(false);
+            setIsCharacterOpen(false);
+            setIsCraftingOpen(false);
+            setIsExploreOpen(false);
+            handleBackpackPlaceItem(itemId);
+          }
+          return result;
         }}
       />
       <RpgBackpack
         isOpen={isBackpackOpen}
         refreshKey={inventoryRevision}
         canPlace={activeZone === 'sanctuary'}
-        onClose={() => setIsBackpackOpen(false)}
+        repairMode={preferredBuildAnchor !== null}
+        repairZoneType={preferredRepairGap?.zone.type ?? null}
+        repairMaterialHint={preferredRepairMaterialHint}
+        onClose={() => {
+          setPreferredBuildAnchor(null);
+          setIsBackpackOpen(false);
+        }}
         onPlaceItem={handleBackpackPlaceItem}
         onPlantSeed={handleBackpackPlantSeed}
         onSellItem={handleSellItem}
@@ -4667,6 +5597,139 @@ const styles = StyleSheet.create({
   zoneOverlay: {
     position: 'absolute',
   },
+  pendingZoneOverlay: {
+    backgroundColor: 'rgba(255,242,187,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.34)',
+  },
+  zoneOverlayBreached: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,141,122,0.88)',
+  },
+  zoneRepairMarker: {
+    position: 'absolute',
+    borderRadius: 7,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,141,122,0.95)',
+    backgroundColor: 'rgba(157,55,46,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 86,
+  },
+  zoneRepairMarkerPulse: {
+    position: 'absolute',
+    left: 5,
+    right: 5,
+    top: 5,
+    bottom: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,239,232,0.28)',
+    backgroundColor: 'rgba(255,141,122,0.12)',
+  },
+  zoneRepairGapArt: {
+    position: 'absolute',
+    left: 9,
+    right: 9,
+    top: 12,
+    bottom: 10,
+  },
+  zoneRepairGapPost: {
+    position: 'absolute',
+    top: 1,
+    bottom: 0,
+    width: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,196,122,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(75,31,23,0.48)',
+  },
+  zoneRepairGapPostLeft: {
+    left: 0,
+  },
+  zoneRepairGapPostRight: {
+    right: 0,
+  },
+  zoneRepairGapRailTop: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    top: 6,
+    height: 4,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,224,112,0.5)',
+  },
+  zoneRepairGapRailBottom: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    bottom: 4,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,224,112,0.38)',
+  },
+  zoneRepairMarkerCore: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(157,55,46,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,239,232,0.82)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoneRepairMaterialBadge: {
+    position: 'absolute',
+    left: -16,
+    right: -16,
+    bottom: -15,
+    minHeight: 12,
+    paddingHorizontal: 3,
+    borderRadius: 5,
+    backgroundColor: 'rgba(43,28,18,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,196,122,0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoneRepairMaterialText: {
+    color: '#ffefe8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 6,
+    textAlign: 'center',
+  },
+  pendingZoneLabel: {
+    position: 'absolute',
+    minHeight: 24,
+    maxWidth: 132,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 7,
+    backgroundColor: 'rgba(217,255,208,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(20,53,31,0.36)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  pendingZoneLabelStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pendingZoneLabelText: {
+    flexShrink: 1,
+    color: '#14351f',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  pendingZoneLabelHint: {
+    marginTop: 1,
+    color: 'rgba(20,53,31,0.72)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 6,
+  },
   zoneLabel: {
     position: 'absolute',
     flexDirection: 'row',
@@ -4678,6 +5741,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(11,20,12,0.35)',
+  },
+  zoneLabelBreached: {
+    backgroundColor: 'rgba(255,229,202,0.94)',
+    borderColor: 'rgba(255,141,122,0.8)',
   },
   zoneLabelText: {
     fontFamily: fonts.ui.bold,
@@ -4701,8 +5768,192 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: DEFAULT_TILE_SIZE,
     height: DEFAULT_TILE_SIZE,
-    borderWidth: 3,
+    borderWidth: 1,
+    borderRadius: 7,
+    overflow: 'hidden',
     zIndex: 2000,
+  },
+  placementCellValid: {
+    borderColor: 'rgba(142,232,137,0.46)',
+    backgroundColor: 'rgba(53,255,112,0.08)',
+  },
+  placementCellInvalid: {
+    borderColor: 'rgba(255,141,122,0.56)',
+    backgroundColor: 'rgba(255,59,48,0.1)',
+  },
+  placementCellTerrainArt: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.56,
+  },
+  placementCellStatusWash: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  placementCellStatusWashValid: {
+    backgroundColor: 'rgba(53,255,112,0.1)',
+  },
+  placementCellStatusWashInvalid: {
+    backgroundColor: 'rgba(255,59,48,0.18)',
+  },
+  placementCellCorner: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderColor: '#fff',
+  },
+  placementCellCornerValid: {
+    borderColor: '#8ee889',
+  },
+  placementCellCornerInvalid: {
+    borderColor: '#ff8d7a',
+  },
+  placementCellCornerTopLeft: {
+    left: 2,
+    top: 2,
+    borderLeftWidth: 2,
+    borderTopWidth: 2,
+    borderTopLeftRadius: 3,
+  },
+  placementCellCornerTopRight: {
+    right: 2,
+    top: 2,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    borderTopRightRadius: 3,
+  },
+  placementCellCornerBottomLeft: {
+    left: 2,
+    bottom: 2,
+    borderLeftWidth: 2,
+    borderBottomWidth: 2,
+    borderBottomLeftRadius: 3,
+  },
+  placementCellCornerBottomRight: {
+    right: 2,
+    bottom: 2,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderBottomRightRadius: 3,
+  },
+  placementFootprint: {
+    borderWidth: 2,
+    borderRadius: 7,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  placementFootprintValid: {
+    borderColor: 'rgba(142,232,137,0.95)',
+    backgroundColor: 'rgba(46,132,65,0.2)',
+  },
+  placementFootprintInvalid: {
+    borderColor: 'rgba(255,141,122,0.95)',
+    backgroundColor: 'rgba(157,55,46,0.26)',
+  },
+  placementFootprintEdit: {
+    borderStyle: 'solid',
+    borderWidth: 3,
+  },
+  placementFootprintRepair: {
+    borderStyle: 'solid',
+    borderColor: 'rgba(255,224,112,0.98)',
+    backgroundColor: 'rgba(255,224,112,0.14)',
+  },
+  placementTerrainWash: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 5,
+    opacity: 0.34,
+  },
+  placementTerrainWashInvalid: {
+    opacity: 0.18,
+  },
+  placementFootprintAnchor: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 2,
+    backgroundColor: 'rgba(11,20,12,0.74)',
+  },
+  placementFootprintAnchorValid: {
+    borderColor: '#8ee889',
+  },
+  placementFootprintAnchorInvalid: {
+    borderColor: '#ff8d7a',
+  },
+  editOriginFootprint: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderRadius: 7,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,242,187,0.56)',
+    backgroundColor: 'rgba(11,20,12,0.2)',
+  },
+  editOriginAnchor: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,242,187,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(11,20,12,0.65)',
+  },
+  editOriginLabel: {
+    marginTop: 2,
+    maxWidth: 34,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowRadius: 2,
+  },
+  buildGhostArt: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    borderRadius: 8,
+  },
+  buildGhostArtInvalid: {
+    opacity: 0.55,
+  },
+  buildGhostArtEdit: {
+    backgroundColor: 'rgba(255,242,187,0.1)',
+  },
+  buildGhostArtRepair: {
+    backgroundColor: 'rgba(255,224,112,0.08)',
+  },
+  buildGhostGrounding: {
+    position: 'absolute',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.2)',
+    opacity: 0.28,
+    transform: [{ scaleY: 0.72 }],
+  },
+  buildGhostGroundingInvalid: {
+    opacity: 0.14,
+  },
+  buildGhostGroundingRepair: {
+    borderColor: 'rgba(255,224,112,0.42)',
+    opacity: 0.38,
+  },
+  terrainGhostTile: {
+    borderRadius: 7,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,242,187,0.72)',
+    backgroundColor: 'rgba(11,20,12,0.18)',
+  },
+  terrainGhostTileInvalid: {
+    opacity: 0.5,
+    borderColor: 'rgba(255,141,122,0.82)',
+  },
+  terrainGhostTileGloss: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,242,187,0.1)',
   },
   interactionTargetCell: {
     position: 'absolute',
@@ -4713,6 +5964,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,242,187,0.14)',
     zIndex: 1990,
   },
+  sanctuaryTargetCell: {
+    position: 'absolute',
+    width: DEFAULT_TILE_SIZE,
+    height: DEFAULT_TILE_SIZE,
+    borderWidth: 2,
+    borderRadius: 8,
+    borderColor: 'rgba(255,242,187,0.92)',
+    backgroundColor: 'rgba(255,242,187,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 1985,
+  },
+  sanctuaryTargetCropCell: {
+    borderColor: 'rgba(142,232,137,0.94)',
+    backgroundColor: 'rgba(75,160,77,0.11)',
+  },
+  sanctuaryTargetPortalCell: {
+    borderColor: 'rgba(112,214,255,0.94)',
+    backgroundColor: 'rgba(112,214,255,0.12)',
+  },
   gardenPlot: {
     position: 'absolute',
     width: DEFAULT_TILE_SIZE,
@@ -4722,6 +5995,43 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(72,48,28,0.34)',
     borderWidth: 1,
     borderColor: 'rgba(255,242,187,0.42)',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  gardenSoilInset: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    top: 5,
+    bottom: 4,
+    borderRadius: 5,
+    backgroundColor: 'rgba(94,58,31,0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(43,28,18,0.38)',
+  },
+  gardenSoilGrowing: {
+    backgroundColor: 'rgba(77,83,36,0.74)',
+    borderColor: 'rgba(126,217,87,0.26)',
+  },
+  gardenSoilMature: {
+    backgroundColor: 'rgba(114,82,30,0.78)',
+    borderColor: 'rgba(255,224,112,0.34)',
+  },
+  gardenSoilWatered: {
+    backgroundColor: 'rgba(52,75,62,0.82)',
+    borderColor: 'rgba(112,214,255,0.34)',
+  },
+  gardenFurrowSet: {
+    position: 'absolute',
+    left: 7,
+    right: 7,
+    top: 8,
+    gap: 4,
+  },
+  gardenFurrowLine: {
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(32,21,14,0.24)',
   },
   gardenGrowthTrack: {
     position: 'absolute',
@@ -4768,6 +6078,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,242,187,0.58)',
   },
+  seedGhostSoilInset: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    top: 5,
+    bottom: 4,
+    borderRadius: 5,
+    backgroundColor: 'rgba(94,58,31,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(43,28,18,0.44)',
+  },
+  seedGhostSoilInvalid: {
+    backgroundColor: 'rgba(82,45,38,0.48)',
+    borderColor: 'rgba(255,141,122,0.34)',
+  },
+  seedGhostFurrowSet: {
+    position: 'absolute',
+    left: 7,
+    right: 7,
+    top: 8,
+    gap: 4,
+  },
+  seedGhostFurrowLine: {
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(32,21,14,0.24)',
+  },
   enemyHpTrack: {
     height: 4,
     borderRadius: 2,
@@ -4792,6 +6129,15 @@ const styles = StyleSheet.create({
   rainOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 80,
+  },
+  seasonAmbienceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 70,
+    borderWidth: 1,
+  },
+  seasonAmbienceRain: {
+    backgroundColor: 'rgba(78,117,143,0.075)',
+    borderColor: 'rgba(189,233,255,0.16)',
   },
   rainDrop: {
     position: 'absolute',
@@ -5060,21 +6406,435 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editBar: {
+  buildPad: {
     position: 'absolute',
-    bottom: 104,
-    right: 20,
-    flexDirection: 'row',
-    gap: 10,
-    zIndex: 100,
-  },
-  editBtn: {
-    width: 78,
-    height: 44,
+    width: 154,
+    padding: 8,
     borderRadius: 14,
     backgroundColor: 'rgba(0,0,0,0.62)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.2)',
+    zIndex: 100,
+  },
+  buildPadHeader: {
+    minHeight: 18,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  buildStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  buildStatusDotValid: {
+    backgroundColor: '#8ee889',
+  },
+  buildStatusDotInvalid: {
+    backgroundColor: '#ff8d7a',
+  },
+  buildPadTitle: {
+    flex: 1,
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  buildPadCoord: {
+    color: 'rgba(255,255,255,0.68)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+    marginLeft: 4,
+  },
+  buildPlacementReasonChip: {
+    minHeight: 20,
+    marginBottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  buildPlacementReasonChipValid: {
+    backgroundColor: 'rgba(46,132,65,0.26)',
+    borderColor: 'rgba(142,232,137,0.42)',
+  },
+  buildPlacementReasonChipInvalid: {
+    backgroundColor: 'rgba(157,55,46,0.28)',
+    borderColor: 'rgba(255,141,122,0.42)',
+  },
+  buildPlacementReasonLabel: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  buildPlacementReasonHint: {
+    marginTop: 1,
+    color: 'rgba(255,255,255,0.68)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 8,
+  },
+  buildInfoBlock: {
+    marginBottom: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  buildItemIdentityRow: {
+    minHeight: 28,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  buildItemIdentityIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,242,187,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.22)',
+  },
+  buildItemIdentityTextStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  buildStockBadge: {
+    maxWidth: 54,
+    minHeight: 22,
+    paddingHorizontal: 5,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,242,187,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.24)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  buildStockBadgeEmpty: {
+    backgroundColor: 'rgba(157,55,46,0.2)',
+    borderColor: 'rgba(255,141,122,0.38)',
+  },
+  buildStockText: {
+    flex: 1,
+    minWidth: 0,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textTransform: 'uppercase',
+  },
+  buildStockTextEmpty: {
+    color: '#ffb0a8',
+  },
+  buildItemIdentityName: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  buildItemIdentityMode: {
+    marginTop: 1,
+    color: 'rgba(255,242,187,0.62)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 8,
+  },
+  buildInfoRow: {
+    minHeight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  buildInfoMode: {
+    flex: 1,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  buildInfoRole: {
+    maxWidth: 72,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(158,230,168,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.3)',
+    color: '#c9f2c6',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  buildInfoRoleNature: {
+    backgroundColor: 'rgba(36,72,38,0.76)',
+    borderColor: 'rgba(126,217,87,0.42)',
+  },
+  buildInfoRoleFarm: {
+    backgroundColor: 'rgba(74,58,20,0.76)',
+    borderColor: 'rgba(241,196,15,0.4)',
+  },
+  buildInfoRoleRuin: {
+    backgroundColor: 'rgba(50,39,76,0.76)',
+    borderColor: 'rgba(183,153,255,0.4)',
+  },
+  buildInfoRoleUtility: {
+    backgroundColor: 'rgba(28,58,70,0.76)',
+    borderColor: 'rgba(112,214,255,0.4)',
+  },
+  buildInfoRoleLivestock: {
+    backgroundColor: 'rgba(82,43,38,0.76)',
+    borderColor: 'rgba(255,176,168,0.4)',
+  },
+  buildInfoRoleResource: {
+    backgroundColor: 'rgba(52,67,52,0.76)',
+    borderColor: 'rgba(205,232,194,0.36)',
+  },
+  buildInfoHint: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.62)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 8,
+    lineHeight: 10,
+  },
+  buildLayoutFitRow: {
+    minHeight: 17,
+    marginTop: 5,
+    marginBottom: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+  },
+  buildLayoutFitLead: {
+    color: 'rgba(255,255,255,0.48)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textTransform: 'uppercase',
+  },
+  buildLayoutFitPill: {
+    maxWidth: 52,
+    minHeight: 15,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(190,224,142,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(190,224,142,0.28)',
+    color: '#e0f0b2',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
+  buildPlacementStatsRow: {
+    minHeight: 28,
+    marginTop: 5,
+    marginBottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  buildPlacementStatPill: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 26,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,242,187,0.09)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.18)',
+    justifyContent: 'center',
+  },
+  buildPlacementStatPillValid: {
+    backgroundColor: 'rgba(46,132,65,0.2)',
+    borderColor: 'rgba(142,232,137,0.38)',
+  },
+  buildPlacementStatPillInvalid: {
+    backgroundColor: 'rgba(157,55,46,0.2)',
+    borderColor: 'rgba(255,141,122,0.38)',
+  },
+  buildPlacementStatLabel: {
+    color: 'rgba(255,255,255,0.46)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 6,
+    textTransform: 'uppercase',
+  },
+  buildPlacementStatValue: {
+    marginTop: 1,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  terrainPaintSwapRow: {
+    minHeight: 32,
+    marginTop: 5,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  terrainPaintSwatchBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  terrainPaintSwatch: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  terrainPaintSwatchTarget: {
+    borderColor: 'rgba(142,232,137,0.58)',
+  },
+  terrainPaintSwatchLabel: {
+    marginTop: 2,
+    maxWidth: 48,
+    color: 'rgba(255,255,255,0.66)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textAlign: 'center',
+  },
+  terrainPaintUsageText: {
+    marginTop: -3,
+    marginBottom: 5,
+    color: 'rgba(255,242,187,0.68)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  buildPadActionRow: {
+    minHeight: 28,
+    marginBottom: 6,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  findPlacementBtn: {
+    flex: 1,
+    minHeight: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,242,187,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.24)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  findPlacementText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  donePlacementBtn: {
+    flex: 1,
+    minHeight: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(46,132,65,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(142,232,137,0.34)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  donePlacementText: {
+    color: '#d9ffd0',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
+  nudgeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  nudgeBtn: {
+    width: 42,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nudgeSpacer: {
+    width: 42,
+    height: 34,
+  },
+  placeNowBtn: {
+    width: 42,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#9ee6a8',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeNowBtnDisabled: {
+    opacity: 0.42,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  editPanel: {
+    position: 'absolute',
+    bottom: 104,
+    right: 20,
+    width: 254,
+    padding: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    zIndex: 100,
+  },
+  editPanelSummary: {
+    minHeight: 34,
+    marginBottom: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  editPanelIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,242,187,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.24)',
+  },
+  editPanelTextStack: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editPanelName: {
+    color: '#fff',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  editPanelMeta: {
+    marginTop: 2,
+    color: 'rgba(255,242,187,0.62)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  editBar: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+  editBtn: {
+    flex: 1,
+    minWidth: 0,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },

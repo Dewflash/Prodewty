@@ -1,6 +1,6 @@
 # RPG Sandbox Phase Plan
 
-Last updated: 2026-06-27
+Last updated: 2026-07-03
 
 This ledger is the authoritative plan for the RPG sandbox work from Phase 0 onward. It exists so every pass can be judged against explicit goals, tests, evidence, and deferred expansion notes instead of memory.
 
@@ -138,7 +138,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 63 | Dungeon/sanctuary object split | Not started | Separate safe sanctuary decor from dungeon hazards, loot, locks, and combat props |
 | 64 | Economy balance and crafting foundations | Not started | Price resources, rewards, chests, processors, and future crafting loops coherently |
 | 65 | Performance and save-state hardening | Not started | Profile runtime hotspots, persistence transactions, migrations, and recovery paths |
-| 66 | Tool energy, watering, and character panel | Verified | Watering Can action, MP energy costs, character/equipment panel, textured tile placeholders |
+| 66 | Tool energy, watering, and character panel | Verified | Watering Can action, energy costs, character/equipment panel, textured tile placeholders |
 | 67 | Clearable sanctuary clutter V1 | Verified | One-time weeds/twigs/rocks spawn, energy-gated clearing, resource rewards, collision cleanup |
 | 68 | Crafting recipes V1 | Verified | Resource recipes consume materials transactionally and output placeable inventory items |
 | 69 | Current issue ledger and forward plan refresh | Verified | Device feedback, post-crafting roadmap, and future-dev protocol logged in this document |
@@ -153,7 +153,7 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 78 | Economy balance and crafting foundations V2 | Not started | Coherent prices, drops, reward sinks, recipes, station candidates, and resource value tiers |
 | 79 | Seasons/weather and farm loop V2 | Not started | Rain, seasons, growth modifiers, clutter regrowth rules, and daily cozy-life-sim cadence |
 | 80 | Performance and save-state hardening V2 | Not started | Runtime profiling, transactional persistence audits, migration simulations, and device baseline |
-| 81 | Tool terrain art V2 | Verified | Bridge, Path, and Tilled Soil now render tracked sprite frames instead of hand-drawn View fills |
+| 81 | Tool terrain placeholder pass | Verified | Superseded by Phase 89: Bridge, Path, and Tilled Soil are honest base-grid placeholders, not final tracked terrain sprites |
 | 82 | Backpack/tool ownership split | Verified | Backpack hides tools; hotbar and character/equipment panel own tool equip/unequip |
 | 83 | Seasons and weather farm loop V2 | Verified | Season/weather HUD chip plus season-specific transactional harvest bonus drops |
 | 84 | Asset correctness and placeholder honesty V3 | Verified | Mechanism compact markers no longer hide art; animal products use distinct labeled placeholders |
@@ -161,6 +161,44 @@ The RPG sandbox is closest to a cozy tile-life-sim loop: farming, foraging, deco
 | 86 | Object interaction reactions V1 | Verified | Interacting with animals, forage objects, clutter, chests, gates, traps, and levers now shows a small in-world reaction badge |
 | 87 | Crop plot reactions V1 | Verified | Watering, rain growth, not-ready, ready, and harvest states now show small in-world crop badges |
 | 88 | Crop season affinity V1 | Verified | Crops now declare preferred seasons; in-season harvests add extra transactional yield and Archive guide facts |
+| 89 | Validator architecture and terrain placeholder truth | Verified | `validate:rpg` now follows Tool/Crafting catalogs, DB helpers, calendar state, and honest terrain-placeholder policy |
+| 90 | Sanctuary panel density and seed placeholder identity | Verified | Shop/Backpack/Archive show larger readable item surfaces; generic seed placeholders carry semantic badges and validator guards |
+| 91 | Build nudge controls V1 | Verified | Build/edit mode now has contextual one-tile nudge controls, status, coordinates, and an explicit valid-placement confirm button |
+| 92 | Placement ghost readability V1 | Verified | Build/edit ghosts now show a world-anchored footprint mat, center anchor, valid/invalid state, and edit-mode tint |
+| 93 | Sanctuary design role hints V1 | Verified | Shop and Backpack now share catalog-derived layout roles and composition hints for decorating decisions |
+| 94 | Sanctuary layout set filters V1 | Verified | Shop and Backpack can filter by Grove, Farm, Ruins, and Work layout intent using shared catalog matching |
+| 95 | Item footprint preview V1 | Verified | Shop and Backpack details now show a compact shared footprint grid for placeables and plantable seeds |
+| 96 | Build mode item context V1 | Verified | Build/edit controls now show selected item role, hint, and footprint while placing, moving, or planting |
+| 97 | Archive composition guidance V1 | Verified | Archive details now show discovered item role, composition hint, and shared footprint/planting preview |
+| 98 | Archive layout set filters V1 | Verified | Archive can filter planning entries by Grove, Farm, Ruins, and Work using shared layout semantics |
+| 99 | Browse-card role badges V1 | Verified | Shop cards and Backpack slots now show shared sanctuary role badges while browsing items |
+| 100 | Browse role tone badges V1 | Verified | Shop and Backpack browse badges now use role-tone colors for faster Grove/Farm/Ruins/Work scanning |
+| 101 | Build mode role tone chip V1 | Verified | Build/edit placement context now carries the same role-tone chip language as browsing surfaces |
+| 102 | Selected layout fit chips V1 | Verified | Shop and Backpack details now show which Grove/Farm/Ruins/Work layout sets the selected item fits |
+| 103 | Build mode layout fit chips V1 | Verified | Build/edit placement context shows the selected item's Grove/Farm/Ruins/Work fit chips |
+| 104 | Archive layout fit chips V1 | Verified | Archive details show Grove/Farm/Ruins/Work fit chips for discovered or known selected entries |
+| 105 | Placed object grounding V1 | Verified | Placed sanctuary objects get catalog-footprint grounding mats so assets read better over placeholder terrain |
+| 106 | Crop plot bed readability V1 | Verified | Garden and food crop plots get layered soil/furrow/watered visuals over placeholder terrain |
+| 107 | Livestock farm-life cue V1 | Verified | Placed livestock gets a tag-driven barnyard cue and warmer grounding tone without changing animal product logic |
+| 108 | Sanctuary season ambience V1 | Verified | Sanctuary gets a season/rain ambience wash from existing calendar/weather state without changing farm mechanics |
+| 109 | Sanctuary interact focus V1 | Verified | Normal sanctuary play shows the current Interact target in-world using the resolved target cells |
+| 110 | Breached zone readability V1 | Verified | Persisted breached Pond/Garden/Building Plot zones remain visible with warning overlays and labels for repair |
+| 111 | Edit origin footprint V1 | Verified | Moving an existing sanctuary object shows its original catalog footprint as a subtle from-marker |
+| 112 | Sanctuary terrain texture placeholders V1 | Verified | Sanctuary grid tiles now render code-native pixel textures instead of flat color boxes while preserving TileType logic |
+| 113 | Terrain-aware object grounding V1 | Verified | Placed sanctuary object grounding mats inherit the current terrain tone from the object's footprint anchor tile |
+| 114 | Terrain-aware placement footprint V1 | Verified | Build/edit placement footprints render a terrain-tone wash from the current placement report without weakening valid/invalid feedback |
+| 115 | Terrain-aware build ghost grounding V1 | Verified | Build/edit object ghosts render a terrain-aware base under the preview art using the selected collision footprint |
+| 116 | Plant ghost soil preview V1 | Verified | Plant placement ghosts render a tiny soil-bed and furrows under the seed icon so crop placement reads like a future plot |
+| 117 | Placement cell marker polish V1 | Verified | Build placement cells now use soft valid/invalid fills with corner markers instead of heavy debug-style boxes |
+| 118 | Build pad placement reason chip V1 | Verified | Build mode now shows a compact placement reason/hint chip derived from the current placement report |
+| 119 | Build pad item identity row V1 | Verified | Build mode now shows the active item/seed icon and label inside the placement pad for clearer customization |
+| 120 | Terrain art registry foundation V1 | Verified | Sanctuary terrain now flows through asset-slot metadata, shared preview colors, and neighbor-aware transition edges |
+| 121 | Deterministic terrain variation V1 | Verified | Sanctuary placeholder terrain now gets stable per-cell detail variation for a less tiled farm-grid feel |
+| 122 | Terrain paint ghost preview V1 | Verified | Terrain edit placement now previews the actual target tile art over the grid before confirming |
+| 123 | Terrain paint before-after swatches V1 | Verified | Build pad now shows compact current-to-target terrain swatches while painting sanctuary tiles |
+| 124 | Terrain paint browse preview V1 | Verified | Backpack, Shop, and Archive details now explain terrain-paint item targets with shared tile swatches |
+| 125 | Terrain paint card art V1 | Verified | Terrain-paint item icons now use compact target-tile swatches across RPG browse/card surfaces |
+| 126 | Build placement stats row V1 | Verified | Build mode now summarizes footprint size, clear cells, and hovered terrain while customizing sanctuary layout |
 
 ## Future Development Roadmap
 
@@ -4020,5 +4058,2386 @@ Expansion notes saved:
 - Later add UI calendar/forecast controls if real-month seasons feel too slow for testing.
 
 Phase 88 status:
+
+- Verified.
+
+### Phase 89 Audit
+
+Intended behavior:
+
+- Repair `npm run validate:rpg` so it validates the current RPG architecture instead of stale inline-era implementation details.
+- Keep tools owned by the tool/equipment architecture: `ToolCatalog.ts`, starter tool item IDs, hotbar, and Character panel.
+- Keep crafting owned by `CraftingCatalog.ts` plus `src/db/crafting.ts`, with the RPG screen only starting and claiming jobs.
+- Record the terrain decision clearly: Bridge, Path, and Tilled Soil are honest base-grid placeholders because visible soil/terrain character comes from world objects and overlays, not final tile sprites.
+- Preserve sanctuary customization as the priority by keeping validation focused on RPG catalog, shop, backpack, archive, placement, interaction, and farming surfaces.
+
+Negative guarantees:
+
+- This phase must not change XP, global stats, habit/mood logging, non-RPG navigation, or non-RPG persistence.
+- This phase must not force tracked terrain sprites back into `TileArt.tsx` while terrain is intentionally placeholder base-grid art.
+- This phase must not move tools back into Backpack ownership or restore instant inline crafting recipes.
+- This phase must not weaken validator coverage for catalog, archive, shop, backpack, object interaction, farming, animals, or mechanisms.
+
+Files changed:
+
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated files should remain untouched unless a later phase explicitly owns them.
+
+Design attack findings:
+
+- The validator was red because it checked obsolete strings such as inline `CRAFTING_RECIPES`, `ToolId`, `rpg_tool_watering_can`, and tracked terrain sprite frame constants.
+- The current app uses catalog-backed tools, persisted equipment, timed crafting jobs, calendar state, and flat terrain placeholders. Validation needed to follow those sources of truth instead of making the code regress to older shapes.
+- Base terrain art is not the final sanctuary customization surface; placed objects, crops, clutter, livestock, buildings, paths/bridges as mechanics, and future overlays carry the Stardew-like read.
+
+Implementation attack findings:
+
+- `validate-rpg-content.js` now reads `ToolCatalog.ts`, `CraftingCatalog.ts`, and `src/db/crafting.ts`.
+- Tool validation checks `rpg_watering_can_basic`, `ToolType = WateringCan`, explicit `energyCost`, starter tool grants, Character/hotbar ownership, and `rpg_state.energy` spending.
+- Crafting validation checks catalog recipes, DB transaction helpers, guarded ingredient reads, output upsert, rollback, discovery on claim, station gating, and disabled craft buttons.
+- Terrain validation now requires explicit placeholder honesty and rejects accidental claims that final bridge/path/tilled sprite frames exist.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Backpack and confirm tools are hidden from normal inventory rows.
+- Open Character equipment and confirm starter tools appear as tool slots.
+- Equip Watering Can and confirm Interact/tool use waters crops through the existing crop flows.
+- Open Crafting and confirm recipes page through timed jobs rather than instant inline crafting.
+- Confirm bridge/path/tilled terrain still works mechanically as base-grid placeholders.
+
+Expansion notes saved:
+
+- Later add real tracked terrain tile sprites only if they improve readability beyond object/overlay art.
+- Later add an explicit validator section for sanctuary customization density once the shop/backpack/archive polish pass is complete.
+
+Phase 89 status:
+
+- Verified for validator architecture repair; broader sprint verification continues in the current work pass.
+
+### Phase 90 Audit
+
+Intended behavior:
+
+- Make the sanctuary customization surfaces feel more like game UI and less like dense debug catalogs.
+- Shop should show fewer, larger cards per page so object art, prices, rarity, and ownership are readable on phone.
+- Backpack should show fewer, larger slots per page, with clearer selected item details and action buttons.
+- Archive entries should sit lower and larger on the book art, with a correct Known count.
+- Generic seed placeholder art should carry semantic labels so Turnip/Cabbage/Pumpkin/tree seeds remain readable until final seed art is verified.
+
+Negative guarantees:
+
+- This phase must not change XP, global stats, economy prices, crop growth timing, harvest output, item ownership, placement rules, or non-RPG surfaces.
+- This phase must not claim final crop seed art exists.
+- This phase must not move tools back into Backpack actions.
+- This phase must not add new acquisition paths or wire non-RPG systems into the RPG.
+
+Files changed:
+
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/src/engine/RpgArchive.tsx`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Shop pages with six cards were dense enough that sanctuary objects could read like rows in a catalog instead of collectible/customization pieces.
+- Backpack's twelve-slot page made icons small at phone sizes; eight larger slots are a better Stardew-like tradeoff.
+- Archive's Known count was using an impossible predicate because current knowledge implies discovery.
+- Generic acorn seed art is acceptable only when the UI tells the player what seed it represents.
+
+Implementation attack findings:
+
+- Shop capacity changed to four cards per page with larger art boxes, card labels, price pills, and selected detail hierarchy.
+- Backpack capacity changed to eight slots per page with larger icons, details, and action buttons.
+- Archive entry positions were lowered on the open-book frame, entry art/text sizes increased, detail spacing improved, and Known count now checks discovered+known entries.
+- `RpgItemIcon` adds `placeholderSeedLabel` and a green semantic seed badge for items using `seed.treeGeneric`.
+- Validator now requires semantic seed placeholder labels and crop seed items linked to `RPG_CROP_CATALOG`.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop on a phone viewport and confirm four larger cards per page are readable and tappable.
+- Open Backpack and confirm item slots are larger, tools remain hidden, and selected item actions are clear.
+- Open Archive and confirm entries sit naturally on the book art and Known/Seen/Locked counts make sense.
+- Inspect Turnip, Cabbage, Pumpkin, and tree seeds in Shop/Backpack/Archive and confirm generic seed art has a readable semantic badge.
+
+Expansion notes saved:
+
+- Later replace generic seed badges with verified crop-specific seed packet art.
+- Later add a visual QA pass with screenshots or simulator proof once direct placement UX work begins.
+
+Phase 90 status:
+
+- Verified for automated gates; manual device verification remains part of the broader sanctuary polish loop.
+
+### Phase 91 Audit
+
+Intended behavior:
+
+- Make sanctuary placement/editing more precise without changing the existing placement model.
+- Build mode should still support direct drag placement, but also expose one-tile nudge controls for fine adjustments when a finger obscures the ghost.
+- Build mode should show current validity, invalid reason, and row/column coordinates.
+- A contextual Place/Move button should reuse the same `confirmBuildPlacement` path as Interact and disable itself when the footprint is invalid.
+- Normal gameplay remains simple: no nudge controls outside build/edit mode.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, safe-path checks, inventory arithmetic, object prices, crop growth, harvesting, XP, global stats, or non-RPG behavior.
+- This phase must not create a second placement confirmation path; the build pad calls the existing `confirmBuildPlacement`.
+- This phase must not add normal-mode controls beyond `Interact` and `Attack`.
+- This phase must not make move/stash persistent outside edit/build state.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI files from Phase 89/90.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Drag placement already exists, but mobile precision can suffer because a finger can cover the ghost and grid cells.
+- One-tile nudge controls improve sanctuary decoration without introducing a new world model.
+- The nudge helper must use the same shared build row/col values and call `updateBuildReport` so red/green footprint feedback remains authoritative.
+
+Implementation attack findings:
+
+- `nudgeBuildPlacement(deltaRow, deltaCol)` clamps using the same build bounds as drag and refreshes the shared placement report.
+- `buildPad` renders only when `buildItem` exists.
+- The center Place/Move button is disabled for invalid placement and calls `confirmBuildPlacement`.
+- In edit mode, the nudge pad lifts above the stash/edit bar so narrow phone viewports do not overlap the controls.
+- The existing mode prompt now tells the player to drag or nudge, then place.
+- `validate:rpg` enforces the nudge helper, report refresh, contextual pad, accessibility labels, disabled invalid confirm, and reuse of `confirmBuildPlacement`.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing an object from Backpack and confirm the build pad appears.
+- Tap all four nudge arrows and confirm the ghost moves one tile at a time.
+- Drag the ghost and confirm nudge controls still update from the dragged position.
+- Move onto invalid terrain/occupied/avatar cells and confirm status/reason changes and the Place button disables.
+- Press Interact and the build pad Place/Move button on valid cells and confirm both use the same placement behavior.
+- Long-press an object, nudge it, move it, then confirm old/new collision stays correct.
+
+Expansion notes saved:
+
+- Later add edge-panning while dragging near the screen boundary.
+- Later add optional rotate/variant controls only if catalog footprints and art variants support them.
+
+Phase 91 status:
+
+- Verified.
+
+### Phase 92 Audit
+
+Intended behavior:
+
+- Make sanctuary build/edit placement read like a deliberate customization tool, not just a translucent object floating over debug cells.
+- Build mode should render a world-anchored footprint mat at the authoritative build row/col, using the same width/height as placement collision.
+- The footprint should show valid vs invalid state clearly and include a center anchor so multi-tile objects are easier to align.
+- Edit mode should feel visually distinct from fresh placement without changing the existing edit/move persistence model.
+- Invalid ghosts should be visibly dimmed while still preserving the existing red invalid-cell feedback and disabled confirm button.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, safe-path checks, object persistence, inventory arithmetic, prices, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not introduce a second source of truth for placement; the mat follows the existing shared build row/col and `placementReport`.
+- This phase must not add non-build-mode controls or visual clutter during normal sanctuary movement.
+- This phase must not claim final soil/terrain art exists; terrain remains placeholder where intentionally logged.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI files from Phase 89/90.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Previous red/green cells proved validity but felt like debug overlays rather than an in-world decorating surface.
+- Multi-tile objects need a clear footprint anchor so players can align buildings, trees, and decor against paths/gardens.
+- The footprint must be derived from the same animated build coordinates as the ghost, otherwise drag/nudge could desync visual and confirm behavior.
+
+Implementation attack findings:
+
+- `buildFootprintStyle` is an animated, world-anchored footprint using shared build row/col and collision footprint dimensions.
+- The footprint uses `placementReport?.valid` for valid/invalid styling and keeps per-cell validity overlays intact.
+- A center anchor dot improves alignment for multi-tile objects and changes color with validity.
+- Edit mode applies a distinct footprint/ghost tint while still reusing `confirmBuildPlacement`.
+- `validate:rpg` now guards the footprint mat, anchor, valid/invalid styling, edit styling, and invalid ghost dimming.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing a one-tile seed, a two-tile decor item, and a larger building; confirm the footprint mat matches the actual occupied cells.
+- Drag and nudge across valid, occupied, avatar, and terrain-invalid cells; confirm mat, cells, pad status, and disabled Place/Move stay in sync.
+- Long-press an existing object and confirm edit mode uses the distinct tint while stash/cancel remain reachable.
+- Confirm normal movement mode does not show placement mats.
+
+Expansion notes saved:
+
+- Later add edge-panning and optional rotate/variant controls after placement readability is verified on device.
+- Later replace terrain/soil placeholders with final overlays/assets when the actual soil art set is chosen.
+
+Phase 92 status:
+
+- Verified.
+
+### Phase 93 Audit
+
+Intended behavior:
+
+- Make sanctuary item choice feel more like decorating and less like browsing raw catalog rows.
+- Shop and Backpack should use one shared catalog helper to classify item layout roles such as Canopy, Ground Cover, Landmark, Mechanism, Flooring, Boundary, Livestock, Crop Bed, and Crafting Stock.
+- Shop details should show the selected item role and a short composition hint before purchase.
+- Backpack details should show the same role and hint before placement, planting, selling, or using an item.
+- The role language should help players combine paths, plants, buildings, ruins, animals, and resources into Stardew-like sanctuary layouts.
+
+Negative guarantees:
+
+- This phase must not change prices, inventory quantities, buying/selling behavior, placement validity, collision, crop growth, rewards, XP, global stats, or non-RPG behavior.
+- This phase must not create separate role taxonomies for Shop and Backpack; both must use `getSanctuaryDesignRole`.
+- This phase must not make tools belong to Backpack again.
+- This phase must not claim final terrain/soil art exists; it only improves decision support around existing items.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-92.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Source filters and tags help find items, but they do not explain how an item should be used in a cozy layout.
+- Players choosing objects need layout-role vocabulary at both acquisition time and placement time.
+- A shared catalog helper prevents the shop from calling an item a Canopy while the backpack treats it as generic decor.
+
+Implementation attack findings:
+
+- `getSanctuaryDesignRole` classifies seeds, resources, floors, boundaries, stations, buildings, livestock, mechanisms, crystals, trees, ground cover, ruin accents, landmarks, decor, and resource nodes.
+- Shop imports the helper and renders a role chip plus one-line composition hint for the selected catalog item.
+- Backpack imports the same helper and renders the same role chip plus hint for the selected inventory stack.
+- `validate:rpg` now guards the shared helper, required role labels, Shop/Backpack helper usage, visible role chips, and composition hints.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop and inspect trees, crystals, mechanisms, animals, buildings, floors, and fences; confirm each selected item shows a useful role and hint.
+- Buy a few differently themed items, open Backpack, and confirm the same role language appears before placing.
+- Confirm Backpack still hides tools and only shows place/plant/use/sell actions appropriate to the selected item.
+- Confirm no prices, quantities, stats, or placement rules changed.
+
+Expansion notes saved:
+
+- Later add optional “layout set” filters (Farmyard, Grove, Ruins, Workshop) if the role chips prove useful on device.
+- Later feed these roles into archive guide pages or a sanctuary planning overlay.
+
+Phase 93 status:
+
+- Verified.
+
+### Phase 94 Audit
+
+Intended behavior:
+
+- Let players browse sanctuary items by layout intent, not only raw category/source/search.
+- Shop and Backpack should expose shared layout filters: All, Grove, Farm, Ruins, and Work.
+- Grove should collect plants, trees, saplings, mushrooms, and low natural detail.
+- Farm should collect crop beds, livestock, feed/farm items, and farmyard boundary pieces.
+- Ruins should collect cave/temple/crystal/relic/mechanism objects for shrine and dungeon-themed layouts.
+- Work should collect stations, buildings, floors, structure pieces, resources, and craft/workshop items.
+- Counts should show how many catalog/inventory items match each layout set.
+
+Negative guarantees:
+
+- This phase must not change prices, purchase flow, inventory quantities, selling behavior, placement validity, collision, crop growth, rewards, XP, global stats, or non-RPG behavior.
+- This phase must not create Shop-only or Backpack-only layout matching; both must use the shared catalog matcher.
+- This phase must not make tools appear in Backpack.
+- This phase must not claim final soil/terrain art exists; it only improves how existing items are found.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-93.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The Phase 93 role chips help explain the selected item, but players still need a fast way to gather items for a layout concept.
+- Layout filters should be broader than tags: a farmyard can include livestock, crop seeds, hay/feed, and fence pieces; ruins can include crystals, mechanisms, cave relics, and temple pieces.
+- A shared matcher keeps the layout semantics identical before buying and before placing.
+
+Implementation attack findings:
+
+- `SANCTUARY_LAYOUT_SET_FILTERS` defines All/Grove/Farm/Ruins/Work in the catalog.
+- `itemMatchesSanctuaryLayoutSet` uses the shared design role plus tags/source labels to match layout intent.
+- `countSanctuaryLayoutSets` gives both panels per-layout counts.
+- Shop filters catalog entries through `itemMatchesSanctuaryLayoutSet(item, layoutSet)` and renders a compact layout filter row.
+- Backpack filters inventory stacks through `itemMatchesSanctuaryLayoutSet(slot.item, layoutSet)` and renders the same layout filter row.
+- Backpack slot sizing reserves space for the extra layout row so the grid and action area remain stable on shorter panels.
+- `validate:rpg` guards the shared ids, filter list, matcher, counts, and Shop/Backpack usage.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop and toggle Grove/Farm/Ruins/Work; confirm results feel like coherent decoration sets.
+- Buy representative items from two layout sets, open Backpack, and confirm the same filters narrow the owned stacks.
+- Confirm source/category/search/sort still combine with the layout filter without losing selection or paging safety.
+- Confirm Backpack tools stay hidden and no prices, stats, or placement behavior changed.
+
+Expansion notes saved:
+
+- Later consider showing active layout set on the placement mode pill if it helps players remember the current decorating concept.
+- Later feed these layout sets into Archive guide pages or sanctuary planning overlays.
+
+Phase 94 status:
+
+- Verified.
+
+### Phase 95 Audit
+
+Intended behavior:
+
+- Make item size readable before a player buys or places a sanctuary item.
+- Shop details should show a compact footprint grid for the selected catalog item using its actual `colWidth`/`colHeight`.
+- Backpack details should show the same compact footprint grid for selected placeable stacks.
+- Backpack details should show a 1x1 planting preview for plantable seeds.
+- The preview should be shared by Shop and Backpack so footprint visuals stay consistent.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, object persistence, seed planting rules, prices, purchase flow, inventory quantities, selling behavior, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not duplicate two separate footprint renderers in Shop and Backpack.
+- This phase must not claim final terrain/soil art exists; it only previews occupied cells.
+
+Files changed:
+
+- `app/src/engine/SanctuaryFootprintPreview.tsx`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-94.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Text-only `Footprint: 2x2` is easy to skip when choosing decor; a mini grid makes footprint shape visible at a glance.
+- The preview must read the catalog dimensions, not infer from art size, because placement collision owns the footprint.
+- Planting seeds occupy one cell, so Backpack should use the same visual vocabulary for seed placement.
+
+Implementation attack findings:
+
+- `SanctuaryFootprintPreview` renders every occupied cell from `colWidth` and `colHeight` and labels the size.
+- Shop imports the shared preview and renders selected catalog item dimensions.
+- Backpack imports the shared preview and renders selected placeable dimensions, or a 1x1 `Planting` preview for plantable seeds.
+- Backpack slot sizing reserves space for the extra footprint row.
+- `validate:rpg` now guards the shared component, cell rendering, Shop usage, Backpack usage, and seed planting preview.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop and inspect 1x1, 2x2, and larger items; confirm the footprint grid matches the text/placement expectation.
+- Open Backpack and inspect owned placeables; confirm the same footprint grid appears.
+- Select Turnip/Cabbage/Pumpkin/tree seeds and confirm the planting preview appears as 1x1.
+- Confirm no prices, quantities, stats, placement rules, or crop rules changed.
+
+Expansion notes saved:
+
+- Later consider reusing the footprint preview in Archive entries once Archive composition guidance expands.
+- Later add visual proof screenshots for Shop/Backpack on narrow phone viewports.
+
+Phase 95 status:
+
+- Verified.
+
+### Phase 96 Audit
+
+Intended behavior:
+
+- Make the active sanctuary placement surface explain what the player is placing without opening Shop or Backpack again.
+- Build/edit mode should show whether the player is Placing, Moving, or Planting.
+- Build/edit controls should show the selected item's shared sanctuary design role and composition hint when available.
+- Build/edit controls should reuse the shared compact footprint grid and true selected dimensions.
+- Plantable seeds should show a 1x1 Planting footprint in build mode.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, object persistence, seed planting rules, prices, purchase flow, inventory quantities, selling behavior, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not create a second role taxonomy or footprint renderer.
+- This phase must not claim final terrain/soil art exists; it only adds build-mode decision context.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-95.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Shop and Backpack now explain roles and footprint before selection, but build mode previously made that context disappear while the player was actually placing the item.
+- The nudge pad is already the player's precise placement tool, so a compact context strip there is the least disruptive place to surface item size and role.
+- Reusing the shared role helper and footprint preview keeps placement-time language aligned with purchase and inventory surfaces.
+
+Implementation attack findings:
+
+- `rpg.tsx` imports `getSanctuaryDesignRole` and `SanctuaryFootprintPreview`.
+- Build mode derives `buildDesignRole`, `buildFootprintCols`, `buildFootprintRows`, and a contextual footprint label from the active `buildItem`.
+- The build nudge pad now renders a compact context block with Placing/Moving/Planting state, role label, role hint, and footprint preview.
+- `validate:rpg` now guards the shared helper usage, shared footprint preview usage, true dimension derivation, and plant/edit labels.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing an owned object and confirm the nudge pad shows Placing, role, hint, and footprint.
+- Long-press/move an existing object and confirm the context changes to Moving while the footprint remains correct.
+- Plant a seed and confirm the context shows Planting with a 1x1 preview.
+- Drag/nudge across valid and invalid cells and confirm placement validity, disabled Place/Move, collisions, and inventory behavior are unchanged.
+
+Expansion notes saved:
+
+- Later add visual screenshot proof for narrow phone viewports.
+- Later consider showing the active layout set beside this context if Shop/Backpack layout filters become part of the placement flow.
+
+Phase 96 status:
+
+- Verified.
+
+### Phase 97 Audit
+
+Intended behavior:
+
+- Make Archive entries useful for sanctuary planning, not only collection tracking.
+- Discovered/known Archive entries should show the same sanctuary design role and composition hint used in Shop, Backpack, and build mode.
+- Discovered/known placeable object entries should show a compact footprint preview from catalog dimensions.
+- Discovered/known seed entries should show a 1x1 Planting preview.
+- Locked entries should remain redacted and must not reveal role/hint/footprint details.
+
+Negative guarantees:
+
+- This phase must not change discovery/knowledge gates, placement validity, collision, object persistence, seed planting rules, prices, purchase flow, inventory quantities, selling behavior, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not create a second role taxonomy or footprint renderer.
+- This phase must not claim final terrain/soil art exists; it only improves Archive planning context.
+
+Files changed:
+
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-96.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Shop, Backpack, and build mode now explain item roles and footprint, but Archive still lacked the same planning vocabulary.
+- Archive is the natural long-term guide surface, so carrying role/footprint there helps players plan sanctuary layouts before buying or placing.
+- Role and footprint context must be gated behind discovery/knowledge so locked entries do not leak hidden item detail.
+
+Implementation attack findings:
+
+- Archive imports `getSanctuaryDesignRole`, `getRpgItem`, `getPlaceableItem`, and `SanctuaryFootprintPreview`.
+- Archive derives selected catalog item, selected placeable item, and selected design role from the active entry.
+- Archive renders role chip, composition hint, placeable footprint preview, or 1x1 seed Planting preview only when the entry is discovered/known.
+- `validate:rpg` now guards Archive shared role usage, shared footprint usage, discovery gating, true dimension derivation, and seed planting preview.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Archive, select a known object, and confirm role/hint/footprint appear.
+- Select a known seed and confirm a 1x1 Planting preview appears.
+- Select locked entries and confirm they still show redacted copy without role/hint/footprint detail.
+- Confirm discovery counts, known counts, filters, sorting, inventory quantities, placement behavior, and crop behavior are unchanged.
+
+Expansion notes saved:
+
+- Later add screenshot proof for Archive detail density on narrow phone viewports.
+- Later consider a dedicated Archive "layout guide" tab if role hints prove useful in manual play.
+
+Phase 97 status:
+
+- Verified.
+
+### Phase 98 Audit
+
+Intended behavior:
+
+- Make Archive planning browseable by the same sanctuary layout intents as Shop and Backpack.
+- Archive should expose All, Grove, Farm, Ruins, and Work layout-set filters.
+- Archive should show per-layout counts from the shared layout-set counter.
+- Archive filtering should combine safely with category, source pack, scope, search, and sort filters.
+- The layout-set semantics should stay shared across Archive, Shop, and Backpack.
+
+Negative guarantees:
+
+- This phase must not change discovery/knowledge gates, placement validity, collision, object persistence, seed planting rules, prices, purchase flow, inventory quantities, selling behavior, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not create Archive-only layout semantics.
+- This phase must not claim final terrain/soil art exists; it only improves Archive planning filters.
+
+Files changed:
+
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-97.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- After Phase 97, Archive could explain selected items, but players still had to browse the full collection with source/category filters rather than layout intent.
+- Shared layout sets make the Archive a planning surface: Grove/Farm/Ruins/Work mean the same thing before learning, buying, carrying, and placing items.
+- The added row required slightly more vertical budget, so Archive book scaling now reserves space for the extra filter row.
+
+Implementation attack findings:
+
+- Archive imports `SANCTUARY_LAYOUT_SET_FILTERS`, `itemMatchesSanctuaryLayoutSet`, `countSanctuaryLayoutSets`, and `SanctuaryLayoutSetId`.
+- Archive derives a lightweight layout-match item from each entry's category/tags/source label.
+- Archive filters entries through `itemMatchesSanctuaryLayoutSet(archiveLayoutItem(entry), layoutSet)`.
+- Archive renders a compact layout filter row with counts from `countSanctuaryLayoutSets(entries, archiveLayoutItem)`.
+- `validate:rpg` now guards Archive shared layout filters, matcher usage, and counts.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Archive and toggle Grove/Farm/Ruins/Work; confirm entries narrow by layout intent.
+- Confirm category, source, scope, search, and sort still combine with the active layout filter.
+- Confirm counts update from Archive entries and locked/discovered/known states continue to display normally.
+- Confirm no inventory quantities, placement behavior, prices, crop behavior, or stats changed.
+
+Expansion notes saved:
+
+- Later consider a dedicated sanctuary planning page if Archive layout filters become too dense for phone.
+- Later add visual screenshot proof for Archive filter density on narrow phone viewports.
+
+Phase 98 status:
+
+- Verified.
+
+### Phase 99 Audit
+
+Intended behavior:
+
+- Make Shop and Backpack browsing feel more like selecting layout pieces, not only scanning raw item icons.
+- Shop cards should show a compact shared sanctuary role badge for each visible catalog item.
+- Backpack slots should show a compact shared sanctuary role badge for each owned stack.
+- The badges should reuse `getSanctuaryDesignRole` so card roles match selected-detail roles, Archive roles, and build-mode roles.
+- Quantity badges, prices, rarity, card selection, and slot selection should remain unchanged.
+
+Negative guarantees:
+
+- This phase must not change prices, purchase flow, inventory quantities, selling behavior, placement validity, collision, crop growth, XP, global stats, discovery gates, or non-RPG behavior.
+- This phase must not create a second role taxonomy or alter layout-filter matching.
+- This phase must not claim final terrain/soil art exists; it only improves browsing readability.
+
+Files changed:
+
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-98.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Selected detail panels already explain role and hint, but players still had to tap items one by one to discover whether they were Canopy, Flooring, Livestock, etc.
+- Card-level badges make broad browsing match the sanctuary planning model established by layout filters.
+- Backpack slot badges need to avoid the quantity pill, so they sit top-left while quantity stays bottom-right.
+
+Implementation attack findings:
+
+- Shop derives `cardDesignRole` from each visible shop item and renders a compact role pill under rarity.
+- Backpack derives `slotDesignRole` from each occupied slot and renders a compact top-left role pill.
+- Both surfaces continue using the shared `getSanctuaryDesignRole` helper.
+- `validate:rpg` now guards Shop card role badges and Backpack slot role badges.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop and confirm visible cards show compact role badges without hiding art, rarity, or price.
+- Open Backpack and confirm occupied slots show compact role badges without hiding quantity.
+- Confirm selection, buying, selling, placing, planting, layout filters, and quantities are unchanged.
+- Confirm role labels match the selected-detail role for representative Grove/Farm/Ruins/Work items.
+
+Expansion notes saved:
+
+- Later add screenshot proof for Shop/Backpack card density on narrow phone viewports.
+- Later consider tinting card badges by role tone if the neutral chip is too subtle in manual play.
+
+Phase 99 status:
+
+- Verified.
+
+### Phase 100 Audit
+
+Intended behavior:
+
+- Make Shop and Backpack role badges easier to scan by giving each shared role tone a subtle visual identity.
+- Nature, Farm, Ruin, Utility, Livestock, and Resource badge tones should be visible while browsing Shop cards.
+- The same role-tone language should appear on Backpack slot badges.
+- Badge text should stay compact and bounded so long role labels do not spill into price or quantity controls.
+- Role tone should continue to come from `getSanctuaryDesignRole`.
+
+Negative guarantees:
+
+- This phase must not change prices, purchase flow, inventory quantities, selling behavior, placement validity, collision, crop growth, XP, global stats, discovery gates, layout-filter matching, or non-RPG behavior.
+- This phase must not create a second role taxonomy.
+- This phase must not claim final terrain/soil art exists; it only improves browse readability.
+
+Files changed:
+
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-99.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Phase 99 made roles visible while browsing, but a single neutral badge made every role feel visually equivalent.
+- Tone coloring reinforces the Grove/Farm/Ruins/Work layout model already used by filters and Archive planning.
+- Backpack badges needed darker backgrounds than Shop cards because they overlay item art.
+
+Implementation attack findings:
+
+- Shop card role badges now apply tone-specific styles from `cardDesignRole.tone`.
+- Backpack slot role badges now apply tone-specific overlay styles from `slotDesignRole.tone`.
+- Both surfaces keep using the shared role helper and keep existing price/quantity/selection UI intact.
+- `validate:rpg` now guards browse badge tone mapping in Shop and Backpack.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Shop and confirm different role cards show distinct but subtle badge tones.
+- Open Backpack and confirm slot badges remain readable on item art while quantity stays visible.
+- Confirm selecting, buying, selling, placing, planting, filtering, and sorting are unchanged.
+- Confirm role badge labels still match selected-detail role labels.
+
+Expansion notes saved:
+
+- Later add screenshot proof for narrow phone viewports.
+- Later consider using these tone colors in a dedicated sanctuary planning overlay.
+
+Phase 100 status:
+
+- Verified.
+
+### Phase 101 Audit
+
+Intended behavior:
+
+- Keep sanctuary role-tone language visible through the whole customization flow, including the moment of placing or moving an item.
+- Build/edit mode context should use the active `buildDesignRole.tone` to style the role chip.
+- Nature, Farm, Ruin, Utility, Livestock, and Resource tones should match the browsing/planning vocabulary.
+- The build role chip should remain compact and bounded inside the nudge pad.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, object persistence, seed planting rules, prices, purchase flow, inventory quantities, selling behavior, crop growth, XP, global stats, discovery gates, layout-filter matching, or non-RPG behavior.
+- This phase must not create a second role taxonomy.
+- This phase must not claim final terrain/soil art exists; it only improves placement-context readability.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-100.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Browse surfaces now use tone badges, but build mode still showed a neutral role chip while the player was making placement decisions.
+- Placement context is the final decision point for sanctuary customization, so it should preserve the same role-tone language.
+- The nudge pad is compact, so the role chip needs subtle color and a border without increasing its footprint.
+
+Implementation attack findings:
+
+- Build mode role chip now applies tone-specific styles from `buildDesignRole.tone`.
+- The tone styles are darker overlay-friendly variants so they remain readable inside the build pad.
+- `validate:rpg` now guards build-mode role-tone mapping.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing Grove/Farm/Ruins/Work items and confirm the build role chip tone changes with role.
+- Move an existing object and confirm the chip remains compact while nudge controls and footprint preview remain visible.
+- Confirm placement validity, Place/Move disabled state, dragging, nudging, inventory, crop behavior, and stats are unchanged.
+
+Expansion notes saved:
+
+- Later add visual proof screenshots for build-mode nudge pad density.
+- Later consider a dedicated role legend only if tone colors are unclear in manual play.
+
+Phase 101 status:
+
+- Verified.
+
+### Phase 102 Audit
+
+Intended behavior:
+
+- Make selected item details explain not only the role, but where the item fits in sanctuary layout planning.
+- Catalog should expose one shared helper for non-All layout fit labels.
+- Shop selected details should show Grove/Farm/Ruins/Work fit chips for the selected catalog item.
+- Backpack selected details should show the same fit chips for the selected owned item.
+- Fit chips should use the existing shared layout matcher so they stay aligned with actual filters.
+
+Negative guarantees:
+
+- This phase must not change prices, purchase flow, inventory quantities, selling behavior, placement validity, collision, crop growth, XP, global stats, discovery gates, layout-filter matching, or non-RPG behavior.
+- This phase must not create a second layout taxonomy or alter existing layout-set counts.
+- This phase must not claim final terrain/soil art exists; it only improves selected-item planning context.
+
+Files changed:
+
+- `app/src/engine/RpgObjectCatalog.ts`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG UI/build files from Phase 89-101.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Layout filters help browse by intent, but selected details did not summarize which layout sets an item belongs to.
+- A shared helper avoids Shop and Backpack drifting on fit labels.
+- Excluding `All` keeps the detail row meaningful and compact.
+
+Implementation attack findings:
+
+- `getSanctuaryLayoutFitLabels` returns non-All layout labels using `itemMatchesSanctuaryLayoutSet`.
+- Shop derives `selectedLayoutFits` from the selected catalog item and renders compact fit chips.
+- Backpack derives `selectedLayoutFits` from the selected inventory item and renders matching fit chips.
+- `validate:rpg` now guards the shared helper and both detail-panel fit rows.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check -- RPG_SANDBOX_PHASE_PLAN.md app/app/rpg.tsx app/scripts/validate-rpg-content.js app/src/engine/SanctuaryShop.tsx app/src/engine/RpgBackpack.tsx app/src/engine/RpgArchive.tsx app/src/engine/RpgItemIcon.tsx app/src/engine/RpgObjectCatalog.ts app/src/engine/SanctuaryFootprintPreview.tsx`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Select Grove/Farm/Ruins/Work items in Shop and confirm fit chips match the filter sets they appear in.
+- Select owned items in Backpack and confirm the same fit chips appear.
+- Confirm source/category/search/sort/layout filters still work and quantities/prices/actions are unchanged.
+- Confirm placement, planting, crop behavior, stats, and non-RPG surfaces are unchanged.
+
+Expansion notes saved:
+
+- Later consider reusing layout fit chips in Archive detail if detail density remains acceptable.
+- Later add screenshot proof for Shop/Backpack detail density on narrow phone viewports.
+
+Phase 102 status:
+
+- Verified.
+
+### Phase 103 Audit
+
+Intended behavior:
+
+- Keep layout-fit guidance visible at the final customization decision point: placing, planting, or moving an item in sanctuary build mode.
+- Build/edit controls should derive Grove/Farm/Ruins/Work fit labels from the same shared catalog helper used by Shop and Backpack.
+- Fit chips should sit inside the existing build context block above the footprint preview and should wrap compactly before the nudge grid.
+- Planting should also show layout-fit context for seed items when the shared helper can classify them.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, safe-path checks, object persistence, seed planting rules, crop growth, prices, purchase flow, inventory quantities, selling behavior, XP, global stats, discovery gates, layout-filter matching, or non-RPG behavior.
+- This phase must not create build-mode-only layout semantics or duplicate the Grove/Farm/Ruins/Work taxonomy.
+- This phase must not add build controls outside build/edit mode or claim final soil/terrain art exists.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-102.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Shop and Backpack now show layout fit labels, but the active placement surface did not carry that planning context forward.
+- The build pad already owns selected item role, hint, and footprint; layout-fit chips belong there rather than in a new HUD control.
+- Reusing `getSanctuaryLayoutFitLabels` keeps build-mode context aligned with the real shared layout filters.
+
+Implementation attack findings:
+
+- `rpg.tsx` imports `getSanctuaryLayoutFitLabels` and derives `buildLayoutFits` from `buildPreviewItem`.
+- Build/edit mode renders compact `Fits` chips inside `styles.buildInfoBlock` before `SanctuaryFootprintPreview`.
+- The new chip row wraps in the existing build pad and stays hidden outside build/edit mode.
+- `validate:rpg` now guards the shared helper usage and visible build-mode fit chips.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing representative Grove/Farm/Ruins/Work objects and confirm the build pad shows matching fit chips.
+- Start planting a seed and confirm plantable items keep the compact build context without covering nudge controls.
+- Long-press/move an existing object and confirm fit chips still show while editing.
+- Confirm invalid placement reasons, nudge controls, Interact confirmation, and Place/Move button behavior are unchanged.
+
+Expansion notes saved:
+
+- Later consider adding the same fit chips to Archive detail if book density remains readable.
+- Later consider a dedicated sanctuary planning overlay only if the build pad becomes too dense for phone.
+
+Phase 103 status:
+
+- Verified.
+
+### Phase 104 Audit
+
+Intended behavior:
+
+- Make Archive detail a complete sanctuary planning surface by showing which Grove/Farm/Ruins/Work sets a selected entry fits.
+- Archive should use the same `getSanctuaryLayoutFitLabels` helper as Shop, Backpack, and build mode.
+- Layout fit chips should appear only for discovered or known selected entries, matching existing role and footprint detail gates.
+- Locked Archive entries should continue showing hints/source context without revealing full planning metadata.
+
+Negative guarantees:
+
+- This phase must not change discovery rules, knowledge gates, source/category/scope/search/sort/layout filtering, Archive counts, prices, inventory, placement validity, crop growth, XP, global stats, or non-RPG behavior.
+- This phase must not create Archive-only layout semantics or duplicate the Grove/Farm/Ruins/Work taxonomy.
+- This phase must not claim final terrain/soil art exists.
+
+Files changed:
+
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-103.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Archive can already filter entries by shared layout intent, but selected details did not summarize the current entry's fit sets.
+- Archive is the long-term planning book, so showing fit chips there completes the browse -> plan -> buy/carry -> place language chain.
+- Gating fit chips behind `selected.discovered || selected.known` avoids leaking full composition metadata for locked entries.
+
+Implementation attack findings:
+
+- `RpgArchive.tsx` imports `getSanctuaryLayoutFitLabels`.
+- `selectedLayoutFits` is derived from `selectedCatalogItem` only when the selected entry is discovered or known.
+- Archive detail renders compact `Fits` chips between the role row and footprint preview.
+- `validate:rpg` now guards the discovered/known gate and visible Archive fit-chip row.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Open Archive and select discovered Grove/Farm/Ruins/Work entries; confirm fit chips match the layout filters they appear under.
+- Select locked entries and confirm fit chips remain hidden.
+- Confirm Archive category, source, scope, search, sort, layout filters, counts, role hints, and footprint previews still behave as before.
+- Confirm Shop, Backpack, build mode, placement, planting, stats, and non-RPG surfaces are unchanged.
+
+Expansion notes saved:
+
+- Later consider a dedicated Archive layout guide tab if the detail panel becomes too dense for phone.
+- Later add screenshot proof for Archive detail density on narrow phone viewports.
+
+Phase 104 status:
+
+- Verified.
+
+### Phase 105 Audit
+
+Intended behavior:
+
+- Make placed sanctuary objects feel grounded on the placeholder terrain by drawing a subtle base mat under their art.
+- The mat should be driven by the existing catalog collision footprint (`colWidth` x `colHeight`) and the active tile size.
+- Grounding should improve Stardew-like placement readability for single-tile and multi-tile objects without changing how placement works.
+- Targeted/mechanic-state objects should keep readable state treatment while still using the same grounded footprint.
+
+Negative guarantees:
+
+- This phase must not change movement collision, placement validity, safe-path checks, object persistence, z-order anchoring, interaction targeting, inventory, prices, crop growth, XP, global stats, discovery gates, or non-RPG behavior.
+- This phase must not introduce a second footprint source of truth or use visual dimensions for collision/readability mats.
+- This phase must not claim final terrain/soil art exists; the mat is a readability layer over current placeholder terrain.
+
+Files changed:
+
+- `app/src/engine/SanctuaryObject.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-104.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Placed objects already use bottom-center anchoring and feet-based z-order, but art could visually float over the honest placeholder grid.
+- A subtle footprint mat under the sprite makes the actual occupied footprint readable without changing world state.
+- Using `colWidth`, `colHeight`, and `tileSize` keeps the mat aligned with the authoritative collision footprint.
+
+Implementation attack findings:
+
+- `SanctuaryObject` now derives `footprintWidth`, `footprintHeight`, and `footprintLeft` from catalog dimensions.
+- A non-interactive `groundingFootprint` view renders before `RpgItemWorldArt`, keeping the art layer above the mat.
+- Large, targeted, and mechanic-state objects get slight tone adjustments while retaining the same footprint source.
+- `validate:rpg` now guards catalog-footprint-derived grounding and non-interactive rendering.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Place single-tile and multi-tile sanctuary objects and confirm each appears grounded over the grid.
+- Long-press/move an object and confirm edit behavior, z-order, and nudge placement remain unchanged.
+- Interact with gates/traps/levers and confirm mechanic visual state still reads on top of the grounding mat.
+- Confirm avatar collision, placement validity, safe-path rejection, inventory quantities, stats, and non-RPG surfaces are unchanged.
+
+Expansion notes saved:
+
+- Later tune mat opacity with screenshot proof on device if it reads too strong or too faint against final terrain assets.
+- Later consider biome/theme-specific ground tint only if it remains driven by existing catalog/layout metadata.
+
+Phase 105 status:
+
+- Verified.
+
+### Phase 106 Audit
+
+Intended behavior:
+
+- Make sanctuary crop plots read as planted beds over the placeholder grid instead of flat debug tiles.
+- Decorative garden plots and real food crop plots should share the same layered soil/furrow visual language.
+- Growing and mature plots should keep distinct bed tones, while real food plots should visibly reflect existing watered state.
+- Crop icons, stage symbols, growth bars, reactions, and interaction targeting should continue to sit on the same tile and z-order.
+
+Negative guarantees:
+
+- This phase must not change crop planting rules, crop growth timing, Water Drops behavior, watering energy cost, rain effects, harvest rewards, season bonuses, plot persistence, placement validity, collision, inventory, XP, global stats, or non-RPG behavior.
+- This phase must not claim final farm-soil art exists; it only improves the current placeholder plot read with layered in-world UI.
+- This phase must not add crop buttons or controls outside the existing Interact/tool flows.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-105.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Plot rendering already existed for both decorative garden crops and real food crops, but the tile backing was a flat block.
+- A small inset soil bed with furrow lines makes planted tiles more legible without changing terrain or crop persistence.
+- Food crop watered state already exists in `farming_plots.is_watered`, so using it for a visual tint improves feedback without new mechanics.
+
+Implementation attack findings:
+
+- Garden plots now render `gardenSoilInset` plus three `gardenFurrowLine` rows before crop art.
+- Garden soil tint follows existing `growth.stage` state for growing and mature crops.
+- Real food crop plots render the same bed and add `gardenSoilWatered` when `plot.is_watered` is true.
+- `validate:rpg` now guards the soil bed, furrow lines, growth/mature tint, and watered tint.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Plant or view decorative garden plots at seed, growing, and mature stages and confirm the bed remains readable under the crop icon.
+- Plant a real food crop on tilled soil, water it, and confirm the plot tint changes without altering watering behavior.
+- Confirm crop reactions, progress bars, Interact harvesting, Watering Can usage, rain growth, and season bonuses remain unchanged.
+- Confirm placement/collision, inventory quantities, stats, and non-RPG surfaces are unchanged.
+
+Expansion notes saved:
+
+- Later replace layered placeholder beds with verified final soil/crop sprites when the actual soil asset set is chosen.
+- Later add screenshot proof across narrow phone and tablet widths once final crop art candidates are available.
+
+Phase 106 status:
+
+- Verified.
+
+### Phase 107 Audit
+
+Intended behavior:
+
+- Make placed livestock read as farm life in the sanctuary, not just generic placeable props.
+- Livestock visuals should derive from existing `animal` and `livestock` catalog tags.
+- Placed animals should keep the existing shared world art, footprint anchoring, z-order, long-press move behavior, and Interact product collection.
+- The added cue should be non-interactive and subtle: a warmer footprint tone plus a small hay/feed-style mark under the sprite.
+
+Negative guarantees:
+
+- This phase must not change animal product cooldowns, product drops, product inventory grants, discovery, forage flow, object persistence, movement collision, placement validity, z-order anchoring, prices, XP, global stats, or non-RPG behavior.
+- This phase must not create a new livestock state model or imply product readiness that the current cooldown system does not expose.
+- This phase must not add normal-world buttons or controls.
+
+Files changed:
+
+- `app/src/engine/SanctuaryObject.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-106.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Animal assets and product collection already exist, but the placed world object did not distinguish livestock from other decorative objects until interaction.
+- Tag-driven rendering keeps the visual cue aligned with the catalog and avoids hard-coded animal IDs.
+- A hay/feed cue communicates farmyard life without inventing readiness, mood, hunger, or product state.
+
+Implementation attack findings:
+
+- `SanctuaryObject` derives `isLivestockObject` from `catalogItem.tags`.
+- Livestock uses a warmer grounding footprint style while keeping the same catalog collision footprint.
+- A non-interactive `livestockCareCue` renders before `RpgItemWorldArt`, so animal art remains on top.
+- `validate:rpg` now guards animal/livestock tag derivation and the distinct livestock visual cue.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Place Chick/Calf/Piglet/Sheep and confirm each has a subtle farm-life cue under the sprite.
+- Long-press/move livestock and confirm edit behavior, z-order, and placement remain unchanged.
+- Interact with livestock before and after product cooldown and confirm product collection/rest feedback is unchanged.
+- Confirm non-animal objects, crops, inventory, stats, and non-RPG surfaces are unchanged.
+
+Expansion notes saved:
+
+- Later surface true product readiness only if the animal cooldown becomes persisted/readable enough to support it honestly.
+- Later add livestock-specific idle particles or sound only after performance budgets are measured.
+
+Phase 107 status:
+
+- Verified.
+
+### Phase 108 Audit
+
+Intended behavior:
+
+- Make the sanctuary feel more alive across seasons while final terrain and soil assets are still placeholder-grade.
+- The ambience should derive from the existing persisted calendar season and current rain state.
+- The season wash should render only in the sanctuary and sit below the rain layer and HUD.
+- The effect should be non-interactive and subtle enough that placed objects, plots, grid placeholders, and controls remain readable.
+
+Negative guarantees:
+
+- This phase must not change crop growth, harvest bonuses, rain growth, calendar advancement, animal products, inventory, XP, placement validity, terrain editing, prices, stats, or non-RPG behavior.
+- This phase must not create new weather state or make any normal-world UI changes.
+- This phase must not replace final asset work; it is a compatible visual bridge for the current placeholder terrain.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-107.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The sanctuary already exposes season/weather in the HUD, but the world surface did not visually react beyond rain streaks.
+- A pointer-disabled full-screen tint is compatible with future terrain/soil sprites because it does not alter tile composition, collision, or item rendering.
+- Keeping the layer below rain and below the HUD preserves readability while giving the placeholder grid a stronger seasonal mood.
+
+Implementation attack findings:
+
+- `SANCTUARY_SEASON_AMBIENCE` centralizes subtle color and border tones for spring, summer, autumn, and winter.
+- The ambience layer renders only when `activeZone === 'sanctuary'`.
+- The layer uses `SANCTUARY_SEASON_AMBIENCE[currentSeason]` and adds `seasonAmbienceRain` when `isRaining` is true.
+- `validate:rpg` now guards the centralized ambience palette, season-derived render path, rainy variant, and non-interactive overlay.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Enter the sanctuary in each season and confirm the terrain receives a subtle matching ambience wash.
+- Toggle or advance into rainy weather and confirm the rainy tint and rain streaks both appear.
+- Confirm HUD tabs, weather pill, placement controls, object interaction, crop plots, and avatar movement remain readable and usable.
+- Confirm combat/explore zones and non-RPG surfaces do not receive the sanctuary ambience layer.
+
+Expansion notes saved:
+
+- Later replace or tune the wash once final terrain/soil art is layered over the grid.
+- Later add season-specific particles or audio only after performance and visual density are measured.
+
+Phase 108 status:
+
+- Verified.
+
+### Phase 109 Audit
+
+Intended behavior:
+
+- Make normal sanctuary play clearer by showing the exact object, crop, plot, or portal that Interact will use.
+- The marker should reuse the existing `interactionPrompt.cells` target model so it matches the Interact button's resolved target.
+- The marker should render only in the sanctuary during normal play, not while placing or moving objects.
+- Crop/plot and portal targets should have distinct tones while object targets keep a warm neutral focus.
+- The marker should be non-interactive and stay visually below build placement feedback.
+
+Negative guarantees:
+
+- This phase must not change target resolution, object interaction behavior, crop growth, watering, harvesting, animal products, forage rolls, inventory, XP, stats, placement validity, collision, persistence, dungeon combat, or non-RPG behavior.
+- This phase must not enable the old debug reticle for normal play.
+- This phase must not add a second targeting source of truth.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-108.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The prompt and action button already know the current Interact target, but the world surface did not clearly show the targeted footprint in normal gameplay.
+- Promoting the existing cell model into a polished focus marker avoids stale or mismatched targeting logic.
+- Keeping the debug reticle disabled preserves the normal UI while making sanctuary interaction feel more tactile and Stardew-like.
+
+Implementation attack findings:
+
+- `interactionPrompt.cells.map` now renders `sanctuaryTargetCell` when `activeZone === 'sanctuary' && !buildItem`.
+- Crop/plot targets use `sanctuaryTargetCropCell`; portals use `sanctuaryTargetPortalCell`; other sanctuary targets use the default warm focus style.
+- The existing `SHOW_NORMAL_TARGET_DEBUG` renderer remains separate and disabled.
+- `validate:rpg` now guards sanctuary-only normal focus cells, dedicated styles, crop/portal tone variants, stable keys, and pointer-disabled rendering.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Face placed objects, multi-tile objects, decorative garden plots, food crops, and the dungeon portal and confirm the focus cells match the Interact target.
+- Start placing or moving an object and confirm the normal focus marker disappears while build placement feedback remains.
+- Confirm the Interact prompt, Interact button accessibility label, object reactions, crop actions, and avatar movement remain unchanged.
+- Confirm dungeon enemies and non-RPG surfaces do not receive the sanctuary focus marker.
+
+Expansion notes saved:
+
+- Later animate the focus marker subtly if runtime performance leaves headroom.
+- Later add richer readiness markers only when the underlying product/crop state can be surfaced honestly.
+
+Phase 109 status:
+
+- Verified.
+
+### Phase 110 Audit
+
+Intended behavior:
+
+- Make declared sanctuary zones remain understandable after a perimeter breach.
+- Active zones should keep their existing purpose colors and labels.
+- Breached zones should render from the persisted `sanctuaryZones` rows with a warning tint, dashed outline, and breached label.
+- Labels should still anchor even if a zone has no interior cells by falling back to perimeter cells.
+- This should help repair and customization planning without changing zone logic.
+
+Negative guarantees:
+
+- This phase must not change zone declaration, breach detection, repair detection, `zoneCellMap`, garden tilling gates, pond fishing gates, building plot rules, object placement, persistence, stats, XP, inventory, combat, or non-RPG behavior.
+- This phase must not make breached zones active for mechanics; it is visual repair/readability only.
+- This phase must not alter the hidden debug zone map behavior.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-109.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Breached zones persist in DB for repair, but the world render previously filtered to active zones only, making broken zones visually disappear.
+- Rendering both active and breached zones from the same `sanctuaryZones` state preserves one source of truth.
+- Warning visuals communicate broken state without implying the zone is still mechanically active.
+
+Implementation attack findings:
+
+- Zone overlays now render `sanctuaryZones.map(...)` instead of filtering to active zones.
+- `getBreachedZoneOverlayColor` supplies warning tints by zone type.
+- `zoneOverlayBreached` adds a dashed warning outline while active zones keep existing colors.
+- Zone labels now render for active and breached zones, use perimeter fallback keys, and show `Pond/Garden/Building Plot breach` for broken zones.
+- `validate:rpg` now guards breached overlay colors, dashed styles, label fallback, and warning labels.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Create a declared Garden/Pond/Building Plot, remove a perimeter piece, and confirm the zone remains visible as breached.
+- Replace the missing perimeter piece and confirm the restored active zone returns to the normal purpose color and label.
+- Confirm tilling/fishing/building gates still depend on active zones only.
+- Confirm normal active zone labels, pending zone candidates, and the hidden debug zone map still behave as before.
+
+Expansion notes saved:
+
+- Later add a tiny repair sparkle or path hint only if repair state needs stronger guidance.
+- Later tune breached colors after final terrain and object assets are chosen.
+
+Phase 110 status:
+
+- Verified.
+
+### Phase 111 Audit
+
+Intended behavior:
+
+- Make sanctuary object moving feel more grounded by showing where the selected object started.
+- The original-location marker should appear only while moving an existing object in edit mode.
+- The marker should use the selected object's catalog collision footprint, not visual sprite dimensions.
+- The live placement footprint and ghost remain the authoritative destination preview.
+- The marker should be non-interactive and visually lower-priority than the destination footprint.
+
+Negative guarantees:
+
+- This phase must not change object move confirmation, placement validity, collision, avatar blocking, inventory, stash behavior, zone breach/repair, persistence, stats, XP, crop logic, animal products, dungeon behavior, or non-RPG behavior.
+- This phase must not create a second placement model or alter `placementReport`.
+- This phase must not show the origin marker for fresh placement or planting.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-110.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Edit mode hides the original object while moving it and shows the live ghost, which is correct mechanically but can make layout editing feel floaty.
+- Showing the origin footprint improves spatial memory without changing the move transaction or validity checks.
+- Using catalog `colWidth`/`colHeight` keeps multi-tile origin markers aligned with collision, not art bounds.
+
+Implementation attack findings:
+
+- `selectedObjectItem` resolves the catalog item for the object being moved.
+- Edit mode renders `editOriginFootprint` only when `buildItem?.mode === 'edit' && selectedObject`.
+- The marker is positioned at `selectedObject.row/col` and sized with `selectedObjectItem?.colWidth/colHeight`.
+- The live build footprint remains rendered separately and above the origin marker.
+- `validate:rpg` now guards the selected item lookup, edit-only render condition, catalog footprint sizing, dedicated styles, and `from` label.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Long-press a single-tile object and confirm a subtle `from` footprint remains at its original cell while moving.
+- Long-press a multi-tile object and confirm the origin marker matches the collision footprint size.
+- Drag or nudge the live ghost and confirm the origin marker stays fixed while destination validity updates.
+- Confirm fresh placement and seed planting do not show an origin marker.
+- Confirm Move, Stash, zone breach/repair, object collision, and inventory behavior remain unchanged.
+
+Expansion notes saved:
+
+- Later add an optional swap/undo affordance only if the move transaction gains explicit history support.
+- Later tune the label if final art makes text too noisy at phone zoom.
+
+Phase 111 status:
+
+- Verified.
+
+### Phase 112 Audit
+
+Intended behavior:
+
+- Start moving the sanctuary grid away from flat color boxes.
+- Sanctuary tiles should render a textured pixel-art placeholder layer keyed by the existing `TileType`.
+- Water and walls should reuse existing fitting sheet-backed tile renderers where appropriate.
+- Grass, path, bridge, tilled, wet soil, ditch, sand, stone slab, wood tile, and portals should get deterministic code-native texture marks until a proper farm/sanctuary tileset is chosen.
+- Dungeon tile rendering should remain on its existing tileset path.
+
+Negative guarantees:
+
+- This phase must not change tile enums, collision, water respawn behavior, terrain override persistence, farming/tilling/watering, bridge/path/terrain placement validity, zone logic, object placement, inventory, stats, XP, dungeon behavior, or non-RPG behavior.
+- This phase must not claim final terrain sprites exist for bridge/path/tilled soil.
+- This phase must not borrow prop art as ground art.
+
+Files changed:
+
+- `app/src/engine/TileArt.tsx`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-111.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The project has strong object and water/wall assets, but no verified matching farm/sanctuary ground tileset yet.
+- The existing ruins sand assets are props, not terrain tiles, so wiring them into every ground cell would be misleading.
+- A deterministic textured placeholder component improves the grid read now while keeping the real `TileType` model ready for final sprites later.
+
+Implementation attack findings:
+
+- `SanctuaryTerrainTile` centralizes textured placeholder rendering for sanctuary terrain.
+- The component reuses `WaterTile` for water and `TilesetTile` wall art for walls.
+- Other sanctuary terrain types use code-native pixel texture marks with tone maps, furrows, plank lines, and portal cores.
+- The RPG map renderer routes only `activeZone === 'sanctuary'` through `SanctuaryTerrainTile`; dungeon rendering remains unchanged.
+- `validate:rpg` now guards the textured placeholder documentation, exported renderer, sanctuary render path, and continued refusal to claim final tracked terrain frames.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Enter sanctuary and confirm grass, path, bridge, tilled, wet soil, ditch, sand, stone slab, wood tile, water, wall, and portal cells no longer read as plain flat boxes.
+- Place Bridge/Path/Stone Slab/Wood Tile and confirm only visuals changed; placement validity and inventory consumption remain unchanged.
+- Hoe, water, rain, and harvest crops and confirm tile behavior remains unchanged.
+- Enter dungeon and confirm dungeon floor/wall rendering remains unchanged.
+
+Expansion notes saved:
+
+- Later replace the code-native texture layer with a verified farm/sanctuary ground tileset.
+- Later add auto-tiling edge variants once final terrain art and adjacency rules are chosen.
+
+Phase 112 status:
+
+- Verified.
+
+### Phase 113 Audit
+
+Intended behavior:
+
+- Make placed sanctuary objects feel more integrated with the newly textured terrain layer.
+- Object grounding mats should derive a terrain tone from the object's catalog-footprint anchor tile.
+- Grass, soil, wet/ditch/water, sand, stone, wood/bridge, and path terrain should have distinct grounding tones.
+- The existing livestock, targeted-object, and mechanism-state treatments should remain layered on top of terrain grounding.
+
+Negative guarantees:
+
+- This phase must not change object placement validity, movement collision, safe-path checks, object persistence, item catalog dimensions, inventory, prices, crop growth, animal product logic, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not introduce a second object-position source of truth.
+- This phase must not make build ghosts or HUD controls depend on terrain state.
+
+Files changed:
+
+- `app/src/engine/SanctuaryObject.tsx`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-112.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The placed-object renderer already uses catalog collision footprints for base mats, so terrain-aware grounding can reuse that visual footprint without touching placement logic.
+- Deriving the terrain from the bottom footprint anchor keeps the read stable for multi-tile objects and matches feet-based z-order expectations.
+- Build ghost terrain awareness is intentionally deferred because the ghost position lives in animated shared values; bridging that into React terrain lookup would be a broader state change.
+
+Implementation attack findings:
+
+- `SanctuaryObject` now accepts a `groundType` prop and maps `TileType` values to terrain-specific grounding styles.
+- The RPG screen derives `groundType` from current `mapData`, including terrain overrides, using the object's catalog footprint dimensions.
+- Existing livestock, targeted, and mechanism-state styles still layer through the same non-interactive footprint view.
+- `validate:rpg` now guards the terrain-aware prop, style variants, and RPG-side object-ground lookup.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Place or move objects over grass, path, tilled/wet soil, bridge/wood, stone, sand, and water/ditch-adjacent terrain and confirm grounding tones change without moving the art.
+- Confirm livestock still shows the farm-life cue and warm treatment.
+- Confirm targeted objects and open/disabled mechanism states remain readable.
+- Confirm movement collision, placement validity, object move/stash, inventory, and dungeon behavior are unchanged.
+
+Phase 113 status:
+
+- Verified.
+
+### Phase 114 Audit
+
+Intended behavior:
+
+- Make build/edit placement feel visually grounded on the same terrain system as placed objects.
+- The live placement footprint should derive its terrain tone from the current `placementReport` row/col plus selected footprint dimensions.
+- Valid/invalid placement feedback should remain the primary signal; terrain tone should appear as a subtle inner wash only.
+- Placed-object grounding and placement-footprint grounding should share the same bottom-anchor terrain lookup.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, safe-path checks, object persistence, inventory consumption, stash/move behavior, terrain editing rules, crop planting rules, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not add new build-position state outside `placementReport`/animated placement values.
+- This phase must not allow terrain tone to override invalid placement warning colors.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-113.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- `placementReport` is already updated by drag, nudge, begin-place, begin-edit, and plant-mode flows, so deriving visual tone from it avoids a new source of truth.
+- The terrain wash is a child layer inside the existing animated placement footprint, which keeps the world transform, z-index, footprint dimensions, and valid/invalid border behavior unchanged.
+- Invalid placement needs the red warning state to stay dominant, so the terrain wash is muted when `placementReport.valid` is false.
+
+Implementation attack findings:
+
+- `getFootprintGroundType` centralizes the bottom-anchor terrain lookup for both placed-object grounding and placement-footprint wash.
+- `placementGroundType` derives from `placementReport.row`, `placementReport.col`, `buildFootprintCols`, and `buildFootprintRows`.
+- `placementTerrainWash` renders inside the world-anchored footprint and supports grass, soil, wet, sand, stone, wood, and path tones.
+- `validate:rpg` now guards the shared anchor helper, placement-report terrain derivation, wash layer, terrain variants, and invalid-state wash muting.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing/moving objects over grass, path, tilled/wet soil, bridge/wood, stone, and sand and confirm the footprint wash changes tone.
+- Drag/nudge a placement across valid and invalid terrain and confirm red/green validity remains clearer than the wash.
+- Confirm plant mode still only plants on valid crop terrain and shows the same footprint dimensions.
+- Confirm object persistence, collision, inventory consumption, stash/move, terrain editing, and dungeon behavior remain unchanged.
+
+Phase 114 status:
+
+- Verified.
+
+### Phase 115 Audit
+
+Intended behavior:
+
+- Make the live build/edit object ghost feel grounded while arranging sanctuary objects.
+- The object ghost should render a subtle terrain-aware base under its art, separate from the larger placement footprint wash.
+- The ghost base should use the selected item's collision footprint dimensions, centered inside the visual sprite box.
+- Invalid placement should continue to dim both the ghost art and its grounding base.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, safe-path checks, object persistence, inventory consumption, stash/move behavior, terrain editing rules, crop planting rules, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not change build ghost z-order, world transform, drag/nudge behavior, or placement confirmation.
+- This phase must not apply object ghost grounding to plant seed ghosts, which use the seed icon preview path.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-114.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The existing `buildGhostStyle` already anchors the visual sprite by bottom-center, so adding a child base can stay inside the same world transform and z-order.
+- Using `buildFootprintCols`/`buildFootprintRows` keeps the base tied to collision footprint dimensions rather than visual sprite dimensions.
+- Reusing `placementTerrainWashStyle` keeps terrain tone consistent between the placement footprint and the object ghost without adding a second terrain palette.
+
+Implementation attack findings:
+
+- `buildGhostFootprintWidth`, `buildGhostFootprintHeight`, and `buildGhostFootprintLeft` derive the ghost base geometry from the selected collision footprint.
+- The build ghost object branch now renders a non-interactive `buildGhostGrounding` view before `RpgItemWorldArt`.
+- Invalid placement applies `buildGhostGroundingInvalid`, while the existing invalid ghost art dimming remains unchanged.
+- `validate:rpg` now guards footprint-derived ghost grounding, terrain-aware styling, and invalid-state dimming.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing single-tile and multi-tile objects and confirm a subtle base appears under the ghost art.
+- Move an existing object and confirm the live ghost base follows drag/nudge movement without affecting the original-location marker.
+- Drag/nudge across valid and invalid cells and confirm the ghost art/base dim while red/green placement feedback remains dominant.
+- Confirm plant seed placement, object persistence, collision, inventory consumption, stash/move, terrain editing, and dungeon behavior remain unchanged.
+
+Phase 115 status:
+
+- Verified.
+
+### Phase 116 Audit
+
+Intended behavior:
+
+- Make plant placement read like a future crop plot instead of a loose inventory icon.
+- The seed ghost should render a tiny soil bed with furrows under the seed icon.
+- Invalid plant placement should keep the existing ghost dimming and also mute the soil bed.
+- The preview should remain 1x1 and use the existing build ghost world transform.
+
+Negative guarantees:
+
+- This phase must not change plant placement validity, farming plot persistence, seed inventory consumption, crop growth, watering, harvesting, terrain editing rules, object placement, collision, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not change the food-crop vs decorative-tree planting split.
+- This phase must not apply object ghost grounding to plant seed ghosts.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-115.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Existing crop plots already use `gardenSoilInset` and furrow-line language, so the seed ghost should echo that instead of inventing a new placement symbol.
+- The seed ghost branch is separate from object ghost rendering, which keeps plant placement distinct from placeable object customization.
+- The preview is a child of the existing animated `buildGhostStyle`, so it shares the same world transform, z-index, and 1x1 footprint as plant placement.
+
+Implementation attack findings:
+
+- The seed ghost now renders `seedGhostSoilInset`, `seedGhostFurrowSet`, and three `seedGhostFurrowLine` marks before `RpgItemIcon`.
+- Invalid placement applies `seedGhostSoilInvalid` while existing `buildGhostArtInvalid` dimming remains unchanged.
+- `validate:rpg` now guards the soil-bed, furrow, and invalid-state treatment for seed placement ghosts.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start planting a food-crop seed and confirm the ghost shows a soil bed/furrows under the seed icon.
+- Move the plant ghost over valid tilled soil and invalid terrain and confirm the invalid state still dims clearly.
+- Confirm planting still consumes inventory and creates the same food/decorative crop records as before.
+- Confirm object placement, terrain editing, crop watering/growth/harvest, collision, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 116 status:
+
+- Verified.
+
+### Phase 117 Audit
+
+Intended behavior:
+
+- Make build placement cells feel more like game UI and less like debug boxes.
+- Each occupied placement cell should still be rendered from `placementReport.cells`.
+- Valid and invalid cells should keep distinct colors through a soft tile fill and four crisp corner markers.
+- Multi-tile objects should keep per-cell readability while the larger placement footprint/ghost remains unchanged.
+
+Negative guarantees:
+
+- This phase must not change placement validity, placement report generation, collision, avatar blocking, safe-path checks, object persistence, inventory consumption, stash/move behavior, terrain editing rules, crop planting rules, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not remove per-cell invalid feedback.
+- This phase must not change build ghost z-order, world transform, drag/nudge behavior, or placement confirmation.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-116.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- `placementReport.cells` is already the authoritative per-cell placement result, so marker polish can stay attached to that map without adding state.
+- The existing 3px full-cell border made multi-cell placement readable but too debug-like beside the new terrain/object/ghost grounding.
+- Corner markers preserve per-cell validity while letting terrain, footprint wash, and ghost art remain visible.
+
+Implementation attack findings:
+
+- Placement cells now apply `placementCellValid`/`placementCellInvalid` instead of inline border/fill colors.
+- Each placement cell renders four non-interactive corner marker views.
+- Corner marker color is derived from `cell.valid`, matching the cell-level validity state.
+- `validate:rpg` now guards placement-report-driven cells, corner markers, and per-cell valid/invalid marker styling.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Place single-tile and multi-tile objects and confirm each occupied cell has corner markers.
+- Drag/nudge across invalid terrain, occupied cells, avatar cells, and safe-path failures and confirm per-cell invalid feedback remains visible.
+- Confirm the larger placement footprint, build ghost, plant ghost, object placement, inventory consumption, stash/move, crop planting, collision, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 117 status:
+
+- Verified.
+
+### Phase 118 Audit
+
+Intended behavior:
+
+- Make build mode explain the current placement state inside the build pad, not only through color.
+- The build pad should show a compact reason/hint chip derived from `placementReport.valid` and `placementReport.reason`.
+- Valid placement should show a positive action hint such as place/move/plant here.
+- Invalid placement should show short actionable hints for terrain, occupied cells, avatar blocking, trapped avatar, blocked portal, and unavailable states.
+
+Negative guarantees:
+
+- This phase must not change placement validity, placement report generation, collision, avatar blocking, safe-path checks, object persistence, inventory consumption, stash/move behavior, terrain editing rules, crop planting rules, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not introduce a new placement state source outside `placementReport`.
+- This phase must not change build ghost z-order, world transform, drag/nudge behavior, or placement confirmation.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-117.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The build pad already disables placement from `placementReport.valid`, so a chip can mirror that state without affecting interaction.
+- Keeping reason copy short avoids crowding the small build pad and preserves the nudge controls as the primary command surface.
+- Deriving labels and hints in render scope is enough because the source state already updates through drag/nudge/build-start flows.
+
+Implementation attack findings:
+
+- `placementStatusLabel` mirrors `placementReport.valid`/`placementReport.reason`.
+- `placementStatusHint` maps placement report states to compact action hints.
+- The build pad renders `buildPlacementReasonChip` below the header with valid/invalid tone styling.
+- `validate:rpg` now guards placement-report-derived labels, hints, and chip rendering.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Place, move, and plant while nudging over valid cells and confirm the chip shows the matching positive action.
+- Nudge over terrain, occupied cells, avatar cells, trapped-avatar, and blocked-portal cases and confirm the chip changes without enabling placement.
+- Confirm placement validity, object persistence, inventory consumption, crop planting, collision, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 118 status:
+
+- Verified.
+
+### Phase 119 Audit
+
+Intended behavior:
+
+- Make the build pad identify the exact sanctuary item or seed currently being placed.
+- The pad should show a compact item icon, item label, and mode hint above the role/layout context.
+- Place, edit, and plant modes should each use a short mode hint without changing placement behavior.
+- The row should use the existing `buildPreviewItem`/`buildItem` data and fit within the compact build pad.
+
+Negative guarantees:
+
+- This phase must not change placement validity, placement report generation, collision, avatar blocking, safe-path checks, object persistence, inventory consumption, stash/move behavior, terrain editing rules, crop planting rules, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not introduce a new selected-item state source outside existing build mode data.
+- This phase must not change build ghost z-order, world transform, drag/nudge behavior, or placement confirmation.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-118.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The build pad already contains role, fit, footprint, and placement status, but the exact item identity was only visible through world ghost/name text elsewhere.
+- Reusing `RpgItemIcon` keeps the identity row aligned with backpack/shop/archive visual language.
+- The row is compact and truncates text to avoid pushing nudge controls out of reach on small screens.
+
+Implementation attack findings:
+
+- The build pad now renders `buildItemIdentityRow` inside `buildInfoBlock`.
+- `RpgItemIcon` receives `buildPreviewItem` and `buildItem.itemId` as fallback label.
+- The identity name derives from `buildPreviewItem?.name ?? buildItem.label`.
+- The mode hint distinguishes edit, plant, and place modes without changing any mode logic.
+- `validate:rpg` now guards the selected-item identity row and active build-item-derived label/mode text.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing an object and confirm the build pad shows its icon/name and sanctuary-piece mode hint.
+- Move an existing object and confirm the row shows the selected object identity with adjusting-layout hint.
+- Start planting a seed and confirm the row shows seed/crop identity with future-crop-plot hint.
+- Confirm placement validity, object persistence, inventory consumption, crop planting, collision, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 119 status:
+
+- Verified.
+
+### Phase 120 Audit
+
+Intended behavior:
+
+- Make sanctuary terrain art asset-ready by moving tile tones, patterns, and future replacement slots into a shared registry.
+- Keep current terrain honest as code-native placeholder art until final soil/path/floor assets exist.
+- Make sanctuary grid tiles receive neighboring terrain so placeholder paths, soil, sand, floors, bridges, and portals can show transitional edge treatment.
+- Make placement footprint wash, build ghost grounding, and seed ghost soil preview read colors from the same terrain registry instead of duplicating tone mappings in `rpg.tsx`.
+
+Negative guarantees:
+
+- This phase must not change TileType values, collision rules, terrain edit rules, persistence, farming growth, crop planting validity, object placement validity, avatar movement, shop/backpack/archive behavior, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not claim final bridge/path/soil sprite frames exist.
+- This phase must not change map dimensions, saved terrain override semantics, object footprint geometry, placement confirmation, inventory consumption, or stash/move behavior.
+
+Files changed:
+
+- `app/src/engine/TileArt.tsx`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-119.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The old tile renderer was centralized, but its art metadata was embedded directly in render logic.
+- Placement/build preview tone mapping duplicated terrain colors in `rpg.tsx`, which would drift once real terrain assets arrive.
+- Neighbor-aware visual edges can be driven from TileType data without changing collision, farming, or saved terrain state.
+
+Implementation attack findings:
+
+- `SANCTUARY_TERRAIN_ART_REGISTRY` defines asset slots, renderer kind, placeholder pattern, tone, and edge blending per TileType.
+- `SanctuaryTerrainTile` still renders water/wall from existing sheets and all other sanctuary terrain as honest placeholders.
+- Sanctuary grid rendering passes `getSanctuaryTerrainNeighbors(rowIndex, colIndex)` into each tile.
+- Placement footprint wash, object build ghost grounding, and seed ghost soil preview use `getSanctuaryTerrainPreviewColor`.
+- `validate:rpg` now guards the terrain registry, neighbor-aware rendering, and shared preview color path.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Inspect sanctuary grass, path, tilled, wet soil, sand, ditch, bridge, stone slab, wood tile, and portal tiles for readable placeholder texture and edge transitions.
+- Place, move, and plant over multiple terrain types and confirm placement/build/seed previews keep terrain-toned grounding.
+- Confirm collision, terrain editing, crop planting, object persistence, inventory consumption, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 120 status:
+
+- Verified.
+
+### Phase 121 Audit
+
+Intended behavior:
+
+- Make sanctuary placeholder terrain feel less repetitive while final assets are still pending.
+- Add deterministic per-cell visual variation to registry-backed terrain tiles using only row, column, and TileType.
+- Let grass, path/sand, soil/ditch, plank/floor, and portal placeholders vary small decorative details without changing the map model.
+- Preserve the asset-ready registry path so final sprites can replace placeholder details later.
+
+Negative guarantees:
+
+- This phase must not change TileType values, collision rules, terrain edit rules, saved terrain overrides, farming growth, planting validity, object placement validity, avatar movement, persistence, inventory consumption, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not introduce random runtime terrain rendering that changes between renders.
+- This phase must not claim final terrain sprites exist or add asset dependencies outside RPG terrain rendering.
+
+Files changed:
+
+- `app/src/engine/TileArt.tsx`
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-120.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The Phase 120 registry made terrain asset-ready, but repeated placeholder tiles still looked mechanically cloned.
+- Stable coordinate-derived variation gives a more organic Stardew-like grid without adding state, persistence, timers, randomness, or asset loading.
+- Keeping variation inside `SanctuaryTerrainTile` preserves one terrain art pipeline for real grid rendering and future sprite replacement.
+
+Implementation attack findings:
+
+- `SANCTUARY_TERRAIN_ART_REGISTRY` now includes a `detail` profile for each TileType.
+- `SanctuaryTerrainTile` accepts an optional `variant` prop and normalizes it to four stable variants.
+- Grass tiles can render tiny tufts; path/sand can render speckles; soil/ditch and plank/floor details shift subtly per variant.
+- Sanctuary grid rendering passes `getSanctuaryTerrainVariant(rowIndex, colIndex, tile as TileType)` into each tile.
+- `validate:rpg` now guards detail profiles, deterministic variation support, and the grid variation callsite.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Inspect sanctuary grass, path, sand, tilled/wet soil, ditch, bridge, stone slab, wood tile, and portals to confirm stable non-repeating placeholder detail.
+- Confirm leaving/re-entering sanctuary or re-rendering does not randomly reshuffle terrain visuals.
+- Confirm collision, terrain editing, crop planting, object placement, persistence, inventory consumption, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 121 status:
+
+- Verified.
+
+### Phase 122 Audit
+
+Intended behavior:
+
+- Make Bridge/Path/Stone Slab/Wood Tile placement preview the terrain tile that will actually be painted.
+- Reuse the shared `SanctuaryTerrainTile` renderer for terrain edit ghosts so placeholder and future real terrain art stay in one pipeline.
+- Keep terrain mode as a one-cell build footprint with valid/invalid feedback and stable per-cell variation.
+- Label terrain mode as painting/terrain paint in the build pad instead of generic object placement.
+
+Negative guarantees:
+
+- This phase must not change terrain edit validity rules, TileType values, collision, persistence, inventory consumption, terrain override semantics, crop planting, object placement, object movement, avatar movement, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not introduce final terrain sprite claims or new asset dependencies.
+- This phase must not change build confirmation behavior; it remains the existing `setSanctuaryTile` path for terrain mode.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-121.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Terrain edit items already use the build-mode placement report and confirm flow, but the visual ghost path was object/seed-oriented.
+- A one-tile `SanctuaryTerrainTile` ghost makes the target result legible without changing any placement or inventory logic.
+- Using footprint anchoring keeps terrain previews in the same world transform and z-order family as other placement feedback.
+
+Implementation attack findings:
+
+- `buildTerrainTile` derives the target TileType from existing `TERRAIN_EDIT_TILE`.
+- Build shared values treat terrain mode as `1x1`, preserving drag and nudge footprint behavior.
+- The build preview branch includes `buildTerrainTile !== null` and renders a dedicated `terrainGhostTile`.
+- The terrain ghost reuses `SanctuaryTerrainTile`, neighbor lookup, and deterministic terrain variant seed.
+- Build pad copy now distinguishes terrain paint/painting from object placement and planting.
+- `validate:rpg` now guards terrain tile preview state, dedicated styles, shared renderer reuse, and terrain-mode labels.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing Bridge Kit, Path, Stone Slab, and Wood Tile and confirm the ghost shows the target tile art.
+- Drag/nudge terrain paint over valid and invalid cells and confirm the tile ghost dims while placement remains blocked.
+- Confirm terrain edit confirmation still consumes the item, writes the same terrain override, and leaves object/crop/dungeon/non-RPG behavior unchanged.
+
+Phase 122 status:
+
+- Verified.
+
+### Phase 123 Audit
+
+Intended behavior:
+
+- Make terrain painting clearer in the build pad by showing the current tile and target tile side by side.
+- Reuse `SanctuaryTerrainTile` for both swatches so the pad, ghost, and grid share one terrain art pipeline.
+- Use existing placement report and TileType state only; no new persistence or selection state.
+- Keep labels readable through `getTileDisplayName`.
+
+Negative guarantees:
+
+- This phase must not change terrain edit validity rules, TileType values, collision, persistence, terrain override semantics, inventory consumption, crop planting, object placement, object movement, avatar movement, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not add final terrain sprite claims or asset dependencies.
+- This phase must not change build confirmation behavior or placement report generation.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-122.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- The terrain ghost shows the target on the grid, but the build pad did not explain the transformation from current ground to target ground.
+- A compact before/after row improves customization confidence without changing the placement model.
+- Reusing the terrain renderer keeps placeholder and future real terrain art consistent.
+
+Implementation attack findings:
+
+- `terrainPaintFromTile` derives from `placementGroundType` only when terrain paint mode is active.
+- The build pad renders `terrainPaintSwapRow` only for terrain mode.
+- Both swatches use `SanctuaryTerrainTile`, `getSanctuaryTerrainNeighbors`, and `getSanctuaryTerrainVariant`.
+- Swatch labels use `getTileDisplayName` for current and target TileType names.
+- `validate:rpg` now guards the swatch derivation, rendering, shared tile art, and labels.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Start placing Bridge Kit, Path, Stone Slab, and Wood Tile and confirm the build pad shows current -> target terrain swatches.
+- Move the paint target across different ground types and confirm the current swatch updates while the target stays the selected terrain.
+- Confirm terrain edit confirmation, inventory consumption, terrain overrides, object/crop/dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 123 status:
+
+- Verified.
+
+### Phase 124 Audit
+
+Intended behavior:
+
+- Make terrain paint items understandable before entering build mode.
+- Show the target terrain tile for Bridge Kit, Path, Stone Slab, and Wood Tile in Backpack, Shop, and Archive detail panels.
+- Reuse the shared sanctuary terrain tile renderer so browse previews, build pad swatches, build ghosts, and grid tiles stay visually aligned.
+- Keep Archive terrain target previews behind the same discovered/known gate as existing footprint previews.
+
+Negative guarantees:
+
+- This phase must not change terrain edit validity rules, TileType values, collision, persistence, terrain override semantics, inventory consumption, crop planting, object placement, object movement, avatar movement, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not add final terrain sprite claims or new external asset dependencies.
+- This phase must not change filtering, sorting, purchase, sale, placement, planting, or archive unlock behavior.
+
+Files changed:
+
+- `app/src/engine/SanctuaryTerrainPaintPreview.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-123.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Terrain paint items had clear in-world previews, but browse/detail panels still treated them like ordinary 1x1 objects.
+- A shared target preview is enough because these items paint a single known TileType and do not need current-ground context until placement.
+- Keeping the target mapping inside a display component avoids touching gameplay terrain edit confirmation logic.
+
+Implementation attack findings:
+
+- `SanctuaryTerrainPaintPreview` maps the four terrain paint item IDs to target TileTypes.
+- The component renders a compact target tile swatch with `SanctuaryTerrainTile` and `getTileDisplayName`.
+- Backpack detail panel renders the shared preview for selected terrain paint stacks.
+- Shop detail panel renders the shared preview for selected terrain paint catalog entries.
+- Archive detail panel renders the shared preview only when the selected entry is previewable.
+- `validate:rpg` now guards the shared component, target mappings, renderer reuse, and all three detail panel callsites.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `npm run test:all`
+- Passed: `git diff --check`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Select Bridge Kit, Path, Stone Slab, and Wood Tile in Backpack and confirm target terrain previews render.
+- Select terrain paint entries in Shop and confirm target terrain previews render without changing purchase behavior.
+- Select discovered/known terrain paint entries in Archive and confirm previews render while locked entries remain gated.
+- Confirm filtering, sorting, buying, selling, placing, terrain painting, inventory consumption, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 124 status:
+
+- Verified.
+
+### Phase 125 Audit
+
+Intended behavior:
+
+- Make terrain-paint items visually identifiable in browse/card surfaces, not only after selection.
+- Use the same target TileType mapping and `SanctuaryTerrainTile` renderer as the Phase 124 detail previews.
+- Show compact target-tile swatches for Bridge Kit, Path, Stone Slab, and Wood Tile in Backpack slots and Shop cards.
+- Show compact target-tile swatches in discovered Archive entry rows while locked entries keep the normal lock treatment.
+- Keep `RpgItemIcon` backward compatible for existing callers that do not have an item id.
+
+Negative guarantees:
+
+- This phase must not change terrain edit validity rules, TileType values, collision, persistence, terrain override semantics, inventory consumption, crop planting, object placement, object movement, avatar movement, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not add final terrain sprite claims or new external asset dependencies.
+- This phase must not change filtering, sorting, purchase, sale, placement, planting, crafting, archive unlock, discovery, or research behavior.
+
+Files changed:
+
+- `app/src/engine/SanctuaryTerrainPaintPreview.tsx`
+- `app/src/engine/RpgItemIcon.tsx`
+- `app/src/engine/RpgBackpack.tsx`
+- `app/src/engine/SanctuaryShop.tsx`
+- `app/src/engine/RpgArchive.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-124.
+- Unrelated files should remain untouched unless a later RPG phase explicitly owns them.
+
+Design attack findings:
+
+- Phase 124 made selected terrain-paint entries understandable, but the browse grids still showed terrain-paint items as generic object icons.
+- The shared icon must stay id-driven because terrain-paint behavior is keyed by item id, not by item name or visual tags.
+- Archive list art must respect discovery gating so locked entries do not reveal terrain target colors before discovery.
+
+Implementation attack findings:
+
+- `SanctuaryTerrainPaintIcon` now renders a compact target tile swatch using `SanctuaryTerrainTile`.
+- `RpgItemIcon` accepts an optional `itemId` and swaps in `SanctuaryTerrainPaintIcon` only when the id maps to a terrain target.
+- Backpack slots pass `slot.item_id` into `RpgItemIcon`.
+- Shop cards pass catalog ids into `RpgItemIcon`.
+- Archive entry art checks the entry item id and renders compact terrain swatches only after discovery; locked entries keep the existing lock path.
+- `validate:rpg` now guards the compact icon export, item-icon override, and browse/card callsites.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Browse Backpack slots containing Bridge Kit, Path, Stone Slab, and Wood Tile and confirm they show target terrain swatches.
+- Browse Shop cards for terrain-paint entries and confirm they show target terrain swatches without changing purchase behavior.
+- Browse Archive entries and confirm discovered terrain-paint rows show swatches while locked entries keep the lock treatment.
+- Confirm selected detail previews from Phase 124 still render.
+- Confirm filtering, sorting, buying, selling, placing, terrain painting, inventory consumption, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 125 status:
+
+- Verified.
+
+### Phase 126 Audit
+
+Intended behavior:
+
+- Make build/edit placement easier to read at a glance while customizing the sanctuary.
+- Show footprint size, clear-cell count, and hovered terrain inside the existing contextual build pad.
+- Derive all placement stats from the shared `placementReport`, selected footprint dimensions, and terrain preview lookup.
+- Keep the visible world footprint, ghost, nudge controls, and confirm/cancel actions unchanged.
+
+Negative guarantees:
+
+- This phase must not change placement validity, collision, avatar blocking, terrain edit rules, persistence, inventory consumption, crop planting, object placement, object movement, prices, XP, stats, dungeon behavior, or non-RPG behavior.
+- This phase must not add new runtime state for placement stats or create a second placement source of truth.
+- This phase must not change filtering, sorting, purchase, sale, crafting, archive unlock, discovery, or research behavior.
+
+Files changed:
+
+- `app/app/rpg.tsx`
+- `app/scripts/validate-rpg-content.js`
+- `RPG_SANDBOX_PHASE_PLAN.md`
+
+Current dirty worktree separation:
+
+- In-scope: files listed above plus earlier in-progress RPG sanctuary UI/build files from Phase 89-125.
+- Existing non-RPG wallpaper crash guard remains separate and should not be mixed into RPG phase claims.
+
+Design attack findings:
+
+- Build mode already showed footprint cells in-world, but the pad did not summarize whether the footprint was mostly clear or what terrain it was hovering.
+- A compact stat row improves direct-manipulation readability without changing the authoritative placement report.
+- The clear-cell chip should reflect validity styling so invalid placements are readable even when the world footprint is partly obscured.
+
+Implementation attack findings:
+
+- `placementTotalCells` and `placementClearCells` derive directly from `placementReport.cells`.
+- `buildFootprintSummary` derives from the selected footprint dimensions already used by placement and previews.
+- `placementGroundLabel` derives from `getTileDisplayName(placementGroundType)`.
+- The build pad now renders Size, Clear, and Ground chips above the footprint preview.
+- `validate:rpg` now guards the derived stats, row rendering, chip labels, clear count, ground label, and validity styling.
+
+Verification evidence:
+
+- Passed: `npm run validate:rpg`
+- Passed: `npx tsc --noEmit`
+- Passed: `git diff --check`
+- Passed: `npm run test:all`
+- Passed: `npx expo export --platform ios --output-dir /private/tmp/prodewty-rpg-phase-check`
+
+Manual test checklist:
+
+- Enter sanctuary build mode for a 1x1 item and confirm the build pad shows Size 1x1, Clear 1/1 when valid, and the hovered ground label.
+- Move a multi-tile object and confirm the Size and Clear counts update from the active footprint.
+- Hover an invalid placement and confirm the Clear chip switches to warning styling without enabling Place.
+- Confirm drag, nudge, cancel, place, move, stash, terrain paint, planting, collision, inventory consumption, dungeon behavior, and non-RPG behavior remain unchanged.
+
+Phase 126 status:
 
 - Verified.

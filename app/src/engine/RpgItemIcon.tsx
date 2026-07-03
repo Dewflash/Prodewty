@@ -3,6 +3,8 @@ import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'r
 import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import type { RpgItemDefinition, RpgSpriteAnimation, RpgSpriteFrame } from './RpgObjectCatalog';
+import { isSanctuaryPlaceholderObject, SanctuaryPlaceholderObjectArt } from './SanctuaryPlaceholderObjectArt';
+import { getSanctuaryTerrainPaintTarget, SanctuaryTerrainPaintIcon } from './SanctuaryTerrainPaintPreview';
 
 type SpriteFrameProps = {
   frame: RpgSpriteFrame;
@@ -64,6 +66,7 @@ export function RpgSpriteAnimationView({ animation, scale, size }: SpriteAnimati
 
 type ItemIconProps = {
   item?: RpgItemDefinition | null;
+  itemId?: string | null;
   size?: number;
   fallbackLabel?: string;
 };
@@ -87,10 +90,25 @@ function placeholderProductLabel(item: RpgItemDefinition | null | undefined) {
   return item?.name?.slice(0, 4).toUpperCase() ?? null;
 }
 
-export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconProps) {
+function placeholderSeedLabel(item: RpgItemDefinition | null | undefined) {
+  if (item?.kind !== 'seed' || item.iconAssetId !== 'seed.treeGeneric') return null;
+  const cropName = item.crop?.name ?? item.name;
+  const letters = cropName.replace(/[^a-z]/gi, '').toUpperCase();
+  if (!letters) return 'SEED';
+  if (letters.startsWith('CABB')) return 'CABB';
+  return letters.slice(0, 4);
+}
+
+export function RpgItemIcon({ item, itemId, size = 44, fallbackLabel = '?' }: ItemIconProps) {
   const label = mechanismLabel(item);
   const productLabel = placeholderProductLabel(item);
+  const seedLabel = placeholderSeedLabel(item);
   const contentSize = size;
+  const terrainPaintItemId = itemId ?? fallbackLabel;
+  if (getSanctuaryTerrainPaintTarget(terrainPaintItemId) !== null) {
+    return <SanctuaryTerrainPaintIcon itemId={terrainPaintItemId} size={size} />;
+  }
+
   const maybeWrapMechanism = (node: React.ReactNode) => {
     if (!label) return node;
     return (
@@ -113,6 +131,22 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
       </View>
     );
   };
+  const maybeWrapPlaceholderSeed = (node: React.ReactNode) => {
+    if (!seedLabel) return node;
+    return (
+      <View style={[styles.placeholderSeedIcon, { width: size, height: size }]}>
+        {node}
+        <View style={styles.placeholderSeedBadge}>
+          <Text numberOfLines={1} adjustsFontSizeToFit style={styles.placeholderSeedBadgeText}>{seedLabel}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  if (item && isSanctuaryPlaceholderObject(item)) {
+    const placeholderArt = <SanctuaryPlaceholderObjectArt item={item} width={contentSize} height={contentSize} />;
+    if (placeholderArt) return maybeWrapMechanism(placeholderArt);
+  }
 
   if (item?.featherIcon) {
     return (
@@ -123,15 +157,15 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
   }
 
   if (item?.icon) {
-    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteFrameView frame={item.icon} size={contentSize} />));
+    return maybeWrapPlaceholderSeed(maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteFrameView frame={item.icon} size={contentSize} />)));
   }
 
   if (item?.animation) {
-    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteAnimationView animation={item.animation} size={contentSize} />));
+    return maybeWrapPlaceholderSeed(maybeWrapPlaceholderProduct(maybeWrapMechanism(<RpgSpriteAnimationView animation={item.animation} size={contentSize} />)));
   }
 
   if (item?.source) {
-    return maybeWrapPlaceholderProduct(maybeWrapMechanism(<Image source={item.source} resizeMode="contain" style={{ width: contentSize, height: contentSize }} />));
+    return maybeWrapPlaceholderSeed(maybeWrapPlaceholderProduct(maybeWrapMechanism(<Image source={item.source} resizeMode="contain" style={{ width: contentSize, height: contentSize }} />)));
   }
 
   return (
@@ -144,13 +178,34 @@ export function RpgItemIcon({ item, size = 44, fallbackLabel = '?' }: ItemIconPr
 
 type ItemWorldArtProps = {
   item?: RpgItemDefinition | null;
+  itemId?: string | null;
   width: number;
   height: number;
   fallbackLabel?: string;
   style?: StyleProp<ViewStyle>;
 };
 
-export function RpgItemWorldArt({ item, width, height, fallbackLabel = '?', style }: ItemWorldArtProps) {
+export function RpgItemWorldArt({ item, itemId, width, height, fallbackLabel = '?', style }: ItemWorldArtProps) {
+  const terrainPaintItemId = itemId ?? fallbackLabel;
+  if (getSanctuaryTerrainPaintTarget(terrainPaintItemId) !== null) {
+    return (
+      <View style={[styles.worldArtFrame, { width, height }, style]}>
+        <SanctuaryTerrainPaintIcon itemId={terrainPaintItemId} size={Math.min(width, height)} />
+      </View>
+    );
+  }
+
+  if (item && isSanctuaryPlaceholderObject(item)) {
+    const placeholderArt = <SanctuaryPlaceholderObjectArt item={item} width={width} height={height} />;
+    if (placeholderArt) {
+      return (
+        <View style={[styles.worldArtFrame, { width, height }, style]}>
+          {placeholderArt}
+        </View>
+      );
+    }
+  }
+
   if (item?.animation) {
     const firstFrame = item.animation.frames[0];
     if (firstFrame) {
@@ -182,7 +237,7 @@ export function RpgItemWorldArt({ item, width, height, fallbackLabel = '?', styl
 
   return (
     <View style={[styles.worldArtFrame, { width, height }, style]}>
-      <RpgItemIcon item={item} size={Math.min(width, height)} fallbackLabel={fallbackLabel} />
+      <RpgItemIcon item={item} itemId={itemId} size={Math.min(width, height)} fallbackLabel={fallbackLabel} />
     </View>
   );
 }
@@ -245,6 +300,29 @@ const styles = StyleSheet.create({
   },
   placeholderProductBadgeText: {
     color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
+  placeholderSeedIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderSeedBadge: {
+    position: 'absolute',
+    left: 1,
+    right: 1,
+    bottom: 0,
+    minHeight: 11,
+    borderRadius: 4,
+    backgroundColor: 'rgba(22,42,25,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  placeholderSeedBadgeText: {
+    color: '#d9ffd2',
     fontFamily: fonts.ui.bold,
     fontSize: 7,
   },

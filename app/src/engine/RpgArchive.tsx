@@ -5,16 +5,26 @@ import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import { getRpgDiscoveries, type RpgDiscoveryRow } from '../db/rpgDiscovery';
 import {
+  countSanctuaryLayoutSets,
   countRpgSourcePacks,
+  getPlaceableItem,
   getRpgArchiveEntries,
+  getRpgItem,
+  getSanctuaryDesignRole,
+  getSanctuaryLayoutFitLabels,
+  itemMatchesSanctuaryLayoutSet,
   RPG_SOURCE_PACK_FILTERS,
+  SANCTUARY_LAYOUT_SET_FILTERS,
   type RpgArchiveCategory,
   type RpgArchiveEntry,
   type RpgItemRarity,
   type RpgSourcePackId,
+  type SanctuaryLayoutSetId,
 } from './RpgObjectCatalog';
 import { getRpgAsset, RPG_ARCHIVE_FRAMES, type RpgAssetDefinition } from './RpgAssetRegistry';
 import { RpgSpriteAnimationView, RpgSpriteFrameView } from './RpgItemIcon';
+import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
+import { getSanctuaryTerrainPaintTarget, SanctuaryTerrainPaintIcon, SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
 import { getMasteryLevel, getMasteryTier } from '../db/skills';
 
 // Discovery/Understanding ladder (RPG_ARCHITECTURE.md): an item's own
@@ -85,12 +95,12 @@ const SORTS: { id: ArchiveSort; label: string }[] = [
   { id: 'status', label: 'Status' },
 ];
 const SLOT_POSITIONS = [
-  { x: 38, y: 102 },
-  { x: 38, y: 140 },
-  { x: 38, y: 178 },
-  { x: 150, y: 102 },
-  { x: 150, y: 140 },
-  { x: 150, y: 178 },
+  { x: 36, y: 114 },
+  { x: 36, y: 154 },
+  { x: 36, y: 194 },
+  { x: 148, y: 114 },
+  { x: 148, y: 154 },
+  { x: 148, y: 194 },
 ];
 
 function loadCounts() {
@@ -130,6 +140,14 @@ function archiveSourceMatches(entry: ArchiveEntryState, source: RpgSourcePackId)
   if (source === 'all') return true;
   const sourceFilter = RPG_SOURCE_PACK_FILTERS.find(item => item.id === source);
   return !!sourceFilter?.sourceLabel && entry.sourceLabel === sourceFilter.sourceLabel;
+}
+
+function archiveLayoutItem(entry: ArchiveEntryState) {
+  return {
+    kind: entry.category,
+    tags: entry.tags,
+    sourceLabel: entry.sourceLabel,
+  };
 }
 
 function rarityColor(rarity: RpgItemRarity | undefined) {
@@ -177,7 +195,8 @@ function discoverySourceLabel(source: string) {
   return 'Discovered';
 }
 
-function ArchiveItemArt({ asset, discovered, known }: {
+function ArchiveItemArt({ itemId, asset, discovered, known }: {
+  itemId: string;
   asset: RpgAssetDefinition | null;
   discovered: boolean;
   known: boolean;
@@ -185,10 +204,18 @@ function ArchiveItemArt({ asset, discovered, known }: {
   // known now implies discovered, so this is just a 2-state opacity.
   const opacity = discovered ? 1 : 0.26;
 
+  if (discovered && getSanctuaryTerrainPaintTarget(itemId) !== null) {
+    return (
+      <View style={{ opacity }}>
+        <SanctuaryTerrainPaintIcon itemId={itemId} size={28} />
+      </View>
+    );
+  }
+
   if (asset?.animation) {
     return (
       <View style={{ opacity }}>
-        <RpgSpriteAnimationView animation={asset.animation} size={24} />
+        <RpgSpriteAnimationView animation={asset.animation} size={28} />
       </View>
     );
   }
@@ -196,7 +223,7 @@ function ArchiveItemArt({ asset, discovered, known }: {
   if (asset?.frame) {
     return (
       <View style={{ opacity }}>
-        <RpgSpriteFrameView frame={asset.frame} size={24} />
+        <RpgSpriteFrameView frame={asset.frame} size={28} />
       </View>
     );
   }
@@ -216,6 +243,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
   const { width, height } = useWindowDimensions();
   const [filter, setFilter] = useState<ArchiveFilter>('all');
   const [source, setSource] = useState<RpgSourcePackId>('all');
+  const [layoutSet, setLayoutSet] = useState<SanctuaryLayoutSetId>('all');
   const [scope, setScope] = useState<ArchiveScope>('all');
   const [sort, setSort] = useState<ArchiveSort>('name');
   const [query, setQuery] = useState('');
@@ -225,7 +253,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
 
   const scale = Math.max(
     1.05,
-    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 336) / RPG_ARCHIVE_FRAMES.openBook.height),
+    Math.min(1.55, (width - 24) / RPG_ARCHIVE_FRAMES.openBook.width, (height - 360) / RPG_ARCHIVE_FRAMES.openBook.height),
   );
   const bookWidth = RPG_ARCHIVE_FRAMES.openBook.width * scale;
   const bookHeight = RPG_ARCHIVE_FRAMES.openBook.height * scale;
@@ -274,6 +302,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
       .filter(entry => (
         (filter === 'all' || entry.category === filter) &&
         archiveSourceMatches(entry, source) &&
+        itemMatchesSanctuaryLayoutSet(archiveLayoutItem(entry), layoutSet) &&
         archiveScopeMatches(entry, scope) &&
         archiveEntryMatchesQuery(entry, query)
       ))
@@ -286,21 +315,34 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         }
         return a.name.localeCompare(b.name);
       }),
-    [entries, filter, query, scope, sort, source],
+    [entries, filter, layoutSet, query, scope, sort, source],
   );
   const archiveCounts = useMemo(() => ({
     total: entries.length,
     discovered: entries.filter(entry => entry.discovered).length,
-    known: entries.filter(entry => !entry.discovered && entry.known).length,
+    known: entries.filter(entry => entry.discovered && entry.known).length,
     locked: entries.filter(entry => !entry.discovered && !entry.known).length,
   }), [entries]);
   const sourceCounts = useMemo(
     () => countRpgSourcePacks(entries, entry => entry.sourceLabel),
     [entries],
   );
+  const layoutSetCounts = useMemo(
+    () => countSanctuaryLayoutSets(entries, archiveLayoutItem),
+    [entries],
+  );
   const maxPage = Math.max(0, Math.ceil(filteredEntries.length / PAGE_SIZE) - 1);
   const pageEntries = filteredEntries.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const selected = filteredEntries.find(entry => entry.itemId === selectedId) ?? pageEntries[0] ?? null;
+  const selectedCatalogItem = selected ? getRpgItem(selected.itemId) : null;
+  const selectedPlaceable = selected ? getPlaceableItem(selected.itemId) : null;
+  const selectedDesignRole = selected && (selected.discovered || selected.known)
+    ? getSanctuaryDesignRole(selectedCatalogItem)
+    : null;
+  const selectedLayoutFits = selected && (selected.discovered || selected.known)
+    ? getSanctuaryLayoutFitLabels(selectedCatalogItem)
+    : [];
+  const selectedCanPreviewFootprint = !!selected && (selected.discovered || selected.known);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -310,7 +352,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         ? current
         : filteredEntries[0]?.itemId ?? null
     ));
-  }, [filter, filteredEntries, isOpen, query, scope, sort, source]);
+  }, [filter, filteredEntries, isOpen, layoutSet, query, scope, sort, source]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);
@@ -354,6 +396,25 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
               >
                 <Text style={[styles.sourceText, active && styles.sourceTextActive]}>{item.label}</Text>
                 <Text style={[styles.sourceCount, active && styles.sourceTextActive]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.layoutBar}>
+          {SANCTUARY_LAYOUT_SET_FILTERS.map(item => {
+            const active = layoutSet === item.id;
+            const count = layoutSetCounts[item.id];
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} archive layout set`}
+                onPress={() => setLayoutSet(item.id)}
+                style={[styles.layoutButton, active && styles.layoutButtonActive]}
+              >
+                <Text style={[styles.layoutText, active && styles.layoutTextActive]}>{item.label}</Text>
+                <Text style={[styles.layoutCount, active && styles.layoutTextActive]}>{count}</Text>
               </Pressable>
             );
           })}
@@ -443,12 +504,12 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
                   {
                     left: slot.x * scale,
                     top: slot.y * scale,
-                    width: 84 * scale,
-                    height: 30 * scale,
+                    width: 88 * scale,
+                    height: 34 * scale,
                   },
                 ]}
               >
-                <ArchiveItemArt asset={entry.asset} discovered={entry.discovered} known={entry.known} />
+                <ArchiveItemArt itemId={entry.itemId} asset={entry.asset} discovered={entry.discovered} known={entry.known} />
                 <View style={styles.entryTextBlock}>
                   <Text numberOfLines={1} style={styles.entryName}>{archiveDisplayName(entry)}</Text>
                   <Text numberOfLines={1} style={styles.entryStatus}>{archiveStatusLabel(entry)}</Text>
@@ -458,14 +519,14 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           })}
 
           {pageEntries.length === 0 && (
-            <View style={[styles.emptyBookState, { left: 50 * scale, top: 132 * scale, width: 172 * scale }]}>
+            <View style={[styles.emptyBookState, { left: 50 * scale, top: 148 * scale, width: 172 * scale }]}>
               <Feather name="search" size={15} color="#6a4328" />
               <Text style={styles.emptyBookText}>No entries here</Text>
             </View>
           )}
 
           {maxPage > 0 && (
-            <View style={[styles.pageControls, { left: 95 * scale, bottom: 38 * scale }]}>
+            <View style={[styles.pageControls, { left: 95 * scale, bottom: 26 * scale }]}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Previous archive page"
@@ -518,6 +579,38 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           {selected && !selected.discovered && (
             <Text numberOfLines={1} style={styles.detailMeta}>{selected.sourceLabel}</Text>
           )}
+          {selectedDesignRole && (
+            <View style={styles.designRoleRow}>
+              <View style={[
+                styles.designRolePill,
+                selectedDesignRole.tone === 'nature' && styles.designRoleNature,
+                selectedDesignRole.tone === 'farm' && styles.designRoleFarm,
+                selectedDesignRole.tone === 'ruin' && styles.designRoleRuin,
+                selectedDesignRole.tone === 'utility' && styles.designRoleUtility,
+                selectedDesignRole.tone === 'livestock' && styles.designRoleLivestock,
+                selectedDesignRole.tone === 'resource' && styles.designRoleResource,
+              ]}>
+                <Text style={styles.designRoleText}>{selectedDesignRole.label}</Text>
+              </View>
+              <Text numberOfLines={1} style={styles.designRoleHint}>{selectedDesignRole.hint}</Text>
+            </View>
+          )}
+          {selectedLayoutFits.length > 0 && (
+            <View style={styles.layoutFitRow}>
+              <Text style={styles.layoutFitLead}>Fits</Text>
+              {selectedLayoutFits.map(label => (
+                <View key={label} style={styles.layoutFitPill}>
+                  <Text numberOfLines={1} style={styles.layoutFitText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {selectedCanPreviewFootprint && selectedPlaceable ? (
+            <SanctuaryFootprintPreview colWidth={selectedPlaceable.colWidth} colHeight={selectedPlaceable.colHeight} />
+          ) : selectedCanPreviewFootprint && selectedCatalogItem?.kind === 'seed' ? (
+            <SanctuaryFootprintPreview colWidth={1} colHeight={1} label="Planting" />
+          ) : null}
+          {selectedCanPreviewFootprint && selected && <SanctuaryTerrainPaintPreview itemId={selected.itemId} />}
           {selected && (selected.discovered || selected.known) && selected.facts.length > 0 && (
             <View style={styles.factGrid}>
               {selected.facts.slice(0, 6).map(fact => (
@@ -642,6 +735,41 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 7,
   },
+  layoutBar: {
+    width: '100%',
+    minHeight: 30,
+    marginBottom: 4,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(74,91,57,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(190,224,142,0.22)',
+    flexDirection: 'row',
+  },
+  layoutButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  layoutButtonActive: {
+    backgroundColor: 'rgba(190,224,142,0.2)',
+  },
+  layoutText: {
+    color: 'rgba(224,240,178,0.68)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  layoutTextActive: {
+    color: '#fff2bb',
+  },
+  layoutCount: {
+    marginTop: 1,
+    color: 'rgba(224,240,178,0.52)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
   searchRow: {
     width: '100%',
     minHeight: 32,
@@ -729,15 +857,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(106,67,40,0.36)',
   },
   entryImage: {
-    width: 25,
-    height: 25,
+    width: 29,
+    height: 29,
   },
   lockIcon: {
-    width: 24,
-    height: 24,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: 'rgba(106,67,40,0.12)',
   },
   emptyBookState: {
@@ -759,17 +887,17 @@ const styles = StyleSheet.create({
   },
   entryTextBlock: {
     flex: 1,
-    marginLeft: 4,
+    marginLeft: 5,
   },
   entryName: {
     color: '#3f2619',
     fontFamily: fonts.ui.bold,
-    fontSize: 8,
+    fontSize: 9,
   },
   entryStatus: {
     color: '#775338',
     fontFamily: fonts.ui.regular,
-    fontSize: 7,
+    fontSize: 8,
     marginTop: 1,
   },
   pageControls: {
@@ -795,8 +923,8 @@ const styles = StyleSheet.create({
   },
   detailBar: {
     width: '100%',
-    minHeight: 96,
-    marginTop: -6,
+    minHeight: 108,
+    marginTop: 2,
     padding: 10,
     borderRadius: 8,
     backgroundColor: 'rgba(27,18,14,0.9)',
@@ -848,6 +976,78 @@ const styles = StyleSheet.create({
     color: '#f7e6a5',
     fontFamily: fonts.ui.bold,
     fontSize: 9,
+  },
+  designRoleRow: {
+    marginTop: 6,
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  designRolePill: {
+    maxWidth: 92,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(247,230,165,0.14)',
+  },
+  designRoleNature: {
+    backgroundColor: 'rgba(121,211,143,0.18)',
+  },
+  designRoleFarm: {
+    backgroundColor: 'rgba(237,196,93,0.2)',
+  },
+  designRoleRuin: {
+    backgroundColor: 'rgba(153,189,255,0.18)',
+  },
+  designRoleUtility: {
+    backgroundColor: 'rgba(247,230,165,0.14)',
+  },
+  designRoleLivestock: {
+    backgroundColor: 'rgba(255,177,122,0.18)',
+  },
+  designRoleResource: {
+    backgroundColor: 'rgba(180,220,227,0.16)',
+  },
+  designRoleText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  designRoleHint: {
+    flex: 1,
+    marginLeft: 6,
+    color: 'rgba(255,242,187,0.72)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 9,
+  },
+  layoutFitRow: {
+    minHeight: 19,
+    marginTop: 5,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+  },
+  layoutFitLead: {
+    color: 'rgba(255,242,187,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  layoutFitPill: {
+    minHeight: 16,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(190,224,142,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(190,224,142,0.26)',
+    justifyContent: 'center',
+  },
+  layoutFitText: {
+    color: '#e0f0b2',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   factGrid: {
     marginTop: 7,

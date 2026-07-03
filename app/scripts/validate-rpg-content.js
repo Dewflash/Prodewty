@@ -12,9 +12,14 @@ const archivePath = path.join(engineDir, 'RpgArchive.tsx');
 const backpackPath = path.join(engineDir, 'RpgBackpack.tsx');
 const shopPath = path.join(engineDir, 'SanctuaryShop.tsx');
 const itemIconPath = path.join(engineDir, 'RpgItemIcon.tsx');
+const footprintPreviewPath = path.join(engineDir, 'SanctuaryFootprintPreview.tsx');
+const terrainPaintPreviewPath = path.join(engineDir, 'SanctuaryTerrainPaintPreview.tsx');
 const sanctuaryObjectPath = path.join(engineDir, 'SanctuaryObject.tsx');
+const toolCatalogPath = path.join(engineDir, 'ToolCatalog.ts');
+const craftingCatalogPath = path.join(engineDir, 'CraftingCatalog.ts');
 const rpgScreenPath = path.join(appRoot, 'app', 'rpg.tsx');
 const schemaPath = path.join(appRoot, 'src', 'db', 'schema.ts');
+const dbCraftingPath = path.join(appRoot, 'src', 'db', 'crafting.ts');
 const sanctuaryInteractionsPath = path.join(appRoot, 'src', 'db', 'sanctuaryInteractions.ts');
 const sanctuaryObjectRelationsPath = path.join(appRoot, 'src', 'db', 'sanctuaryObjectRelations.ts');
 const sanctuaryRewardsPath = path.join(appRoot, 'src', 'db', 'sanctuaryRewards.ts');
@@ -26,9 +31,14 @@ const archive = fs.readFileSync(archivePath, 'utf8');
 const backpack = fs.readFileSync(backpackPath, 'utf8');
 const shop = fs.readFileSync(shopPath, 'utf8');
 const itemIcon = fs.readFileSync(itemIconPath, 'utf8');
+const footprintPreview = fs.readFileSync(footprintPreviewPath, 'utf8');
+const terrainPaintPreview = fs.readFileSync(terrainPaintPreviewPath, 'utf8');
 const sanctuaryObject = fs.readFileSync(sanctuaryObjectPath, 'utf8');
+const toolCatalog = fs.readFileSync(toolCatalogPath, 'utf8');
+const craftingCatalog = fs.readFileSync(craftingCatalogPath, 'utf8');
 const rpgScreen = fs.readFileSync(rpgScreenPath, 'utf8');
 const schema = fs.readFileSync(schemaPath, 'utf8');
+const dbCrafting = fs.readFileSync(dbCraftingPath, 'utf8');
 const sanctuaryInteractions = fs.readFileSync(sanctuaryInteractionsPath, 'utf8');
 const sanctuaryObjectRelations = fs.readFileSync(sanctuaryObjectRelationsPath, 'utf8');
 const sanctuaryRewards = fs.readFileSync(sanctuaryRewardsPath, 'utf8');
@@ -585,13 +595,16 @@ function validateBackpackCharacterInventorySplit() {
   if (!backpack.includes(".filter(slot => slot.item?.kind !== 'tool')")) {
     fail('Backpack inventory query must hide tool rows');
   }
-  if (backpack.includes('onEquipTool') || backpack.includes('equippedToolId') || backpack.includes("selectedItem?.kind === 'tool'")) {
+  if (backpack.includes('onEquipTool') || backpack.includes('equippedToolId')) {
     fail('Backpack must not equip tools directly');
+  }
+  if (!backpack.includes("selectedItem?.kind === 'tool'") || !backpack.includes('Equip from the Character panel')) {
+    fail('Backpack must redirect tool ownership to the Character panel without equipping tools');
   }
   if (!rpgScreen.includes('accessibilityLabel="Open character equipment"')) {
     fail('Character/equipment panel must remain the dedicated tool surface');
   }
-  if (!rpgScreen.includes('{TOOLS.map(tool => (')) {
+  if (!rpgScreen.includes('EQUIPPABLE_TOOL_ITEM_IDS.map(itemId =>')) {
     fail('Character/equipment panel or hotbar must render tool slots from TOOLS');
   }
 }
@@ -616,6 +629,178 @@ function validateShopScalabilityControls() {
   if (!shop.includes('mechanismRank(a.tags)')) fail('Shop mechanism filter must prioritize lever/gate/trap entries');
 }
 
+function validateSanctuaryDesignRoles() {
+  if (!catalog.includes('export type SanctuaryDesignRole')) {
+    fail('Catalog must define shared sanctuary design role metadata');
+  }
+  if (!catalog.includes('export function getSanctuaryDesignRole')) {
+    fail('Catalog must expose a shared sanctuary design role classifier');
+  }
+  ['Crop Bed', 'Sapling', 'Flooring', 'Boundary', 'Building', 'Livestock', 'Mechanism', 'Crystal Accent', 'Canopy', 'Ground Cover', 'Ruin Accent'].forEach(label => {
+    if (!catalog.includes(label)) fail(`Sanctuary design roles must classify ${label}`);
+  });
+  if (!shop.includes('getSanctuaryDesignRole') || !shop.includes('selectedDesignRole')) {
+    fail('Shop detail panel must use the shared sanctuary design role helper');
+  }
+  if (!backpack.includes('getSanctuaryDesignRole') || !backpack.includes('selectedDesignRole')) {
+    fail('Backpack detail panel must use the shared sanctuary design role helper');
+  }
+  if (!shop.includes('const cardDesignRole = getSanctuaryDesignRole(item)') || !shop.includes('styles.cardRolePill')) {
+    fail('Shop grid cards must show shared sanctuary role badges while browsing');
+  }
+  if (!backpack.includes('const slotDesignRole = slot ? getSanctuaryDesignRole(slot.item) : null') || !backpack.includes('styles.slotRolePill')) {
+    fail('Backpack slots must show shared sanctuary role badges while browsing');
+  }
+  if (!shop.includes('cardDesignRole.tone === \'nature\' && styles.cardRoleNature') || !shop.includes('cardRoleResource')) {
+    fail('Shop browse role badges must reflect shared role tone colors');
+  }
+  if (!backpack.includes('slotDesignRole.tone === \'nature\' && styles.slotRoleNature') || !backpack.includes('slotRoleResource')) {
+    fail('Backpack browse role badges must reflect shared role tone colors');
+  }
+  if (!shop.includes('styles.designRolePill') || !backpack.includes('styles.designRolePill')) {
+    fail('Shop and Backpack must visibly render sanctuary design role chips');
+  }
+  if (!shop.includes('selectedDesignRole.hint') || !backpack.includes('selectedDesignRole.hint')) {
+    fail('Shop and Backpack must show design-role composition hints');
+  }
+  if (!catalog.includes('export type SanctuaryLayoutSetId')) {
+    fail('Catalog must define shared sanctuary layout set ids');
+  }
+  if (!catalog.includes('export const SANCTUARY_LAYOUT_SET_FILTERS')) {
+    fail('Catalog must expose shared sanctuary layout set filters');
+  }
+  ['grove', 'farmyard', 'ruins', 'workshop'].forEach(layoutSetId => {
+    if (!catalog.includes(`'${layoutSetId}'`)) fail(`Sanctuary layout filters must expose ${layoutSetId}`);
+  });
+  if (!catalog.includes('export function itemMatchesSanctuaryLayoutSet')) {
+    fail('Catalog must expose a shared sanctuary layout set matcher');
+  }
+  if (!catalog.includes('export function countSanctuaryLayoutSets')) {
+    fail('Catalog must expose shared sanctuary layout set counts');
+  }
+  if (!catalog.includes('export function getSanctuaryLayoutFitLabels') || !catalog.includes("filter.id !== 'all'")) {
+    fail('Catalog must expose shared non-All sanctuary layout fit labels');
+  }
+  if (!shop.includes('SANCTUARY_LAYOUT_SET_FILTERS') || !shop.includes('itemMatchesSanctuaryLayoutSet(item, layoutSet)')) {
+    fail('Shop must use shared sanctuary layout set filters and matcher');
+  }
+  if (!backpack.includes('SANCTUARY_LAYOUT_SET_FILTERS') || !backpack.includes('itemMatchesSanctuaryLayoutSet(slot.item, layoutSet)')) {
+    fail('Backpack must use shared sanctuary layout set filters and matcher');
+  }
+  if (!shop.includes('layoutSetCounts') || !backpack.includes('layoutSetCounts')) {
+    fail('Shop and Backpack must show sanctuary layout set counts');
+  }
+  if (!shop.includes('getSanctuaryLayoutFitLabels(selectedEntry?.[1])') || !shop.includes('selectedLayoutFits.map')) {
+    fail('Shop detail panel must show selected item sanctuary layout fit labels');
+  }
+  if (!backpack.includes('getSanctuaryLayoutFitLabels(selectedItem)') || !backpack.includes('selectedLayoutFits.map')) {
+    fail('Backpack detail panel must show selected item sanctuary layout fit labels');
+  }
+}
+
+function validateSanctuaryFootprintPreview() {
+  if (!footprintPreview.includes('export function SanctuaryFootprintPreview')) {
+    fail('Shared sanctuary footprint preview component must be exported');
+  }
+  if (!footprintPreview.includes('colWidth') || !footprintPreview.includes('colHeight')) {
+    fail('Footprint preview must be driven by catalog footprint dimensions');
+  }
+  if (!footprintPreview.includes('rows * cols')) {
+    fail('Footprint preview must render every occupied footprint cell');
+  }
+  if (!shop.includes("import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';")) {
+    fail('Shop must import the shared footprint preview component');
+  }
+  if (!shop.includes('colWidth={selectedEntry[1].colWidth}') || !shop.includes('colHeight={selectedEntry[1].colHeight}')) {
+    fail('Shop must render selected catalog item footprint dimensions');
+  }
+  if (!backpack.includes("import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';")) {
+    fail('Backpack must import the shared footprint preview component');
+  }
+  if (!backpack.includes('colWidth={selectedPlaceable.colWidth}') || !backpack.includes('colHeight={selectedPlaceable.colHeight}')) {
+    fail('Backpack must render selected placeable footprint dimensions');
+  }
+  if (!backpack.includes('label="Planting"')) {
+    fail('Backpack must show a 1x1 planting preview for plantable seeds');
+  }
+}
+
+function validateSanctuaryTerrainPaintPreview() {
+  if (
+    !terrainPaintPreview.includes('export function SanctuaryTerrainPaintPreview') ||
+    !terrainPaintPreview.includes('export function SanctuaryTerrainPaintIcon') ||
+    !terrainPaintPreview.includes('getSanctuaryTerrainPaintTarget')
+  ) {
+    fail('Shared sanctuary terrain paint preview component must be exported');
+  }
+  ['rpg_bridge_kit', 'rpg_path_kit', 'RPG_STONE_SLAB_ITEM_ID', 'RPG_WOOD_TILE_ITEM_ID'].forEach(token => {
+    if (!terrainPaintPreview.includes(token)) fail(`Terrain paint preview must map ${token}`);
+  });
+  if (!terrainPaintPreview.includes('SanctuaryTerrainTile') || !terrainPaintPreview.includes('getTileDisplayName(targetTile)')) {
+    fail('Terrain paint preview must render target terrain art and label');
+  }
+  if (!itemIcon.includes("import { getSanctuaryTerrainPaintTarget, SanctuaryTerrainPaintIcon } from './SanctuaryTerrainPaintPreview';")) {
+    fail('RPG item icons must import the shared compact terrain paint icon');
+  }
+  if (!itemIcon.includes('itemId?: string | null') || !itemIcon.includes('getSanctuaryTerrainPaintTarget(terrainPaintItemId)') || !itemIcon.includes('<SanctuaryTerrainPaintIcon itemId={terrainPaintItemId} size={size} />')) {
+    fail('RPG item icons must render compact terrain paint swatches when item ids map to terrain targets');
+  }
+  if (!shop.includes('<RpgItemIcon item={item} itemId={id} size={82} fallbackLabel={id} />')) {
+    fail('Shop item cards must pass item ids into RPG item icons for terrain paint swatches');
+  }
+  if (!backpack.includes('<RpgItemIcon item={slot.item} itemId={slot.item_id}')) {
+    fail('Backpack slots must pass item ids into RPG item icons for terrain paint swatches');
+  }
+  if (!archive.includes('discovered && getSanctuaryTerrainPaintTarget(itemId) !== null') || !archive.includes('SanctuaryTerrainPaintIcon') || !archive.includes('<ArchiveItemArt itemId={entry.itemId}')) {
+    fail('Archive entries must show compact terrain paint swatches only for discovered terrain paint items');
+  }
+  if (!shop.includes("import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';") || !shop.includes('<SanctuaryTerrainPaintPreview itemId={selectedEntry[0]} />')) {
+    fail('Shop detail panel must show terrain paint target previews');
+  }
+  if (!backpack.includes("import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';") || !backpack.includes('<SanctuaryTerrainPaintPreview itemId={selected.item_id} />')) {
+    fail('Backpack detail panel must show terrain paint target previews');
+  }
+  if (!archive.includes("from './SanctuaryTerrainPaintPreview';") || !archive.includes('SanctuaryTerrainPaintPreview') || !archive.includes('<SanctuaryTerrainPaintPreview itemId={selected.itemId} />')) {
+    fail('Archive detail panel must show discovered terrain paint target previews');
+  }
+}
+
+function validateArchiveCompositionGuidance() {
+  if (!archive.includes("import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';")) {
+    fail('Archive must reuse the shared footprint preview component');
+  }
+  if (!archive.includes('SANCTUARY_LAYOUT_SET_FILTERS') || !archive.includes('itemMatchesSanctuaryLayoutSet(archiveLayoutItem(entry), layoutSet)')) {
+    fail('Archive must use shared sanctuary layout set filters and matcher');
+  }
+  if (!archive.includes('countSanctuaryLayoutSets(entries, archiveLayoutItem)') || !archive.includes('layoutSetCounts')) {
+    fail('Archive must show shared sanctuary layout set counts');
+  }
+  if (!archive.includes('getSanctuaryDesignRole')) {
+    fail('Archive must use the shared sanctuary design role helper');
+  }
+  if (!archive.includes('const selectedDesignRole = selected && (selected.discovered || selected.known)')) {
+    fail('Archive role hints must stay gated behind discovered/known entries');
+  }
+  if (!archive.includes('const selectedLayoutFits = selected && (selected.discovered || selected.known)')) {
+    fail('Archive layout fit chips must stay gated behind discovered/known entries');
+  }
+  if (!archive.includes('getSanctuaryLayoutFitLabels(selectedCatalogItem)') || !archive.includes('selectedLayoutFits.map')) {
+    fail('Archive detail panel must show selected item sanctuary layout fit labels');
+  }
+  if (!archive.includes('getPlaceableItem(selected.itemId)')) {
+    fail('Archive must derive footprint dimensions from the placeable catalog item');
+  }
+  if (!archive.includes('styles.designRolePill') || !archive.includes('styles.designRoleHint')) {
+    fail('Archive must visibly render sanctuary design role chips and hints');
+  }
+  if (!archive.includes('colWidth={selectedPlaceable.colWidth}') || !archive.includes('colHeight={selectedPlaceable.colHeight}')) {
+    fail('Archive must render selected placeable footprint dimensions');
+  }
+  if (!archive.includes('selectedCatalogItem?.kind === \'seed\'') || !archive.includes('label="Planting"')) {
+    fail('Archive must show a 1x1 planting preview for discovered plantable seeds');
+  }
+}
+
 function validateWorldArtRenderer() {
   if (!itemIcon.includes('export function RpgSpriteAnimationView')) fail('Shared item renderer must expose sprite animation view');
   if (!itemIcon.includes('item?.animation')) fail('Shared item renderer must support catalog animation metadata');
@@ -634,6 +819,27 @@ function validateWorldArtRenderer() {
     fail('Shared item world art renderer must prefer sprite frames before whole-image sources');
   }
   if (!sanctuaryObject.includes('RpgItemWorldArt')) fail('Placed sanctuary objects must use shared item art rendering');
+  if (!sanctuaryObject.includes('const footprintWidth = colWidth * tileSize') || !sanctuaryObject.includes('const footprintHeight = colHeight * tileSize')) {
+    fail('Placed sanctuary objects must derive their grounding footprint from catalog collision dimensions');
+  }
+  if (!sanctuaryObject.includes('styles.groundingFootprint') || !sanctuaryObject.includes('pointerEvents="none"')) {
+    fail('Placed sanctuary objects must render a non-interactive grounding footprint under world art');
+  }
+  if (!sanctuaryObject.includes('groundType?: TileType') || !sanctuaryObject.includes('getTerrainGroundingStyle(groundType)')) {
+    fail('Placed sanctuary objects must receive terrain-aware grounding styles');
+  }
+  ['groundingFootprintGrass', 'groundingFootprintSoil', 'groundingFootprintWet', 'groundingFootprintSand', 'groundingFootprintStone', 'groundingFootprintWood', 'groundingFootprintPath'].forEach(styleName => {
+    if (!sanctuaryObject.includes(styleName)) fail(`Placed sanctuary objects must style ${styleName}`);
+  });
+  if (!rpgScreen.includes('const getObjectGroundType = (obj: MapObject): TileType =>') || !rpgScreen.includes('groundType={getObjectGroundType(obj)}')) {
+    fail('RPG screen must derive object grounding from the current sanctuary terrain map');
+  }
+  if (!sanctuaryObject.includes("catalogItem?.tags?.includes('animal')") || !sanctuaryObject.includes("catalogItem.tags.includes('livestock')")) {
+    fail('Placed livestock objects must derive farm-life visuals from animal/livestock tags');
+  }
+  if (!sanctuaryObject.includes('styles.livestockCareCue') || !sanctuaryObject.includes('styles.groundingFootprintLivestock')) {
+    fail('Placed livestock objects must render a distinct non-interactive farm-life cue');
+  }
   if (!rpgScreen.includes('RpgItemWorldArt')) fail('Build ghost must use shared item art rendering');
 }
 
@@ -755,7 +961,7 @@ function validateGateRattleFeedback() {
 }
 
 function validateInteractionTargetPrompt() {
-  if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'portal' | 'enemy';")) {
+  if (!rpgScreen.includes("type InteractionTargetKind = 'object' | 'plot' | 'farmplot' | 'portal' | 'enemy';")) {
     fail('RPG screen must type interaction target prompt kinds');
   }
   if (!rpgScreen.includes('type InteractionTargetCell = { row: number; col: number };')) {
@@ -787,6 +993,21 @@ function validateInteractionTargetPrompt() {
   }
   if (!rpgScreen.includes('styles.interactionTargetCell')) {
     fail('RPG screen must preserve target reticle styles for debug use');
+  }
+  if (!rpgScreen.includes("activeZone === 'sanctuary' && !buildItem && interactionPrompt?.cells.map")) {
+    fail('Sanctuary must show the current Interact target in world space during normal play');
+  }
+  if (!rpgScreen.includes('styles.sanctuaryTargetCell')) {
+    fail('Sanctuary Interact target must use a dedicated non-debug focus cell style');
+  }
+  if (!rpgScreen.includes("interactionPrompt.kind === 'plot' || interactionPrompt.kind === 'farmplot'")) {
+    fail('Sanctuary Interact target must distinguish crop/plot cells from object cells');
+  }
+  if (!rpgScreen.includes("interactionPrompt.kind === 'portal' && styles.sanctuaryTargetPortalCell")) {
+    fail('Sanctuary Interact target must distinguish portal cells from object cells');
+  }
+  if (!rpgScreen.includes('key={`sanctuary-focus-${interactionPrompt.kind}-${cell.row}:${cell.col}:${index}`}') || !rpgScreen.includes('pointerEvents="none"\n              style={[\n                styles.sanctuaryTargetCell')) {
+    fail('Sanctuary Interact focus cells must be stable and non-interactive');
   }
   if (!rpgScreen.includes('{SHOW_NORMAL_TARGET_DEBUG && !buildItem && interactionPrompt?.cells.map')) {
     fail('Normal target reticle must be hidden unless the debug flag is enabled');
@@ -856,6 +1077,202 @@ function validateBuildPlacementFeedback() {
   }
   if (!rpgScreen.includes("showWorldToast({ text: `Placed ${buildItem.label}`, item, tone: 'success' });")) {
     fail('Placing an object must show success feedback');
+  }
+}
+
+function validateBuildEditorNudgeControls() {
+  if (!rpgScreen.includes('const nudgeBuildPlacement = (deltaRow: number, deltaCol: number)')) {
+    fail('Build mode must expose one-tile nudge controls for precise sanctuary placement');
+  }
+  if (!rpgScreen.includes('updateBuildReport(nextRow, nextCol);')) {
+    fail('Build nudge controls must refresh the shared placement report');
+  }
+  if (!rpgScreen.includes('styles.buildPad')) {
+    fail('Build mode must render a contextual build nudge pad');
+  }
+  ['up', 'left', 'right', 'down'].forEach(direction => {
+    if (!rpgScreen.includes(`Nudge \${buildItem.label} ${direction}`)) {
+      fail(`Build nudge pad must expose ${direction} accessibility label`);
+    }
+  });
+  if (!rpgScreen.includes('disabled={!placementReport?.valid}')) {
+    fail('Build pad confirm button must disable for invalid placement');
+  }
+  if (!rpgScreen.includes('const placementStatusLabel = placementReport?.valid ? \'Ready\' : placementReport?.reason ?? \'Unavailable\'')) {
+    fail('Build pad must derive placement status labels from placementReport');
+  }
+  if (!rpgScreen.includes('const placementStatusHint = placementReport?.valid') || !rpgScreen.includes("placementReport?.reason === 'Traps avatar'")) {
+    fail('Build pad must derive compact placement hints from placementReport reasons');
+  }
+  if (!rpgScreen.includes('styles.buildPlacementReasonChip') || !rpgScreen.includes('placementStatusHint')) {
+    fail('Build pad must render a compact placement reason chip');
+  }
+  if (!rpgScreen.includes('onPress={confirmBuildPlacement}')) {
+    fail('Build pad confirm button must reuse the existing placement confirmation path');
+  }
+  if (!rpgScreen.includes("drag or nudge, then place")) {
+    fail('Build mode prompt must explain both drag and nudge placement paths');
+  }
+}
+
+function validateBuildPlacementGhostPolish() {
+  if (!rpgScreen.includes('const buildFootprintStyle = useAnimatedStyle(() =>')) {
+    fail('Build mode must render a world-anchored placement footprint mat');
+  }
+  if (!rpgScreen.includes('styles.placementFootprint')) {
+    fail('Build placement footprint must have dedicated styling');
+  }
+  if (!rpgScreen.includes('styles.placementFootprintAnchor')) {
+    fail('Build placement footprint must show a center anchor');
+  }
+  if (!rpgScreen.includes('placementReport?.valid ? styles.placementFootprintValid : styles.placementFootprintInvalid')) {
+    fail('Build placement footprint must reflect valid and invalid placement state');
+  }
+  if (!rpgScreen.includes('placementReport?.cells.map((cell, index) =>') || !rpgScreen.includes('cell.valid ? styles.placementCellValid : styles.placementCellInvalid')) {
+    fail('Build placement cells must render valid/invalid state from placementReport cells');
+  }
+  if (!rpgScreen.includes('styles.placementCellCornerTopLeft') || !rpgScreen.includes('styles.placementCellCornerBottomRight')) {
+    fail('Build placement cells must render game-like corner markers instead of debug-only boxes');
+  }
+  if (!rpgScreen.includes('cell.valid ? styles.placementCellCornerValid : styles.placementCellCornerInvalid')) {
+    fail('Build placement cell corner markers must reflect per-cell validity');
+  }
+  if (!rpgScreen.includes('const getFootprintGroundType = (row: number, col: number, width: number, height: number): TileType =>')) {
+    fail('Build/object footprints must share a terrain anchor lookup');
+  }
+  if (!rpgScreen.includes('const placementGroundType = placementReport') || !rpgScreen.includes('getFootprintGroundType(placementReport.row, placementReport.col, buildFootprintCols, buildFootprintRows)')) {
+    fail('Build placement footprint must derive terrain tone from the current placement report');
+  }
+  if (!rpgScreen.includes('styles.placementTerrainWash') || !rpgScreen.includes('placementTerrainWashStyle')) {
+    fail('Build placement footprint must render a terrain-aware wash layer');
+  }
+  if (!rpgScreen.includes('getSanctuaryTerrainPreviewColor(type)')) {
+    fail('Build placement footprint terrain wash must derive color from the shared sanctuary terrain art registry');
+  }
+  if (!rpgScreen.includes('!placementReport?.valid && styles.placementTerrainWashInvalid')) {
+    fail('Invalid build placement must mute the terrain wash under warning feedback');
+  }
+  if (!rpgScreen.includes('buildItem?.mode === \'edit\' && styles.placementFootprintEdit')) {
+    fail('Edit placement must have distinct footprint styling');
+  }
+  if (!rpgScreen.includes('!placementReport?.valid && styles.buildGhostArtInvalid')) {
+    fail('Invalid build ghosts must be visually dimmed');
+  }
+  if (!rpgScreen.includes('const buildGhostFootprintWidth = buildFootprintCols * TILE_SIZE') || !rpgScreen.includes('const buildGhostFootprintLeft = (buildGhostWidth - buildGhostFootprintWidth) / 2')) {
+    fail('Build ghost grounding must derive from the selected collision footprint dimensions');
+  }
+  if (!rpgScreen.includes('const buildTerrainTile = buildItem?.mode === \'terrain\'') || !rpgScreen.includes('const isTerrainEditing = buildItem?.mode === \'terrain\'')) {
+    fail('Terrain build mode must derive a true 1x1 tile preview state');
+  }
+  if (!rpgScreen.includes('buildCatalogItem || buildSeedItem || buildTerrainTile !== null')) {
+    fail('Build preview rendering must include terrain-edit items, not only objects and seeds');
+  }
+  if (!rpgScreen.includes('styles.terrainGhostTile') || !rpgScreen.includes('styles.terrainGhostTileInvalid')) {
+    fail('Terrain-edit placement must render a dedicated terrain tile ghost with invalid dimming');
+  }
+  if (!rpgScreen.includes('<SanctuaryTerrainTile\n                    type={buildTerrainTile}') || !rpgScreen.includes('variant={placementReport ? getSanctuaryTerrainVariant(placementReport.row, placementReport.col, buildTerrainTile) : 0}')) {
+    fail('Terrain-edit ghost must reuse the shared sanctuary terrain tile renderer');
+  }
+  if (!rpgScreen.includes('const terrainPaintFromTile = buildTerrainTile !== null ? placementGroundType : null') || !rpgScreen.includes('styles.terrainPaintSwapRow')) {
+    fail('Terrain-edit build pad must derive and render a before/after terrain paint swatch row');
+  }
+  if (!rpgScreen.includes('type={terrainPaintFromTile}') || !rpgScreen.includes('type={buildTerrainTile}') || !rpgScreen.includes('getTileDisplayName(terrainPaintFromTile)') || !rpgScreen.includes('getTileDisplayName(buildTerrainTile)')) {
+    fail('Terrain paint swatches must show current and target tile art with readable labels');
+  }
+  if (!rpgScreen.includes('styles.buildGhostGrounding') || !rpgScreen.includes('placementTerrainWashStyle')) {
+    fail('Build ghost art must render a terrain-aware grounding base');
+  }
+  if (!rpgScreen.includes('!placementReport?.valid && styles.buildGhostGroundingInvalid')) {
+    fail('Invalid build ghost grounding must dim with invalid placement state');
+  }
+  if (!rpgScreen.includes('styles.seedGhostSoilInset') || !rpgScreen.includes('styles.seedGhostFurrowSet')) {
+    fail('Seed placement ghost must preview a readable soil bed instead of a bare icon');
+  }
+  if (!rpgScreen.includes('const seedGhostSoilStyle = getPlacementTerrainWashStyle(TileType.TILLED)') || !rpgScreen.includes('seedGhostSoilStyle')) {
+    fail('Seed placement ghost soil color must share the terrain preview registry');
+  }
+  if (!rpgScreen.includes('styles.seedGhostFurrowLine') || !rpgScreen.includes('!placementReport?.valid && styles.seedGhostSoilInvalid')) {
+    fail('Seed placement ghost soil preview must include furrows and invalid-state treatment');
+  }
+  if (!rpgScreen.includes('const selectedObjectItem = selectedObject ? getItem(selectedObject.type) : null;')) {
+    fail('Edit mode must resolve the selected object item for origin footprint dimensions');
+  }
+  if (!rpgScreen.includes("buildItem?.mode === 'edit' && selectedObject &&")) {
+    fail('Edit mode must render an original-footprint marker while moving an existing object');
+  }
+  if (!rpgScreen.includes('styles.editOriginFootprint')) {
+    fail('Edit origin footprint must have dedicated styling');
+  }
+  if (!rpgScreen.includes('width: (selectedObjectItem?.colWidth ?? 1) * TILE_SIZE') || !rpgScreen.includes('height: (selectedObjectItem?.colHeight ?? 1) * TILE_SIZE')) {
+    fail('Edit origin footprint must use the selected object catalog footprint dimensions');
+  }
+  if (!rpgScreen.includes('zIndex: 999')) {
+    fail('Edit origin footprint must stay below the live placement footprint');
+  }
+  if (!rpgScreen.includes('<Text numberOfLines={1} adjustsFontSizeToFit style={styles.editOriginLabel}>from</Text>')) {
+    fail('Edit origin footprint must label the original object location');
+  }
+}
+
+function validateBuildModeContextStrip() {
+  if (!rpgScreen.includes("import { SanctuaryFootprintPreview } from '../src/engine/SanctuaryFootprintPreview';")) {
+    fail('Build mode must reuse the shared footprint preview component');
+  }
+  if (!rpgScreen.includes('getSanctuaryDesignRole')) {
+    fail('Build mode must use the shared sanctuary design role helper');
+  }
+  if (!rpgScreen.includes('const buildDesignRole = getSanctuaryDesignRole(buildPreviewItem)')) {
+    fail('Build mode must derive role hints from the selected build item');
+  }
+  if (!rpgScreen.includes('const buildLayoutFits = getSanctuaryLayoutFitLabels(buildPreviewItem)')) {
+    fail('Build mode must derive layout fit labels from the selected build item');
+  }
+  if (!rpgScreen.includes('buildFootprintCols') || !rpgScreen.includes('buildFootprintRows')) {
+    fail('Build mode must derive a true footprint preview from selected dimensions');
+  }
+  if (!rpgScreen.includes('styles.buildInfoBlock')) {
+    fail('Build mode must render a visible item context strip near nudge controls');
+  }
+  if (!rpgScreen.includes('styles.buildItemIdentityRow') || !rpgScreen.includes('<RpgItemIcon item={buildPreviewItem} size={20} fallbackLabel={buildItem.itemId} />')) {
+    fail('Build mode must show the selected item identity while placing');
+  }
+  if (!rpgScreen.includes('buildPreviewItem?.name ?? buildItem.label') || !rpgScreen.includes("buildItem.mode === 'edit' ? 'Adjusting layout'")) {
+    fail('Build item identity row must derive label/mode from the active build item');
+  }
+  if (!rpgScreen.includes('buildLayoutFits.map') || !rpgScreen.includes('styles.buildLayoutFitPill')) {
+    fail('Build mode must show selected item layout fit chips while placing');
+  }
+  if (!rpgScreen.includes('const placementTotalCells = placementReport?.cells.length ?? buildFootprintCols * buildFootprintRows') || !rpgScreen.includes('const placementClearCells = placementReport?.cells.filter(cell => cell.valid).length ?? 0')) {
+    fail('Build mode must derive clear/total placement counts from the shared placement report');
+  }
+  if (!rpgScreen.includes('const buildFootprintSummary = `${buildFootprintCols}x${buildFootprintRows}`') || !rpgScreen.includes('const placementGroundLabel = getTileDisplayName(placementGroundType)')) {
+    fail('Build mode must derive footprint and terrain labels for placement readability');
+  }
+  if (!rpgScreen.includes('styles.buildPlacementStatsRow') || !rpgScreen.includes('styles.buildPlacementStatPill')) {
+    fail('Build mode must render compact placement stats while placing');
+  }
+  ['Size', 'Clear', 'Ground'].forEach(label => {
+    if (!rpgScreen.includes(`>${label}</Text>`)) {
+      fail(`Build placement stats must include ${label} chip`);
+    }
+  });
+  if (!rpgScreen.includes('{placementClearCells}/{placementTotalCells}') || !rpgScreen.includes('{placementGroundLabel}')) {
+    fail('Build placement stats must show clear-cell count and current ground label');
+  }
+  if (!rpgScreen.includes('placementReport?.valid ? styles.buildPlacementStatPillValid : styles.buildPlacementStatPillInvalid')) {
+    fail('Build placement clear-count chip must reflect placement validity');
+  }
+  if (!rpgScreen.includes("buildDesignRole.tone === 'nature' && styles.buildInfoRoleNature") || !rpgScreen.includes('buildInfoRoleResource')) {
+    fail('Build mode role chip must reflect shared role tone colors');
+  }
+  if (!rpgScreen.includes("buildItem.mode === 'plant' ? 'Planting'")) {
+    fail('Build mode must label plantable seed footprints distinctly');
+  }
+  if (!rpgScreen.includes("buildItem.mode === 'edit' ? 'Moving'")) {
+    fail('Build mode must label edit placement footprints distinctly');
+  }
+  if (!rpgScreen.includes("buildItem.mode === 'terrain' ? 'Terrain paint'") || !rpgScreen.includes("buildItem.mode === 'terrain' ? 'Painting'")) {
+    fail('Build mode must label terrain-edit placement distinctly');
   }
 }
 
@@ -1052,27 +1469,27 @@ function validateLeverMechanicsV1() {
 }
 
 function validateRpgToolEnergyAndCharacterUi() {
-  if (!catalog.includes('rpg_tool_watering_can')) fail('Catalog must expose Watering Can as a tool item');
-  if (!catalog.includes("toolId: 'watering'")) fail('Watering Can catalog item must use watering tool id');
-  if (!rpgScreen.includes("type ToolId = 'shovel' | 'bridge' | 'path' | 'plow' | 'watering';")) {
-    fail('RPG tool union must include watering');
+  if (!catalog.includes('rpg_watering_can_basic')) fail('Catalog must expose Watering Can as a tool item');
+  if (!catalog.includes("kind: 'tool'")) fail('Tool catalog items must be marked with item kind tool');
+  if (!toolCatalog.includes("export type ToolType = 'Axe' | 'Pickaxe' | 'WateringCan'")) {
+    fail('RPG tool type union must include WateringCan');
   }
-  if (!rpgScreen.includes("itemId: 'rpg_tool_watering_can'")) {
+  if (!rpgScreen.includes("const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic'") || !rpgScreen.includes("'rpg_watering_can_basic'")) {
     fail('Watering Can must be granted through the shared starter tool list');
   }
-  if (!rpgScreen.includes('const TOOL_ENERGY_COST: Record<ToolId, number>')) {
+  if (!toolCatalog.includes('energyCost: number;') || !toolCatalog.includes("'rpg_watering_can_basic': { itemId: 'rpg_watering_can_basic', type: 'WateringCan'")) {
     fail('RPG tools must define explicit energy costs');
   }
-  if (!rpgScreen.includes('const spendToolEnergy = (toolId: ToolId)')) {
+  if (!rpgScreen.includes('const spendToolEnergy = (toolItemId: string) => spendEnergy(getToolDef(toolItemId)?.energyCost ?? 0);')) {
     fail('RPG screen must centralize tool energy spending');
   }
-  if (!rpgScreen.includes('UPDATE rpg_state SET mp = MAX(0, mp - ?) WHERE id = 1')) {
-    fail('Tool energy spending must persist against rpg_state mp');
+  if (!rpgScreen.includes('UPDATE rpg_state SET energy = MAX(0, energy - ?) WHERE id = 1')) {
+    fail('Tool energy spending must persist against rpg_state energy');
   }
-  if (!rpgScreen.includes('const waterGardenPlot = (plot: GardenPlot)')) {
+  if (!rpgScreen.includes('const waterGardenPlot = (plot: GardenPlot)') || !rpgScreen.includes('waterFarmPlot(row, col)')) {
     fail('RPG screen must expose an in-world crop watering action');
   }
-  if (!rpgScreen.includes("if (equippedTool === 'watering')")) {
+  if (!rpgScreen.includes("if (toolType === 'WateringCan')")) {
     fail('Equipped Watering Can must route Interact to crop watering');
   }
   if (!rpgScreen.includes('advanceGardenPlotWithInventoryItem(plot.id, RPG_WATER_DROPS_ITEM_ID, nextStage)')) {
@@ -1089,6 +1506,42 @@ function validateRpgToolEnergyAndCharacterUi() {
   }
 }
 
+function validateCropPlotReadabilityV1() {
+  if (!rpgScreen.includes('styles.gardenSoilInset') || !rpgScreen.includes('styles.gardenFurrowLine')) {
+    fail('Crop plots must render a readable soil bed over the placeholder grid');
+  }
+  if (!rpgScreen.includes('growth.stage === 1 && styles.gardenSoilGrowing') || !rpgScreen.includes('growth.stage >= 2 && styles.gardenSoilMature')) {
+    fail('Garden plot soil beds must reflect growth and mature states');
+  }
+  if (!rpgScreen.includes('plot.is_watered && styles.gardenSoilWatered')) {
+    fail('Food crop plots must visibly reflect watered state');
+  }
+}
+
+function validateSanctuaryBreachedZoneVisuals() {
+  if (!rpgScreen.includes('function getBreachedZoneOverlayColor(type: SanctuaryZoneType)')) {
+    fail('Sanctuary breached zones must have a dedicated warning overlay color helper');
+  }
+  if (!rpgScreen.includes('activeZone === \'sanctuary\' && sanctuaryZones.map(zone => (\n            [...zone.interiorCells, ...zone.perimeterCells].map')) {
+    fail('Sanctuary zone overlays must render active and breached persisted zones');
+  }
+  if (!rpgScreen.includes("zone.state === 'breached' && styles.zoneOverlayBreached")) {
+    fail('Breached sanctuary zones must use a distinct dashed overlay style');
+  }
+  if (!rpgScreen.includes("backgroundColor: zone.state === 'breached' ? getBreachedZoneOverlayColor(zone.type) : getZoneOverlayColor(zone.type)")) {
+    fail('Breached sanctuary zones must use the warning overlay color instead of active zone colors');
+  }
+  if (!rpgScreen.includes('const labelKeys = zone.interiorCells.length > 0 ? zone.interiorCells : zone.perimeterCells;')) {
+    fail('Sanctuary zone labels must fall back to perimeter cells when needed');
+  }
+  if (!rpgScreen.includes("zone.state === 'breached' && styles.zoneLabelBreached")) {
+    fail('Breached sanctuary zone labels must use a distinct warning label style');
+  }
+  if (!rpgScreen.includes("zone.state === 'breached' ? `${ZONE_TYPE_LABEL[zone.type]} breach` : ZONE_TYPE_LABEL[zone.type]")) {
+    fail('Breached sanctuary zone labels must name the broken zone state');
+  }
+}
+
 function validateSeasonWeatherFarmLoopV2() {
   if (!rpgScreen.includes("type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';")) {
     fail('RPG screen must expose explicit season ids');
@@ -1096,14 +1549,20 @@ function validateSeasonWeatherFarmLoopV2() {
   if (!rpgScreen.includes('const SEASON_CONFIG: Record<SeasonId')) {
     fail('RPG screen must centralize season harvest bonuses');
   }
+  if (!rpgScreen.includes('const SANCTUARY_SEASON_AMBIENCE: Record<SeasonId')) {
+    fail('RPG screen must centralize sanctuary season ambience colors');
+  }
   ['spring', 'summer', 'autumn', 'winter'].forEach(season => {
     if (!rpgScreen.includes(`${season}: {`)) fail(`Missing season config: ${season}`);
   });
-  if (!rpgScreen.includes('function getCurrentSeason(date = new Date()): SeasonId')) {
-    fail('RPG screen must derive current season from date');
+  if (!rpgScreen.includes('getCalendarState') || !rpgScreen.includes('const currentSeason = calendar.current_season as SeasonId;')) {
+    fail('RPG screen must derive current season from the persisted RPG calendar state');
   }
   if (!rpgScreen.includes('const seasonInfo = SEASON_CONFIG[currentSeason];')) {
     fail('RPG screen must resolve current season info for HUD and gameplay');
+  }
+  if (!rpgScreen.includes('SANCTUARY_SEASON_AMBIENCE[currentSeason]')) {
+    fail('Sanctuary ambience must derive from the current persisted season');
   }
   if (!rpgScreen.includes('const seasonalBonus = { ...seasonInfo.bonus };')) {
     fail('Harvest must include the active seasonal bonus without mutating season config');
@@ -1126,27 +1585,50 @@ function validateSeasonWeatherFarmLoopV2() {
   if (!rpgScreen.includes("{seasonInfo.label} {isRaining ? 'Rain' : 'Clear'}")) {
     fail('Weather chip must distinguish rain from clear weather');
   }
+  if (!rpgScreen.includes('styles.seasonAmbienceOverlay')) {
+    fail('Sanctuary must render a season ambience wash over placeholder terrain');
+  }
+  if (!rpgScreen.includes('isRaining && styles.seasonAmbienceRain')) {
+    fail('Sanctuary season ambience must visually respond to rainy weather');
+  }
+  if (!rpgScreen.includes('pointerEvents="none"\n          style={[\n            styles.seasonAmbienceOverlay')) {
+    fail('Sanctuary season ambience must stay non-interactive');
+  }
 }
 
-function validateRpgTerrainTileArtV2() {
+function validateRpgTerrainPlaceholderTruth() {
   const tileArtPath = path.join(engineDir, 'TileArt.tsx');
   const tileArt = fs.readFileSync(tileArtPath, 'utf8');
-  if (!tileArt.includes('TEMPLE_EXTERIOR_TILES_SHEET')) fail('TileArt must use a tracked terrain tile sheet for RPG terrain tools');
-  if (!tileArt.includes('export const BRIDGE_TILE_FRAME')) fail('TileArt must expose bridge tile frame metadata');
-  if (!tileArt.includes('export const PATH_TILE_FRAME')) fail('TileArt must expose path tile frame metadata');
-  if (!tileArt.includes('export const TILLED_TILE_FRAME')) fail('TileArt must expose tilled-soil tile frame metadata');
-  if (!tileArt.includes('function frameTile(')) fail('TileArt must render arbitrary sprite frames for tool-created terrain');
-  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, BRIDGE_TILE_FRAME);')) {
-    fail('BridgeTile must render a tracked sprite frame instead of hand-drawn View fills');
+  if (!tileArt.includes('honest placeholder layer') || !tileArt.includes('code-native pixel textures')) {
+    fail('TileArt must explicitly document sanctuary terrain as honest textured placeholder art');
   }
-  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, PATH_TILE_FRAME);')) {
-    fail('PathTile must render a tracked sprite frame instead of hand-drawn View fills');
+  if (!tileArt.includes('export function SanctuaryTerrainTile') || !tileArt.includes('SANCTUARY_TERRAIN_ART_REGISTRY')) {
+    fail('TileArt must expose registry-backed sanctuary terrain texture rendering');
   }
-  if (!tileArt.includes('return frameTile(TEMPLE_EXTERIOR_TILES_SHEET, TEMPLE_EXTERIOR_SHEET, TILLED_TILE_FRAME);')) {
-    fail('TilledTile must render a tracked sprite frame instead of hand-drawn View fills');
+  if (!tileArt.includes('assetSlot:') || !tileArt.includes('detail:') || !tileArt.includes('getSanctuaryTerrainPreviewColor') || !tileArt.includes('edgeBlend')) {
+    fail('Sanctuary terrain art registry must define asset slots, detail profiles, preview colors, and transition behavior');
   }
-  if (!rpgScreen.includes('PathTile')) fail('RPG screen must render path tiles with TileArt instead of flat color');
-  if (!rpgScreen.includes('TilledTile')) fail('RPG screen must render tilled soil with TileArt instead of flat color');
+  if (!tileArt.includes('export type SanctuaryTerrainNeighbors') || !tileArt.includes('tileTransitionEdgeNorth')) {
+    fail('Sanctuary terrain tiles must support neighbor-aware transition edges');
+  }
+  if (!tileArt.includes('variant?: number') || !tileArt.includes('normalizeTerrainVariant') || !tileArt.includes('tileGrassTuft') || !tileArt.includes('tileSpeckle')) {
+    fail('Sanctuary terrain placeholder tiles must support deterministic visual variation details');
+  }
+  if (!rpgScreen.includes('getSanctuaryTerrainPreviewColor') || !rpgScreen.includes('SanctuaryTerrainTile')) {
+    fail('RPG screen must import the sanctuary terrain tile renderer and shared preview color helper');
+  }
+  if (!rpgScreen.includes('const getSanctuaryTerrainNeighbors = (row: number, col: number) =>') || !rpgScreen.includes('neighbors={getSanctuaryTerrainNeighbors(rowIndex, colIndex)}')) {
+    fail('Sanctuary grid must pass neighbor terrain into textured terrain tiles');
+  }
+  if (!rpgScreen.includes('const getSanctuaryTerrainVariant = (row: number, col: number, type: TileType)') || !rpgScreen.includes('variant={getSanctuaryTerrainVariant(rowIndex, colIndex, tile as TileType)}')) {
+    fail('Sanctuary grid must pass stable per-cell terrain variation into placeholder tiles');
+  }
+  if (!rpgScreen.includes('TileType.PATH') || !rpgScreen.includes('TileType.TILLED') || !rpgScreen.includes('TileType.BRIDGE')) {
+    fail('RPG screen must still support bridge/path/tilled terrain tile types');
+  }
+  if (tileArt.includes('BRIDGE_TILE_FRAME') || tileArt.includes('PATH_TILE_FRAME') || tileArt.includes('TILLED_TILE_FRAME')) {
+    fail('Terrain placeholder pass must not claim final tracked bridge/path/tilled sprite frames');
+  }
 }
 
 function validateSanctuaryClutterV1() {
@@ -1168,8 +1650,8 @@ function validateSanctuaryClutterV1() {
   if (!rpgScreen.includes("system.sanctuary_clutter_v1")) {
     fail('Starter clutter must use a persistent one-time seed marker');
   }
-  if (!rpgScreen.includes('const ensureStarterClutter = () =>')) {
-    fail('RPG screen must seed starter clutter on load');
+  if (!rpgScreen.includes('const ensureStarterSpawns = (spawns: { type: string; row: number; col: number }[], discoveryFlag: string)')) {
+    fail('RPG screen must seed starter clutter through the shared starter-spawn helper');
   }
   if (!rpgScreen.includes('const CLUTTER_ENERGY_COST = 3;')) {
     fail('Clearing clutter must have an explicit energy cost');
@@ -1195,25 +1677,28 @@ function validateSanctuaryClutterV1() {
 }
 
 function validateRpgCraftingV1() {
-  if (!rpgScreen.includes('const CRAFTING_RECIPES = [')) {
-    fail('RPG screen must define crafting recipes');
+  if (!craftingCatalog.includes('export const CRAFTING_CATALOG')) {
+    fail('CraftingCatalog must define crafting recipes');
   }
-  ['woodland_planter', 'crystal_lamp', 'temple_chest'].forEach(recipeId => {
-    if (!rpgScreen.includes(`id: '${recipeId}'`)) fail(`Missing crafting recipe: ${recipeId}`);
+  ['recipe_woodland_planter', 'recipe_crystal_lamp', 'recipe_temple_chest'].forEach(recipeId => {
+    if (!craftingCatalog.includes(`'${recipeId}'`)) fail(`Missing crafting recipe: ${recipeId}`);
   });
-  if (!rpgScreen.includes('const craftRecipe = (recipeId: string) =>')) {
+  if (!rpgScreen.includes('const startCraftingJob = (recipeId: string) =>') || !dbCrafting.includes('export function startCrafting(recipeId: string')) {
     fail('RPG screen must expose a crafting transaction handler');
   }
-  if (!rpgScreen.includes('UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ? AND quantity >= ?')) {
+  if (!dbCrafting.includes('SELECT quantity FROM user_inventory WHERE item_id = ? AND quantity >= ? LIMIT 1')) {
     fail('Crafting must consume ingredients with quantity guards');
   }
-  if (!rpgScreen.includes('ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity')) {
+  if (!dbCrafting.includes('UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ?')) {
+    fail('Crafting must deduct ingredients inside the crafting transaction');
+  }
+  if (!dbCrafting.includes('ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + excluded.quantity')) {
     fail('Crafting must add recipe output through inventory upsert');
   }
   if (!rpgScreen.includes("recordRpgDiscovery(recipe.outputItemId, 'inventory')")) {
     fail('Crafted outputs must record RPG discovery');
   }
-  if (!rpgScreen.includes('try { db.execSync(\'ROLLBACK\'); } catch {}')) {
+  if (!dbCrafting.includes('try { db.execSync(\'ROLLBACK\'); } catch {}')) {
     fail('Crafting must rollback on failure');
   }
   if (!rpgScreen.includes('accessibilityLabel="Open crafting"')) {
@@ -1222,7 +1707,7 @@ function validateRpgCraftingV1() {
   if (!rpgScreen.includes('styles.craftingPanel')) {
     fail('RPG screen must render the crafting panel');
   }
-  if (!rpgScreen.includes('disabled={!canCraft}')) {
+  if (!rpgScreen.includes('disabled={!canCraft || !hasStation}')) {
     fail('Craft button must disable when ingredients are missing');
   }
   if (!rpgScreen.includes("setIsCraftingOpen(false)")) {
@@ -1277,6 +1762,35 @@ function validateIconQaAndMechanismReadabilityV2() {
   }
   if (!itemIcon.includes('styles.placeholderProductBadge')) {
     fail('Animal product placeholder icons must show a readable product badge');
+  }
+}
+
+function validateFarmingSeedTaxonomyV2() {
+  if (!itemIcon.includes('function placeholderSeedLabel(item: RpgItemDefinition | null | undefined)')) {
+    fail('Seed placeholders must render explicit semantic labels');
+  }
+  if (!itemIcon.includes("item?.kind !== 'seed' || item.iconAssetId !== 'seed.treeGeneric'")) {
+    fail('Seed placeholder labels must only apply to generic placeholder seed art');
+  }
+  if (!itemIcon.includes('styles.placeholderSeedBadge')) {
+    fail('Generic seed placeholder icons must show a readable seed badge');
+  }
+  [
+    'RPG_TURNIP_SEED_ITEM_ID',
+    'RPG_CABBAGE_SEED_ITEM_ID',
+    'RPG_PUMPKIN_SEED_ITEM_ID',
+  ].forEach(constantName => {
+    if (!catalog.includes(`[${constantName}]: {`)) fail(`Catalog must expose crop seed item keyed by ${constantName}`);
+  });
+  [
+    'crop: RPG_CROP_CATALOG[RPG_TURNIP_SEED_ITEM_ID]',
+    'crop: RPG_CROP_CATALOG[RPG_CABBAGE_SEED_ITEM_ID]',
+    'crop: RPG_CROP_CATALOG[RPG_PUMPKIN_SEED_ITEM_ID]',
+  ].forEach(snippet => {
+    if (!catalog.includes(snippet)) fail(`Crop seed item must link to crop taxonomy: ${snippet}`);
+  });
+  if (!assetRegistry.includes("'seed.treeGeneric'") || !assetRegistry.includes("tags: ['seed', 'placeholder']")) {
+    fail('Generic seed art must remain explicitly tagged as a placeholder asset');
   }
 }
 
@@ -1430,6 +1944,10 @@ validateObjectInteractionReactionsV1();
 validateBackpackScalabilityControls();
 validateBackpackCharacterInventorySplit();
 validateShopScalabilityControls();
+validateSanctuaryDesignRoles();
+validateSanctuaryFootprintPreview();
+validateSanctuaryTerrainPaintPreview();
+validateArchiveCompositionGuidance();
 validateWorldArtRenderer();
 validateSanctuaryInteractionMemory();
 validateSanctuaryRewardClaims();
@@ -1440,6 +1958,9 @@ validateInteractionTargetPrompt();
 validateActionButtonProtocol();
 validateEmptyInteractionFeedback();
 validateBuildPlacementFeedback();
+validateBuildEditorNudgeControls();
+validateBuildPlacementGhostPolish();
+validateBuildModeContextStrip();
 validateAttackFeedbackProtocol();
 validateResolvedActionTargetProtocol();
 validateActionControlClarity();
@@ -1447,11 +1968,14 @@ validateSanctuaryObjectRelations();
 validateResourceNodeFeedback();
 validateLeverMechanicsV1();
 validateRpgToolEnergyAndCharacterUi();
+validateCropPlotReadabilityV1();
+validateSanctuaryBreachedZoneVisuals();
 validateSeasonWeatherFarmLoopV2();
-validateRpgTerrainTileArtV2();
+validateRpgTerrainPlaceholderTruth();
 validateSanctuaryClutterV1();
 validateRpgCraftingV1();
 validateIconQaAndMechanismReadabilityV2();
+validateFarmingSeedTaxonomyV2();
 validateFarmAnimalsV1();
 
 if (failures.length > 0) {

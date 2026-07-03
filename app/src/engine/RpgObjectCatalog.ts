@@ -169,6 +169,140 @@ export type RpgPlaceableItem = RpgInventoryItem & {
 
 export type RpgItemDefinition = RpgInventoryItem | RpgPlaceableItem;
 
+export type SanctuaryDesignRole = {
+  label: string;
+  hint: string;
+  tone: 'nature' | 'farm' | 'ruin' | 'utility' | 'livestock' | 'resource';
+};
+
+export type SanctuaryLayoutSetId = 'all' | 'grove' | 'farmyard' | 'ruins' | 'workshop';
+
+export type SanctuaryLayoutSetFilter = {
+  id: SanctuaryLayoutSetId;
+  label: string;
+};
+
+export type SanctuaryLayoutSetCounts = Record<SanctuaryLayoutSetId, number>;
+
+export const SANCTUARY_LAYOUT_SET_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'grove', label: 'Grove' },
+  { id: 'farmyard', label: 'Farm' },
+  { id: 'ruins', label: 'Ruins' },
+  { id: 'workshop', label: 'Work' },
+] satisfies readonly SanctuaryLayoutSetFilter[];
+
+export function getSanctuaryDesignRole(
+  item: Pick<RpgInventoryItem, 'kind' | 'tags' | 'sourceLabel'> | null | undefined,
+): SanctuaryDesignRole | null {
+  if (!item) return null;
+  const tags = item.tags ?? [];
+  const hasAny = (candidates: string[]) => tags.some(tag => candidates.includes(tag));
+
+  if (item.kind === 'seed') {
+    if (item.sourceLabel === 'Crop Seeds') {
+      return { label: 'Crop Bed', hint: 'Plant in tilled Garden soil for the farm loop.', tone: 'farm' };
+    }
+    return { label: 'Sapling', hint: 'Growable greenery for soft edges and orchard corners.', tone: 'nature' };
+  }
+  if (item.kind === 'resource') {
+    return { label: 'Crafting Stock', hint: 'Material for tools, decor, buildings, and later upgrades.', tone: 'resource' };
+  }
+  if (item.kind !== 'object') return null;
+
+  if (hasAny(['floor'])) {
+    return { label: 'Flooring', hint: 'Use as path, room, or workshop ground texture.', tone: 'utility' };
+  }
+  if (hasAny(['structure_piece', 'garden_fence', 'building_plot_wall', 'pond_wall', 'entrance'])) {
+    return { label: 'Boundary', hint: 'Shape Gardens, Ponds, Building Plots, and cozy lanes.', tone: 'utility' };
+  }
+  if (hasAny(['station'])) {
+    return { label: 'Station', hint: 'Place inside Building Plots to anchor crafting rooms.', tone: 'utility' };
+  }
+  if (hasAny(['building'])) {
+    return { label: 'Building', hint: 'Large functional shell for future rooms and production.', tone: 'utility' };
+  }
+  if (hasAny(['animal', 'livestock'])) {
+    return { label: 'Livestock', hint: 'Animated farm life that also produces goods over time.', tone: 'livestock' };
+  }
+  if (hasAny(['lever', 'gate', 'trap', 'hazard', 'mechanism'])) {
+    return { label: 'Mechanism', hint: 'Use for gates, traps, puzzle corners, and active ruins.', tone: 'utility' };
+  }
+  if (hasAny(['crystal'])) {
+    return { label: 'Crystal Accent', hint: 'Bright mineral color for cave gardens and shrine edges.', tone: 'ruin' };
+  }
+  if (hasAny(['tree', 'ent'])) {
+    return { label: 'Canopy', hint: 'Tall greenery for shade, borders, and forest-room structure.', tone: 'nature' };
+  }
+  if (hasAny(['bush', 'fern', 'flower', 'mushroom', 'cactus', 'stump'])) {
+    return { label: 'Ground Cover', hint: 'Low detail for path edges, garden beds, and natural clutter.', tone: 'nature' };
+  }
+  if (hasAny(['idol', 'relic', 'statue', 'skeleton', 'bone', 'temple', 'cave', 'rubble'])) {
+    return { label: 'Ruin Accent', hint: 'Use as focal detail for shrines, ruins, and dungeon-themed rooms.', tone: 'ruin' };
+  }
+  if (hasAny(['large', 'structure'])) {
+    return { label: 'Landmark', hint: 'A larger anchor piece for composing an area around it.', tone: 'ruin' };
+  }
+  if (hasAny(['decor', 'banner', 'wall'])) {
+    return { label: 'Decor', hint: 'Small finishing detail for rooms, edges, and themed corners.', tone: 'ruin' };
+  }
+  if (hasAny(['rock_vein'])) {
+    return { label: 'Resource Node', hint: 'Mineable sanctuary object and cave-layout accent.', tone: 'resource' };
+  }
+  return { label: 'Decor', hint: 'Place as sanctuary detail and combine with paths or plants.', tone: 'nature' };
+}
+
+export function itemMatchesSanctuaryLayoutSet(
+  item: Pick<RpgInventoryItem, 'kind' | 'tags' | 'sourceLabel'> | null | undefined,
+  layoutSet: SanctuaryLayoutSetId,
+): boolean {
+  if (layoutSet === 'all') return true;
+  if (!item) return false;
+  const role = getSanctuaryDesignRole(item);
+  const tags = item.tags ?? [];
+  const hasAny = (candidates: string[]) => tags.some(tag => candidates.includes(tag));
+
+  if (layoutSet === 'grove') {
+    return role?.tone === 'nature' || hasAny(['tree', 'bush', 'fern', 'flower', 'mushroom', 'cactus', 'stump']);
+  }
+  if (layoutSet === 'farmyard') {
+    return role?.tone === 'farm' ||
+      role?.tone === 'livestock' ||
+      item.sourceLabel === 'Crop Seeds' ||
+      hasAny(['animal', 'livestock', 'crop', 'farm', 'garden_fence', 'animal_feed']);
+  }
+  if (layoutSet === 'ruins') {
+    return role?.tone === 'ruin' || hasAny(['temple', 'cave', 'crystal', 'relic', 'statue', 'skeleton', 'bone', 'rubble', 'mechanism', 'lever', 'gate', 'trap', 'hazard']);
+  }
+  if (layoutSet === 'workshop') {
+    return role?.tone === 'utility' ||
+      role?.tone === 'resource' ||
+      hasAny(['station', 'building', 'floor', 'structure_piece', 'crafting', 'material', 'metal', 'wood', 'stone']);
+  }
+  return false;
+}
+
+export function countSanctuaryLayoutSets<T>(
+  items: readonly T[],
+  getItem: (item: T) => Pick<RpgInventoryItem, 'kind' | 'tags' | 'sourceLabel'> | null | undefined,
+): SanctuaryLayoutSetCounts {
+  return Object.fromEntries(
+    SANCTUARY_LAYOUT_SET_FILTERS.map(filter => [
+      filter.id,
+      items.filter(item => itemMatchesSanctuaryLayoutSet(getItem(item), filter.id)).length,
+    ]),
+  ) as SanctuaryLayoutSetCounts;
+}
+
+export function getSanctuaryLayoutFitLabels(
+  item: Pick<RpgInventoryItem, 'kind' | 'tags' | 'sourceLabel'> | null | undefined,
+): string[] {
+  if (!item) return [];
+  return SANCTUARY_LAYOUT_SET_FILTERS
+    .filter(filter => filter.id !== 'all' && itemMatchesSanctuaryLayoutSet(item, filter.id))
+    .map(filter => filter.label);
+}
+
 export type RpgGrowthStage = 0 | 1 | 2;
 export type RpgCropSeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 

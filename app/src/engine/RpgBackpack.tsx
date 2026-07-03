@@ -4,18 +4,26 @@ import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import {
+  countSanctuaryLayoutSets,
   countRpgSourcePacks,
   getCropForSeed,
   getPlaceableItem,
   getResourceSellPrice,
   getRpgItem,
+  getSanctuaryDesignRole,
+  getSanctuaryLayoutFitLabels,
+  itemMatchesSanctuaryLayoutSet,
   RPG_SOURCE_PACK_FILTERS,
   RPG_UI_FRAMES,
+  SANCTUARY_LAYOUT_SET_FILTERS,
   type RpgDrop,
   type RpgItemDefinition,
   type RpgSourcePackId,
+  type SanctuaryLayoutSetId,
 } from './RpgObjectCatalog';
 import { RpgItemIcon, RpgSpriteFrameView } from './RpgItemIcon';
+import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
+import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
 
 type InventoryRow = {
   item_id: string;
@@ -32,6 +40,9 @@ type Props = {
   isOpen: boolean;
   refreshKey: number;
   canPlace: boolean;
+  repairMode?: boolean;
+  repairZoneType?: 'pond' | 'garden' | 'building_plot' | null;
+  repairMaterialHint?: string | null;
   onClose: () => void;
   onPlaceItem: (itemId: string) => void;
   onPlantSeed: (itemId: string) => void;
@@ -42,7 +53,7 @@ type Props = {
 
 const PLOT_USE_ITEM_IDS = new Set(['rpg_fertiliser', 'rpg_sprinkler']);
 
-const SLOT_COUNT = 12;
+const SLOT_COUNT = 8;
 type BackpackFilter = 'all' | 'object' | 'seed' | 'resource';
 const FILTERS: { id: BackpackFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -92,6 +103,21 @@ function backpackSlotMatchesSource(slot: InventorySlot, source: RpgSourcePackId)
   return !!sourceFilter?.sourceLabel && slot.item?.sourceLabel === sourceFilter.sourceLabel;
 }
 
+function isRepairPerimeterItem(item: RpgItemDefinition | null) {
+  const tags = item?.tags ?? [];
+  return item?.kind === 'object' && (tags.includes('structure_piece') || tags.includes('entrance'));
+}
+
+function isPreferredRepairItem(item: RpgItemDefinition | null, repairZoneType?: Props['repairZoneType']) {
+  if (!isRepairPerimeterItem(item)) return false;
+  const tags = item?.tags ?? [];
+  if (tags.includes('entrance')) return true;
+  if (repairZoneType === 'pond') return tags.includes('pond_wall');
+  if (repairZoneType === 'building_plot') return tags.includes('building_plot_wall');
+  if (repairZoneType === 'garden') return tags.includes('garden_fence');
+  return false;
+}
+
 function sortBackpackSlots(a: InventorySlot, b: InventorySlot, sort: BackpackSort) {
   if (sort === 'quantity') {
     return b.quantity - a.quantity || (a.item?.name ?? a.item_id).localeCompare(b.item?.name ?? b.item_id);
@@ -105,13 +131,27 @@ function sortBackpackSlots(a: InventorySlot, b: InventorySlot, sort: BackpackSor
   );
 }
 
-export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem, onPlantSeed, onSellItem, onSellAllItem, onUseOnNearestPlot }: Props) {
+export function RpgBackpack({
+  isOpen,
+  refreshKey,
+  canPlace,
+  repairMode = false,
+  repairZoneType = null,
+  repairMaterialHint = null,
+  onClose,
+  onPlaceItem,
+  onPlantSeed,
+  onSellItem,
+  onSellAllItem,
+  onUseOnNearestPlot,
+}: Props) {
   const { width, height } = useWindowDimensions();
   const [inventory, setInventory] = useState<InventorySlot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<BackpackFilter>('all');
   const [source, setSource] = useState<RpgSourcePackId>('all');
+  const [layoutSet, setLayoutSet] = useState<SanctuaryLayoutSetId>('all');
   const [sort, setSort] = useState<BackpackSort>('kind');
   const [query, setQuery] = useState('');
 
@@ -146,10 +186,21 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
       .filter(slot => (
         (filter === 'all' || slot.item?.kind === filter) &&
         backpackSlotMatchesSource(slot, source) &&
+        itemMatchesSanctuaryLayoutSet(slot.item, layoutSet) &&
         backpackSlotMatchesQuery(slot, query)
       ))
-      .sort((a, b) => sortBackpackSlots(a, b, sort)),
-    [filter, inventory, query, sort, source],
+      .sort((a, b) => {
+        if (repairMode) {
+          const aPreferred = isPreferredRepairItem(a.item, repairZoneType);
+          const bPreferred = isPreferredRepairItem(b.item, repairZoneType);
+          if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+          const aRepair = isRepairPerimeterItem(a.item);
+          const bRepair = isRepairPerimeterItem(b.item);
+          if (aRepair !== bRepair) return aRepair ? -1 : 1;
+        }
+        return sortBackpackSlots(a, b, sort);
+      }),
+    [filter, inventory, layoutSet, query, repairMode, repairZoneType, sort, source],
   );
 
   const filterCounts = useMemo(() => ({
@@ -162,6 +213,23 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
     () => countRpgSourcePacks(inventory, slot => slot.item?.sourceLabel),
     [inventory],
   );
+  const layoutSetCounts = useMemo(
+    () => countSanctuaryLayoutSets(inventory, slot => slot.item),
+    [inventory],
+  );
+
+  useEffect(() => {
+    if (!isOpen || !repairMode) return;
+    const firstPreferredItem = inventory.find(slot => isPreferredRepairItem(slot.item, repairZoneType));
+    const firstRepairItem = firstPreferredItem ?? inventory.find(slot => isRepairPerimeterItem(slot.item));
+    setFilter('object');
+    setSource('all');
+    setLayoutSet('all');
+    setSort('kind');
+    setQuery('');
+    setPage(0);
+    setSelectedId(firstRepairItem?.item_id ?? null);
+  }, [inventory, isOpen, repairMode, repairZoneType]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -171,13 +239,14 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
 
   useEffect(() => {
     if (!isOpen) return;
+    if (repairMode) return;
     setPage(0);
     setSelectedId(current => (
       current && filteredInventory.some(row => row.item_id === current)
         ? current
         : filteredInventory[0]?.item_id ?? null
     ));
-  }, [filter, filteredInventory, isOpen, query, sort, source]);
+  }, [filter, filteredInventory, isOpen, layoutSet, query, repairMode, sort, source]);
 
   const pageItems = useMemo(
     () => filteredInventory.slice(page * SLOT_COUNT, page * SLOT_COUNT + SLOT_COUNT),
@@ -198,6 +267,16 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   const selectedPlaceable = getPlaceableItem(selected?.item_id ?? null);
   const selectedSeedCrop = selectedItem?.kind === 'seed' ? getCropForSeed(selected?.item_id ?? null) : null;
   const selectedSellPrice = getResourceSellPrice(selected?.item_id ?? null);
+  const selectedDesignRole = getSanctuaryDesignRole(selectedItem);
+  const selectedLayoutFits = getSanctuaryLayoutFitLabels(selectedItem);
+  const selectedCanRepair = repairMode && isRepairPerimeterItem(selectedItem);
+  const selectedPreferredRepair = repairMode && isPreferredRepairItem(selectedItem, repairZoneType);
+  const repairCompatibleCount = repairMode
+    ? inventory.filter(slot => isRepairPerimeterItem(slot.item)).length
+    : 0;
+  const repairPreferredCount = repairMode
+    ? inventory.filter(slot => isPreferredRepairItem(slot.item, repairZoneType)).length
+    : 0;
   const selectedFacts = [
     selectedItem?.sourceLabel ? `Source: ${selectedItem.sourceLabel}` : null,
     selectedPlaceable ? `Price: ${selectedPlaceable.price}` : null,
@@ -211,8 +290,8 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
   const panelWidth = Math.min(width - 24, 430);
   const panelMaxHeight = Math.min(height - 60, 720);
   const slotWidthSize = Math.floor((panelWidth - 52) / 4);
-  const slotHeightSize = Math.floor((panelMaxHeight - 356) / 3);
-  const slotSize = Math.min(70, Math.max(50, Math.min(slotWidthSize, slotHeightSize)));
+  const slotHeightSize = Math.floor((panelMaxHeight - 410) / 2);
+  const slotSize = Math.min(78, Math.max(58, Math.min(slotWidthSize, slotHeightSize)));
 
   return (
     <View style={styles.overlay}>
@@ -225,13 +304,26 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             </View>
             <View>
               <Text style={styles.title}>Backpack</Text>
-              <Text style={styles.subtitle}>Showing {filteredInventory.length} of {inventory.length} stacks</Text>
+              <Text style={styles.subtitle}>
+                {repairMode
+                  ? `${repairPreferredCount || repairCompatibleCount} repair match${(repairPreferredCount || repairCompatibleCount) === 1 ? '' : 'es'} available`
+                  : `Showing ${filteredInventory.length} of ${inventory.length} stacks`}
+              </Text>
             </View>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close backpack" onPress={onClose} style={styles.closeButton}>
             <Feather name="x" size={18} color="#fff2bb" />
           </Pressable>
         </View>
+
+        {repairMode && (
+          <View style={styles.repairBanner}>
+            <Feather name="tool" size={12} color="#d9ffd0" />
+            <Text numberOfLines={1} style={styles.repairBannerText}>
+              {repairMaterialHint ? `Best: ${repairMaterialHint}` : 'Choose a wall, door, rope, or gate'}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.filterBar}>
           {FILTERS.map(item => {
@@ -266,6 +358,25 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
               >
                 <Text style={[styles.sourceText, active && styles.activeSourceText]}>{item.label}</Text>
                 <Text style={[styles.sourceCount, active && styles.activeSourceText]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.layoutBar}>
+          {SANCTUARY_LAYOUT_SET_FILTERS.map(item => {
+            const active = layoutSet === item.id;
+            const count = layoutSetCounts[item.id];
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} layout filter`}
+                onPress={() => setLayoutSet(item.id)}
+                style={[styles.layoutButton, active && styles.activeLayoutButton]}
+              >
+                <Text style={[styles.layoutText, active && styles.activeLayoutText]}>{item.label}</Text>
+                <Text style={[styles.layoutCount, active && styles.activeLayoutText]}>{count}</Text>
               </Pressable>
             );
           })}
@@ -311,6 +422,10 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
           {Array.from({ length: SLOT_COUNT }).map((_, index) => {
             const slot = pageItems[index] ?? null;
             const isSelected = slot?.item_id === selectedId;
+            const slotDesignRole = slot ? getSanctuaryDesignRole(slot.item) : null;
+            const slotRepairCompatible = repairMode && !!slot && isRepairPerimeterItem(slot.item);
+            const slotRepairPreferred = repairMode && !!slot && isPreferredRepairItem(slot.item, repairZoneType);
+            const slotRepairDimmed = repairMode && !!slot && !slotRepairCompatible;
             return (
               <Pressable
                 key={`${filter}-${page}-${index}-${slot?.item_id ?? 'empty'}`}
@@ -321,15 +436,36 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
                 style={[
                   styles.inventorySlot,
                   { width: slotSize, height: slotSize },
+                  slotRepairCompatible && styles.repairSlot,
+                  slotRepairPreferred && styles.repairSlotPreferred,
+                  slotRepairDimmed && styles.repairSlotDimmed,
                   isSelected && styles.selectedSlot,
                 ]}
               >
                 {slot && (
                   <>
-                    <RpgItemIcon item={slot.item} size={Math.floor(slotSize * 0.72)} fallbackLabel={slot.item_id} />
+                    <RpgItemIcon item={slot.item} itemId={slot.item_id} size={Math.floor(slotSize * 0.78)} fallbackLabel={slot.item_id} />
+                    {slotDesignRole && (
+                      <View style={[
+                        styles.slotRolePill,
+                        slotDesignRole.tone === 'nature' && styles.slotRoleNature,
+                        slotDesignRole.tone === 'farm' && styles.slotRoleFarm,
+                        slotDesignRole.tone === 'ruin' && styles.slotRoleRuin,
+                        slotDesignRole.tone === 'utility' && styles.slotRoleUtility,
+                        slotDesignRole.tone === 'livestock' && styles.slotRoleLivestock,
+                        slotDesignRole.tone === 'resource' && styles.slotRoleResource,
+                      ]}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={styles.slotRoleText}>{slotDesignRole.label}</Text>
+                      </View>
+                    )}
                     <View style={styles.quantityPill}>
                       <Text style={styles.quantityText}>{slot.quantity}</Text>
                     </View>
+                    {slotRepairPreferred && (
+                      <View style={styles.repairMatchPill}>
+                        <Text numberOfLines={1} adjustsFontSizeToFit style={styles.repairMatchText}>Fit</Text>
+                      </View>
+                    )}
                   </>
                 )}
               </Pressable>
@@ -367,6 +503,38 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
             {selected && <Text style={styles.detailCount}>x{selected.quantity}</Text>}
           </View>
           <Text numberOfLines={2} style={styles.detailDescription}>{selectedDescription}</Text>
+          {selectedDesignRole && (
+            <View style={styles.designRoleRow}>
+              <View style={[
+                styles.designRolePill,
+                selectedDesignRole.tone === 'nature' && styles.designRoleNature,
+                selectedDesignRole.tone === 'farm' && styles.designRoleFarm,
+                selectedDesignRole.tone === 'ruin' && styles.designRoleRuin,
+                selectedDesignRole.tone === 'utility' && styles.designRoleUtility,
+                selectedDesignRole.tone === 'livestock' && styles.designRoleLivestock,
+                selectedDesignRole.tone === 'resource' && styles.designRoleResource,
+              ]}>
+                <Text style={styles.designRoleText}>{selectedDesignRole.label}</Text>
+              </View>
+              <Text numberOfLines={1} style={styles.designRoleHint}>{selectedDesignRole.hint}</Text>
+            </View>
+          )}
+          {selectedLayoutFits.length > 0 && (
+            <View style={styles.layoutFitRow}>
+              <Text style={styles.layoutFitLead}>Fits</Text>
+              {selectedLayoutFits.map(label => (
+                <View key={label} style={styles.layoutFitPill}>
+                  <Text numberOfLines={1} style={styles.layoutFitText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {selectedPlaceable ? (
+            <SanctuaryFootprintPreview colWidth={selectedPlaceable.colWidth} colHeight={selectedPlaceable.colHeight} />
+          ) : selectedSeedCrop ? (
+            <SanctuaryFootprintPreview colWidth={1} colHeight={1} label="Planting" />
+          ) : null}
+          {selected && <SanctuaryTerrainPaintPreview itemId={selected.item_id} />}
           {selectedFacts.length > 0 && (
             <View style={styles.factGrid}>
               {selectedFacts.slice(0, 4).map(fact => (
@@ -376,16 +544,34 @@ export function RpgBackpack({ isOpen, refreshKey, canPlace, onClose, onPlaceItem
               ))}
             </View>
           )}
-          {selectedPlaceable ? (
+          {repairMode && selectedCanRepair && (
+            <View style={[
+              styles.repairMatchDetail,
+              selectedPreferredRepair && styles.repairMatchDetailPreferred,
+            ]}>
+              <Feather name={selectedPreferredRepair ? 'check-circle' : 'info'} size={12} color={selectedPreferredRepair ? '#d9ffd0' : '#fff2bb'} />
+              <Text numberOfLines={1} style={styles.repairMatchDetailText}>
+                {selectedPreferredRepair
+                  ? repairMaterialHint ? `Best fit: ${repairMaterialHint}` : 'Best fit for this gap'
+                  : repairMaterialHint ? `Works, but ${repairMaterialHint.toLowerCase()} matches this zone` : 'Works as a perimeter repair'}
+              </Text>
+            </View>
+          )}
+          {repairMode && !selectedCanRepair ? (
+            <View style={[styles.placeButton, styles.disabledButton]}>
+              <Feather name="alert-circle" size={14} color="rgba(255,255,255,0.72)" />
+              <Text style={styles.placeText}>Needs wall/door</Text>
+            </View>
+          ) : selectedPlaceable ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Place ${selectedName}`}
+              accessibilityLabel={repairMode ? `Repair gap with ${selectedName}` : `Place ${selectedName}`}
               disabled={!canPlace}
               onPress={() => selected && onPlaceItem(selected.item_id)}
               style={[styles.placeButton, !canPlace && styles.disabledButton]}
             >
               <Feather name="plus-square" size={14} color="#fff" />
-              <Text style={styles.placeText}>{canPlace ? 'Place' : 'Sanctuary only'}</Text>
+              <Text style={styles.placeText}>{canPlace ? (repairMode ? 'Repair gap' : 'Place') : 'Sanctuary only'}</Text>
             </Pressable>
           ) : selectedSeedCrop ? (
             <Pressable
@@ -507,6 +693,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  repairBanner: {
+    minHeight: 28,
+    marginBottom: 8,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    backgroundColor: 'rgba(46,132,65,0.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(142,232,137,0.38)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  repairBannerText: {
+    flex: 1,
+    color: '#d9ffd0',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
   filterBar: {
     width: '100%',
     minHeight: 36,
@@ -576,6 +780,43 @@ const styles = StyleSheet.create({
   sourceCount: {
     marginTop: 1,
     color: 'rgba(247,230,165,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
+  layoutBar: {
+    width: '100%',
+    minHeight: 28,
+    marginBottom: 8,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(126,217,87,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(126,217,87,0.18)',
+    flexDirection: 'row',
+  },
+  layoutButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeLayoutButton: {
+    backgroundColor: 'rgba(126,217,87,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(126,217,87,0.38)',
+  },
+  layoutText: {
+    color: 'rgba(205,232,194,0.7)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  activeLayoutText: {
+    color: '#d9ffd0',
+  },
+  layoutCount: {
+    marginTop: 1,
+    color: 'rgba(205,232,194,0.54)',
     fontFamily: fonts.ui.bold,
     fontSize: 7,
   },
@@ -652,6 +893,81 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
+  repairSlot: {
+    borderWidth: 2,
+    borderColor: 'rgba(142,232,137,0.9)',
+    backgroundColor: 'rgba(46,132,65,0.2)',
+  },
+  repairSlotPreferred: {
+    borderColor: 'rgba(255,224,112,0.96)',
+    backgroundColor: 'rgba(255,224,112,0.16)',
+  },
+  repairSlotDimmed: {
+    opacity: 0.44,
+  },
+  repairMatchPill: {
+    position: 'absolute',
+    right: 4,
+    bottom: 4,
+    minWidth: 20,
+    height: 14,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(43,28,18,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,224,112,0.58)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repairMatchText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
+  slotRolePill: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    maxWidth: '76%',
+    minHeight: 15,
+    paddingHorizontal: 5,
+    borderRadius: 6,
+    backgroundColor: 'rgba(38,25,18,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.34)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slotRoleNature: {
+    backgroundColor: 'rgba(36,72,38,0.86)',
+    borderColor: 'rgba(126,217,87,0.46)',
+  },
+  slotRoleFarm: {
+    backgroundColor: 'rgba(74,58,20,0.86)',
+    borderColor: 'rgba(241,196,15,0.42)',
+  },
+  slotRoleRuin: {
+    backgroundColor: 'rgba(50,39,76,0.86)',
+    borderColor: 'rgba(183,153,255,0.42)',
+  },
+  slotRoleUtility: {
+    backgroundColor: 'rgba(28,58,70,0.86)',
+    borderColor: 'rgba(112,214,255,0.42)',
+  },
+  slotRoleLivestock: {
+    backgroundColor: 'rgba(82,43,38,0.86)',
+    borderColor: 'rgba(255,176,168,0.42)',
+  },
+  slotRoleResource: {
+    backgroundColor: 'rgba(52,67,52,0.86)',
+    borderColor: 'rgba(205,232,194,0.38)',
+  },
+  slotRoleText: {
+    color: '#d5f5c7',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textTransform: 'uppercase',
+  },
   quantityPill: {
     position: 'absolute',
     right: -3,
@@ -698,16 +1014,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   details: {
-    minHeight: 136,
+    minHeight: 148,
     marginTop: 10,
-    padding: 10,
+    padding: 11,
     borderRadius: 8,
     backgroundColor: 'rgba(38,25,18,0.82)',
     borderWidth: 1,
     borderColor: 'rgba(247,230,165,0.38)',
   },
   detailHeader: {
-    minHeight: 16,
+    minHeight: 18,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -715,7 +1031,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#fff2bb',
     fontFamily: fonts.ui.bold,
-    fontSize: 11,
+    fontSize: 13,
   },
   detailCount: {
     color: '#f7e6a5',
@@ -726,9 +1042,88 @@ const styles = StyleSheet.create({
   detailDescription: {
     color: '#eadca8',
     fontFamily: fonts.ui.regular,
-    fontSize: 9,
-    lineHeight: 12,
-    marginTop: 1,
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 3,
+  },
+  designRoleRow: {
+    minHeight: 20,
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  designRolePill: {
+    minHeight: 18,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  designRoleNature: {
+    backgroundColor: 'rgba(126,217,87,0.18)',
+    borderColor: 'rgba(126,217,87,0.48)',
+  },
+  designRoleFarm: {
+    backgroundColor: 'rgba(241,196,15,0.16)',
+    borderColor: 'rgba(241,196,15,0.45)',
+  },
+  designRoleRuin: {
+    backgroundColor: 'rgba(183,153,255,0.16)',
+    borderColor: 'rgba(183,153,255,0.45)',
+  },
+  designRoleUtility: {
+    backgroundColor: 'rgba(112,214,255,0.15)',
+    borderColor: 'rgba(112,214,255,0.42)',
+  },
+  designRoleLivestock: {
+    backgroundColor: 'rgba(255,176,168,0.16)',
+    borderColor: 'rgba(255,176,168,0.42)',
+  },
+  designRoleResource: {
+    backgroundColor: 'rgba(205,232,194,0.12)',
+    borderColor: 'rgba(205,232,194,0.38)',
+  },
+  designRoleText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  designRoleHint: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 6,
+    color: 'rgba(255,242,187,0.68)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 8,
+  },
+  layoutFitRow: {
+    minHeight: 19,
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  layoutFitLead: {
+    color: 'rgba(255,242,187,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  layoutFitPill: {
+    minHeight: 16,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(190,224,142,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(190,224,142,0.26)',
+    justifyContent: 'center',
+  },
+  layoutFitText: {
+    color: '#e0f0b2',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   factGrid: {
     marginTop: 7,
@@ -751,12 +1146,34 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 8,
   },
+  repairMatchDetail: {
+    minHeight: 25,
+    marginTop: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,242,187,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.22)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  repairMatchDetailPreferred: {
+    backgroundColor: 'rgba(46,132,65,0.22)',
+    borderColor: 'rgba(142,232,137,0.38)',
+  },
+  repairMatchDetailText: {
+    flex: 1,
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
+  },
   sellAllButton: {
     backgroundColor: '#2c6e34',
   },
   placeButton: {
     width: '100%',
-    minHeight: 34,
+    minHeight: 38,
     marginTop: 8,
     paddingHorizontal: 10,
     borderRadius: 7,
@@ -773,7 +1190,7 @@ const styles = StyleSheet.create({
   placeText: {
     color: '#fff',
     fontFamily: fonts.ui.bold,
-    fontSize: 10,
+    fontSize: 11,
     marginLeft: 4,
   },
   kindText: {

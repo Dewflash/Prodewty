@@ -4,14 +4,23 @@ import { Feather } from '@expo/vector-icons';
 import { fonts } from '../theme/typography';
 import { db } from '../db/schema';
 import {
+  countSanctuaryLayoutSets,
   countRpgSourcePacks,
+  getPlaceableItem,
+  getSanctuaryDesignRole,
+  getSanctuaryLayoutFitLabels,
+  itemMatchesSanctuaryLayoutSet,
   RPG_SOURCE_PACK_FILTERS,
+  SANCTUARY_LAYOUT_SET_FILTERS,
   SHOP_CATALOG,
   type RpgItemRarity,
   type RpgSourcePackId,
+  type SanctuaryLayoutSetId,
   type ShopCatalogItem,
 } from './RpgObjectCatalog';
 import { RpgItemIcon } from './RpgItemIcon';
+import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
+import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
 
 type OwnedRow = {
   item_id: string;
@@ -25,15 +34,17 @@ interface Props {
   isOpen: boolean;
   coins: number;
   refreshKey: number;
+  canPlace?: boolean;
   onClose: () => void;
   onPurchaseRequest: (itemId: string, price: number) => ShopPurchaseResult;
+  onPurchaseAndPlaceRequest?: (itemId: string, price: number) => ShopPurchaseResult;
 }
 
 export type ShopPurchaseResult =
   | { ok: true; message: string }
   | { ok: false; message: string };
 
-const SHOP_PANEL_CAPACITY = 6;
+const SHOP_PANEL_CAPACITY = 4;
 const SHOP_FILTERS: { id: ShopFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'tree', label: 'Trees' },
@@ -118,7 +129,7 @@ function rarityRank(rarity: RpgItemRarity | undefined) {
   return 3;
 }
 
-export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRequest }: Props) {
+export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onClose, onPurchaseRequest, onPurchaseAndPlaceRequest }: Props) {
   const { width, height } = useWindowDimensions();
   const [ownedCounts, setOwnedCounts] = useState<Record<string, number>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -126,6 +137,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const [filter, setFilter] = useState<ShopFilter>('all');
   const [sort, setSort] = useState<ShopSort>('name');
   const [source, setSource] = useState<RpgSourcePackId>('all');
+  const [layoutSet, setLayoutSet] = useState<SanctuaryLayoutSetId>('all');
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<ShopPurchaseResult | null>(null);
 
@@ -134,11 +146,16 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
     () => countRpgSourcePacks(shopEntries, ([, item]) => item.sourceLabel),
     [shopEntries],
   );
+  const layoutSetCounts = useMemo(
+    () => countSanctuaryLayoutSets(shopEntries, ([, item]) => item),
+    [shopEntries],
+  );
   const filteredShopEntries = useMemo(
     () => shopEntries
       .filter(([id, item]) => (
         matchesShopFilter(item.tags, filter) &&
         matchesShopSource(item, source) &&
+        itemMatchesSanctuaryLayoutSet(item, layoutSet) &&
         shopEntryMatchesQuery(id, item, query)
       ))
       .sort(([, a], [, b]) => {
@@ -153,7 +170,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
         }
         return a.name.localeCompare(b.name);
       }),
-    [filter, query, shopEntries, sort, source],
+    [filter, layoutSet, query, shopEntries, sort, source],
   );
   const maxPage = Math.max(0, Math.ceil(filteredShopEntries.length / SHOP_PANEL_CAPACITY) - 1);
   const visibleShopEntries = useMemo(
@@ -169,6 +186,10 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const panelMaxHeight = Math.min(height - 60, 710);
   const selectedCanBuy = !!selectedEntry && selectedShortfall === 0;
   const selectedMechanismHint = mechanismHint(selectedEntry?.[1]);
+  const selectedDesignRole = getSanctuaryDesignRole(selectedEntry?.[1]);
+  const selectedLayoutFits = getSanctuaryLayoutFitLabels(selectedEntry?.[1]);
+  const selectedDirectPlaceable = selectedEntry ? getPlaceableItem(selectedEntry[0]) : null;
+  const selectedCanBuyAndPlace = selectedCanBuy && canPlace && !!selectedDirectPlaceable && !!onPurchaseAndPlaceRequest;
 
   const loadOwnedCounts = useCallback(() => {
     try {
@@ -194,7 +215,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
     if (!isOpen) return;
     setPage(0);
     setNotice(null);
-  }, [filter, isOpen, query, sort, source]);
+  }, [filter, isOpen, layoutSet, query, sort, source]);
 
   useEffect(() => {
     if (page > maxPage) setPage(maxPage);
@@ -214,6 +235,20 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
   const tryPurchase = (itemId: string, price: number) => {
     setSelectedId(itemId);
     const result = onPurchaseRequest(itemId, price);
+    setNotice(result);
+    if (result.ok) {
+      setOwnedCounts(current => ({
+        ...current,
+        [itemId]: (current[itemId] ?? 0) + 1,
+      }));
+      loadOwnedCounts();
+    }
+  };
+
+  const tryPurchaseAndPlace = (itemId: string, price: number) => {
+    if (!onPurchaseAndPlaceRequest) return;
+    setSelectedId(itemId);
+    const result = onPurchaseAndPlaceRequest(itemId, price);
     setNotice(result);
     if (result.ok) {
       setOwnedCounts(current => ({
@@ -274,6 +309,25 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
           })}
         </View>
 
+        <View style={styles.layoutBar}>
+          {SANCTUARY_LAYOUT_SET_FILTERS.map(item => {
+            const active = layoutSet === item.id;
+            const count = layoutSetCounts[item.id];
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.label} layout filter`}
+                onPress={() => setLayoutSet(item.id)}
+                style={[styles.layoutButton, active && styles.layoutButtonActive]}
+              >
+                <Text style={[styles.layoutText, active && styles.layoutTextActive]}>{item.label}</Text>
+                <Text style={[styles.layoutCount, active && styles.layoutTextActive]}>{count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <View style={styles.searchRow}>
           <Feather name="search" size={13} color="rgba(255,242,187,0.72)" />
           <TextInput
@@ -319,6 +373,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
           ) : visibleShopEntries.map(([id, item]) => {
             const owned = ownedCounts[id] ?? 0;
             const isSelected = id === selectedId;
+            const cardDesignRole = getSanctuaryDesignRole(item);
             return (
               <Pressable
                 key={id}
@@ -335,7 +390,7 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
                 ]}
               >
                 <View style={styles.itemArtBox}>
-                  <RpgItemIcon item={item} size={76} fallbackLabel={id} />
+                  <RpgItemIcon item={item} itemId={id} size={82} fallbackLabel={id} />
                   {owned > 0 && (
                     <View style={styles.ownedBadge}>
                       <Text style={styles.ownedText}>{owned}</Text>
@@ -346,6 +401,19 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
                 <Text numberOfLines={1} style={[styles.rarityText, { color: rarityColor(item.rarity) }]}>
                   {item.rarity ?? 'common'}
                 </Text>
+                {cardDesignRole && (
+                  <View style={[
+                    styles.cardRolePill,
+                    cardDesignRole.tone === 'nature' && styles.cardRoleNature,
+                    cardDesignRole.tone === 'farm' && styles.cardRoleFarm,
+                    cardDesignRole.tone === 'ruin' && styles.cardRoleRuin,
+                    cardDesignRole.tone === 'utility' && styles.cardRoleUtility,
+                    cardDesignRole.tone === 'livestock' && styles.cardRoleLivestock,
+                    cardDesignRole.tone === 'resource' && styles.cardRoleResource,
+                  ]}>
+                    <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cardRoleText}>{cardDesignRole.label}</Text>
+                  </View>
+                )}
                 <View style={styles.pricePill}>
                   <Feather name="circle" size={9} color="#f1c40f" />
                   <Text numberOfLines={1} adjustsFontSizeToFit style={styles.priceText}>{item.price}</Text>
@@ -389,6 +457,39 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
               {selectedMechanismHint && (
                 <Text numberOfLines={1} style={styles.mechanismHint}>{selectedMechanismHint}</Text>
               )}
+              {selectedDesignRole && (
+                <View style={styles.designRoleRow}>
+                  <View style={[
+                    styles.designRolePill,
+                    selectedDesignRole.tone === 'nature' && styles.designRoleNature,
+                    selectedDesignRole.tone === 'farm' && styles.designRoleFarm,
+                    selectedDesignRole.tone === 'ruin' && styles.designRoleRuin,
+                    selectedDesignRole.tone === 'utility' && styles.designRoleUtility,
+                    selectedDesignRole.tone === 'livestock' && styles.designRoleLivestock,
+                    selectedDesignRole.tone === 'resource' && styles.designRoleResource,
+                  ]}>
+                    <Text style={styles.designRoleText}>{selectedDesignRole.label}</Text>
+                  </View>
+                  <Text numberOfLines={1} style={styles.designRoleHint}>{selectedDesignRole.hint}</Text>
+                </View>
+              )}
+              {selectedLayoutFits.length > 0 && (
+                <View style={styles.layoutFitRow}>
+                  <Text style={styles.layoutFitLead}>Fits</Text>
+                  {selectedLayoutFits.map(label => (
+                    <View key={label} style={styles.layoutFitPill}>
+                      <Text numberOfLines={1} style={styles.layoutFitText}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {selectedEntry && (
+                <SanctuaryFootprintPreview
+                  colWidth={selectedEntry[1].colWidth}
+                  colHeight={selectedEntry[1].colHeight}
+                />
+              )}
+              {selectedEntry && <SanctuaryTerrainPaintPreview itemId={selectedEntry[0]} />}
             </View>
             {selectedEntry && (
               <View style={[styles.rarityBadge, { borderColor: rarityColor(selectedEntry[1].rarity) }]}>
@@ -404,22 +505,44 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, onClose, onPurchaseRe
               </Text>
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={selectedEntry ? `Buy ${selectedName}` : 'No shop item selected'}
-            disabled={!selectedEntry}
-            onPress={() => selectedEntry && tryPurchase(selectedEntry[0], selectedEntry[1].price)}
-            style={[
-              styles.buyButton,
-              !selectedEntry && styles.buyDisabled,
-              selectedEntry && !selectedCanBuy && styles.buyWarn,
-            ]}
-          >
-            <Feather name="shopping-bag" size={15} color={selectedCanBuy ? '#13351f' : '#fff2bb'} />
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.buyPrice, !selectedCanBuy && styles.buyPriceWarn]}>
-              {selectedCanBuy ? `Buy ${selectedPrice}` : selectedEntry ? `Need ${selectedShortfall}` : 'No item'}
-            </Text>
-          </Pressable>
+          <View style={styles.buyButtonRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={selectedEntry ? `Buy ${selectedName}` : 'No shop item selected'}
+              disabled={!selectedEntry}
+              onPress={() => selectedEntry && tryPurchase(selectedEntry[0], selectedEntry[1].price)}
+              style={[
+                styles.buyButton,
+                !selectedEntry && styles.buyDisabled,
+                selectedEntry && !selectedCanBuy && styles.buyWarn,
+                selectedCanBuyAndPlace && styles.buyButtonSplit,
+              ]}
+            >
+              <Feather name="shopping-bag" size={15} color={selectedCanBuy ? '#13351f' : '#fff2bb'} />
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.buyPrice, !selectedCanBuy && styles.buyPriceWarn]}>
+                {selectedCanBuy ? `Buy ${selectedPrice}` : selectedEntry ? `Need ${selectedShortfall}` : 'No item'}
+              </Text>
+            </Pressable>
+            {selectedDirectPlaceable && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={selectedEntry ? `Buy and place ${selectedName}` : 'No shop item selected'}
+                disabled={!selectedCanBuyAndPlace || !selectedEntry}
+                onPress={() => selectedEntry && tryPurchaseAndPlace(selectedEntry[0], selectedEntry[1].price)}
+                style={[
+                  styles.buyButton,
+                  styles.buyPlaceButton,
+                  !selectedCanBuyAndPlace && styles.buyDisabled,
+                  selectedEntry && !selectedCanBuy && styles.buyWarn,
+                ]}
+              >
+                <Feather name="plus-square" size={15} color={selectedCanBuyAndPlace ? '#fff2bb' : 'rgba(255,242,187,0.62)'} />
+                <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.buyPlaceText, !selectedCanBuyAndPlace && styles.buyPriceWarn]}>
+                  {canPlace ? 'Buy & place' : 'Sanctuary only'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
           {notice && (
             <Text numberOfLines={2} style={[styles.noticeText, notice.ok ? styles.noticeSuccess : styles.noticeWarn]}>
               {notice.message}
@@ -546,6 +669,43 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 7,
   },
+  layoutBar: {
+    width: '100%',
+    minHeight: 28,
+    marginBottom: 8,
+    padding: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(126,217,87,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(126,217,87,0.18)',
+    flexDirection: 'row',
+  },
+  layoutButton: {
+    flex: 1,
+    minHeight: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  layoutButtonActive: {
+    backgroundColor: 'rgba(126,217,87,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(126,217,87,0.38)',
+  },
+  layoutText: {
+    color: 'rgba(205,232,194,0.7)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+  },
+  layoutTextActive: {
+    color: '#d9ffd0',
+  },
+  layoutCount: {
+    marginTop: 1,
+    color: 'rgba(205,232,194,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+  },
   searchRow: {
     minHeight: 34,
     marginBottom: 8,
@@ -625,9 +785,9 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     width: '48.7%',
-    minHeight: 152,
+    minHeight: 168,
     borderRadius: 8,
-    padding: 8,
+    padding: 9,
     backgroundColor: 'rgba(247,230,165,0.1)',
     borderWidth: 1,
     borderColor: 'rgba(247,230,165,0.24)',
@@ -635,8 +795,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   itemArtBox: {
-    width: 86,
-    height: 82,
+    width: 96,
+    height: 90,
     borderRadius: 8,
     backgroundColor: 'rgba(255,242,187,0.2)',
     borderWidth: 1,
@@ -652,10 +812,12 @@ const styles = StyleSheet.create({
   },
   cardName: {
     width: '100%',
-    marginTop: 5,
+    minHeight: 24,
+    marginTop: 6,
     color: '#fff2bb',
     fontFamily: fonts.ui.bold,
-    fontSize: 10,
+    fontSize: 11,
+    lineHeight: 12,
     textAlign: 'center',
   },
   rarityText: {
@@ -664,6 +826,48 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 7,
     textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  cardRolePill: {
+    maxWidth: '100%',
+    minHeight: 17,
+    marginTop: 3,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(158,230,168,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardRoleNature: {
+    backgroundColor: 'rgba(126,217,87,0.16)',
+    borderColor: 'rgba(126,217,87,0.38)',
+  },
+  cardRoleFarm: {
+    backgroundColor: 'rgba(241,196,15,0.15)',
+    borderColor: 'rgba(241,196,15,0.36)',
+  },
+  cardRoleRuin: {
+    backgroundColor: 'rgba(183,153,255,0.15)',
+    borderColor: 'rgba(183,153,255,0.36)',
+  },
+  cardRoleUtility: {
+    backgroundColor: 'rgba(112,214,255,0.14)',
+    borderColor: 'rgba(112,214,255,0.34)',
+  },
+  cardRoleLivestock: {
+    backgroundColor: 'rgba(255,176,168,0.15)',
+    borderColor: 'rgba(255,176,168,0.34)',
+  },
+  cardRoleResource: {
+    backgroundColor: 'rgba(205,232,194,0.13)',
+    borderColor: 'rgba(205,232,194,0.32)',
+  },
+  cardRoleText: {
+    color: '#d5f5c7',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
     textTransform: 'uppercase',
   },
   ownedBadge: {
@@ -686,9 +890,9 @@ const styles = StyleSheet.create({
     fontSize: 8,
   },
   pricePill: {
-    minHeight: 20,
+    minHeight: 22,
     marginTop: 5,
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     borderRadius: 6,
     backgroundColor: 'rgba(0,0,0,0.25)',
     borderWidth: 1,
@@ -701,18 +905,33 @@ const styles = StyleSheet.create({
   priceText: {
     color: '#f7e6a5',
     fontFamily: fonts.ui.bold,
-    fontSize: 9,
+    fontSize: 10,
   },
   buyButton: {
-    width: '100%',
+    flex: 1,
     minHeight: 36,
-    marginTop: 9,
     borderRadius: 7,
     backgroundColor: '#e0c85f',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+  },
+  buyButtonRow: {
+    width: '100%',
+    minHeight: 36,
+    marginTop: 9,
+    flexDirection: 'row',
+    gap: 7,
+  },
+  buyButtonSplit: {
+    flex: 0.82,
+  },
+  buyPlaceButton: {
+    flex: 1.18,
+    backgroundColor: 'rgba(32,78,46,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,230,168,0.42)',
   },
   buyWarn: {
     backgroundColor: 'rgba(255,176,168,0.25)',
@@ -729,6 +948,11 @@ const styles = StyleSheet.create({
   },
   buyPriceWarn: {
     color: '#fff2bb',
+  },
+  buyPlaceText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 11,
   },
   pageControls: {
     marginTop: 10,
@@ -758,7 +982,7 @@ const styles = StyleSheet.create({
   },
   detailBar: {
     width: '100%',
-    minHeight: 94,
+    minHeight: 104,
     marginTop: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -795,7 +1019,7 @@ const styles = StyleSheet.create({
   itemName: {
     color: '#fff2bb',
     fontFamily: fonts.ui.bold,
-    fontSize: 12,
+    fontSize: 13,
   },
   itemMeta: {
     color: 'rgba(247,230,165,0.72)',
@@ -808,6 +1032,85 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 9,
     marginTop: 2,
+  },
+  designRoleRow: {
+    minHeight: 20,
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  designRolePill: {
+    minHeight: 18,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  designRoleNature: {
+    backgroundColor: 'rgba(126,217,87,0.18)',
+    borderColor: 'rgba(126,217,87,0.48)',
+  },
+  designRoleFarm: {
+    backgroundColor: 'rgba(241,196,15,0.16)',
+    borderColor: 'rgba(241,196,15,0.45)',
+  },
+  designRoleRuin: {
+    backgroundColor: 'rgba(183,153,255,0.16)',
+    borderColor: 'rgba(183,153,255,0.45)',
+  },
+  designRoleUtility: {
+    backgroundColor: 'rgba(112,214,255,0.15)',
+    borderColor: 'rgba(112,214,255,0.42)',
+  },
+  designRoleLivestock: {
+    backgroundColor: 'rgba(255,176,168,0.16)',
+    borderColor: 'rgba(255,176,168,0.42)',
+  },
+  designRoleResource: {
+    backgroundColor: 'rgba(205,232,194,0.12)',
+    borderColor: 'rgba(205,232,194,0.38)',
+  },
+  designRoleText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  designRoleHint: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 6,
+    color: 'rgba(255,242,187,0.68)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 8,
+  },
+  layoutFitRow: {
+    minHeight: 19,
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  layoutFitLead: {
+    color: 'rgba(255,242,187,0.54)',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+  },
+  layoutFitPill: {
+    minHeight: 16,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(190,224,142,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(190,224,142,0.26)',
+    justifyContent: 'center',
+  },
+  layoutFitText: {
+    color: '#e0f0b2',
+    fontFamily: fonts.ui.bold,
+    fontSize: 8,
   },
   coinState: {
     minHeight: 28,
