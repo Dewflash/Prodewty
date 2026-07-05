@@ -1,7 +1,17 @@
 export const TILE_SIZE = 32;
 
+// Tile art is 16px pixel-art cropped from sprite sheets. To keep crops on
+// integer pixel boundaries (React Native bilinear-filters fractional scales,
+// which blurs pixel art), the on-screen tile size must be an integer multiple
+// of the 16px source cell. We snap to 32 / 48 / 64 (i.e. 2x / 3x / 4x) and pick
+// the largest that still fits `floor(viewportWidth / 12)`.
 export function getResponsiveTileSize(viewportWidth: number): number {
-  return Math.max(TILE_SIZE, Math.min(64, Math.floor(viewportWidth / 12)));
+  const target = Math.floor(viewportWidth / 12);
+  const steps = [64, 48, 32];
+  for (const step of steps) {
+    if (target >= step) return step;
+  }
+  return TILE_SIZE;
 }
 
 export enum TileType {

@@ -45,12 +45,16 @@ export type RpgCaveObjectAsset = RpgObjectAsset;
 export type RpgTempleObjectAsset = RpgObjectAsset;
 export type RpgAnimalObjectAsset = RpgObjectAsset;
 
-const RPG_UI_ICONS_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
-const RPG_UI_INVENTORY_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
-const RPG_UI_SHOP_SHEET = require('../../assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Shop.png');
-const RPG_ARCHIVE_BOOK_SHEET = require('../../assets/craftpix-net-809047-free-animated-magic-book-pixel-art-asset-pack/PNG/Open_book.png');
-const RPG_FARM_PLANTS_SHEET = require('../../assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Plants.png');
+const RPG_UI_ICONS_SHEET = require('../../assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png');
+const RPG_UI_INVENTORY_SHEET = require('../../assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png');
+const RPG_UI_SHOP_SHEET = require('../../assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Shop.png');
+const RPG_ARCHIVE_BOOK_SHEET = require('../../assets/game/craftpix-net-809047-free-animated-magic-book-pixel-art-asset-pack/PNG/Open_book.png');
+const RPG_FARM_PLANTS_SHEET = require('../../assets/game/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Plants.png');
 const RPG_TEMPLE_EXTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Exterior_objects.png');
+// Ruined-temple exterior ground tileset (432x256 = 27x16 tiles of 16px).
+// Used for real sanctuary ground terrain (grass / dirt / stone). Every frame
+// below is visually verified — see RPG_ASSET_ATLAS.md "Tool Terrain Tile Art".
+const RPG_TERRAIN_EXTERIOR_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Tiles_exterior.png');
 const RPG_TEMPLE_INTERIOR_OBJECTS_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Objects_interior.png');
 const RPG_TEMPLE_FIRE_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Fire_animation.png');
 const RPG_TEMPLE_CHEST_ANIMATION_SHEET = require('../../assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Chest.png');
@@ -96,46 +100,46 @@ export const RPG_TEMPLE_ANIMATIONS = {
 } satisfies Record<string, RpgSpriteAnimation>;
 
 export const RPG_FOREST_OBJECT_ASSETS = [
-  { itemId: 'Beige_green_mushroom1', assetId: 'object.Beige_green_mushroom1', name: 'Beige-Green Mushroom Cluster', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['mushroom', 'forest', 'large'] },
-  { itemId: 'Beige_green_mushroom2', assetId: 'object.Beige_green_mushroom2', name: 'Beige-Green Mushroom', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest'] },
-  { itemId: 'Beige_green_mushroom3', assetId: 'object.Beige_green_mushroom3', name: 'Small Beige-Green Mushroom', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
-  { itemId: 'Blue-green_balls_tree1', assetId: 'object.Blue_green_balls_tree1', name: 'Blue-Green Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Blue-green_balls_tree2', assetId: 'object.Blue_green_balls_tree2', name: 'Young Blue-Green Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Blue-green_balls_tree3', assetId: 'object.Blue_green_balls_tree3', name: 'Blue-Green Sapling', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Chanterelles1', assetId: 'object.Chanterelles1', name: 'Chanterelles', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
-  { itemId: 'Chanterelles2', assetId: 'object.Chanterelles2', name: 'Golden Chanterelles', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
-  { itemId: 'Chanterelles3', assetId: 'object.Chanterelles3', name: 'Tiny Chanterelles', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
-  { itemId: 'Curved_tree1', assetId: 'object.Curved_tree1', name: 'Curved Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Curved_tree2', assetId: 'object.Curved_tree2', name: 'Curved Forest Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Curved_tree3', assetId: 'object.Curved_tree3', name: 'Young Curved Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Ent_man', assetId: 'object.Ent_man', name: 'Ent Guardian', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Ent_man.png'), pixelWidth: 128, pixelHeight: 128, tags: ['ent', 'forest', 'statue'] },
-  { itemId: 'Ent_woman', assetId: 'object.Ent_woman', name: 'Ent Keeper', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Ent_woman.png'), pixelWidth: 128, pixelHeight: 128, tags: ['ent', 'forest', 'statue'] },
-  { itemId: 'Light_balls_tree1', assetId: 'object.Light_balls_tree1', name: 'Light-Ball Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Light_balls_tree2', assetId: 'object.Light_balls_tree2', name: 'Lantern Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Light_balls_tree3', assetId: 'object.Light_balls_tree3', name: 'Young Light-Ball Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Living gazebo1', assetId: 'object.Living_gazebo1', name: 'Living Gazebo', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['structure', 'forest'] },
-  { itemId: 'Living gazebo2', assetId: 'object.Living_gazebo2', name: 'Living Gazebo Alcove', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['structure', 'forest'] },
-  { itemId: 'Luminous_tree1', assetId: 'object.Luminous_tree1', name: 'Luminous Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Luminous_tree2', assetId: 'object.Luminous_tree2', name: 'Luminous Bloom Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Luminous_tree3', assetId: 'object.Luminous_tree3', name: 'Young Luminous Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Luminous_tree4', assetId: 'object.Luminous_tree4', name: 'Luminous Sapling', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree4.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Mega_tree1', assetId: 'object.Mega_tree1', name: 'Mega Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png'), pixelWidth: 256, pixelHeight: 256, tags: ['tree', 'forest', 'forage', 'large'] },
-  { itemId: 'Mega_tree2', assetId: 'object.Mega_tree2', name: 'Mega Tree Crown', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Swirling tree1', assetId: 'object.Swirling_tree1', name: 'Swirling Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Swirling tree2', assetId: 'object.Swirling_tree2', name: 'Swirling Forest Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Swirling tree3', assetId: 'object.Swirling_tree3', name: 'Young Swirling Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Tree_idol_deer', assetId: 'object.Tree_idol_deer', name: 'Deer Tree Idol', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_deer.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
-  { itemId: 'Tree_idol_dragon', assetId: 'object.Tree_idol_dragon', name: 'Dragon Tree Idol', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_dragon.png'), pixelWidth: 256, pixelHeight: 256, tags: ['idol', 'forest', 'structure', 'large'] },
-  { itemId: 'Tree_idol_human', assetId: 'object.Tree_idol_human', name: 'Human Tree Idol', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_human.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
-  { itemId: 'Tree_idol_wolf', assetId: 'object.Tree_idol_wolf', name: 'Wolf Tree Idol', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_wolf.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
-  { itemId: 'White-red_mushroom1', assetId: 'object.White_red_mushroom1', name: 'White-Red Mushroom Cluster', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['mushroom', 'forest', 'large'] },
-  { itemId: 'White-red_mushroom2', assetId: 'object.White_red_mushroom2', name: 'White-Red Mushroom', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest'] },
-  { itemId: 'White-red_mushroom3', assetId: 'object.White_red_mushroom3', name: 'Small White-Red Mushroom', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest', 'small'] },
-  { itemId: 'White_tree1', assetId: 'object.White_tree1', name: 'White Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'White_tree2', assetId: 'object.White_tree2', name: 'Young White Tree', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
-  { itemId: 'Willow1', assetId: 'object.Willow1', name: 'Willow', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Willow2', assetId: 'object.Willow2', name: 'Wide Willow', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
-  { itemId: 'Willow3', assetId: 'object.Willow3', name: 'Young Willow', source: require('../../assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Beige_green_mushroom1', assetId: 'object.Beige_green_mushroom1', name: 'Beige-Green Mushroom Cluster', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['mushroom', 'forest', 'large'] },
+  { itemId: 'Beige_green_mushroom2', assetId: 'object.Beige_green_mushroom2', name: 'Beige-Green Mushroom', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest'] },
+  { itemId: 'Beige_green_mushroom3', assetId: 'object.Beige_green_mushroom3', name: 'Small Beige-Green Mushroom', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Beige_green_mushroom3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
+  { itemId: 'Blue-green_balls_tree1', assetId: 'object.Blue_green_balls_tree1', name: 'Blue-Green Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Blue-green_balls_tree2', assetId: 'object.Blue_green_balls_tree2', name: 'Young Blue-Green Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Blue-green_balls_tree3', assetId: 'object.Blue_green_balls_tree3', name: 'Blue-Green Sapling', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Blue-green_balls_tree3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Chanterelles1', assetId: 'object.Chanterelles1', name: 'Chanterelles', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles1.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
+  { itemId: 'Chanterelles2', assetId: 'object.Chanterelles2', name: 'Golden Chanterelles', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles2.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
+  { itemId: 'Chanterelles3', assetId: 'object.Chanterelles3', name: 'Tiny Chanterelles', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Chanterelles3.png'), pixelWidth: 32, pixelHeight: 32, tags: ['mushroom', 'forest', 'small'] },
+  { itemId: 'Curved_tree1', assetId: 'object.Curved_tree1', name: 'Curved Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Curved_tree2', assetId: 'object.Curved_tree2', name: 'Curved Forest Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Curved_tree3', assetId: 'object.Curved_tree3', name: 'Young Curved Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Curved_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Ent_man', assetId: 'object.Ent_man', name: 'Ent Guardian', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Ent_man.png'), pixelWidth: 128, pixelHeight: 128, tags: ['ent', 'forest', 'statue'] },
+  { itemId: 'Ent_woman', assetId: 'object.Ent_woman', name: 'Ent Keeper', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Ent_woman.png'), pixelWidth: 128, pixelHeight: 128, tags: ['ent', 'forest', 'statue'] },
+  { itemId: 'Light_balls_tree1', assetId: 'object.Light_balls_tree1', name: 'Light-Ball Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Light_balls_tree2', assetId: 'object.Light_balls_tree2', name: 'Lantern Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Light_balls_tree3', assetId: 'object.Light_balls_tree3', name: 'Young Light-Ball Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Light_balls_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Living gazebo1', assetId: 'object.Living_gazebo1', name: 'Living Gazebo', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['structure', 'forest'] },
+  { itemId: 'Living gazebo2', assetId: 'object.Living_gazebo2', name: 'Living Gazebo Alcove', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Living gazebo2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['structure', 'forest'] },
+  { itemId: 'Luminous_tree1', assetId: 'object.Luminous_tree1', name: 'Luminous Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Luminous_tree2', assetId: 'object.Luminous_tree2', name: 'Luminous Bloom Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Luminous_tree3', assetId: 'object.Luminous_tree3', name: 'Young Luminous Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Luminous_tree4', assetId: 'object.Luminous_tree4', name: 'Luminous Sapling', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Luminous_tree4.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Mega_tree1', assetId: 'object.Mega_tree1', name: 'Mega Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree1.png'), pixelWidth: 256, pixelHeight: 256, tags: ['tree', 'forest', 'forage', 'large'] },
+  { itemId: 'Mega_tree2', assetId: 'object.Mega_tree2', name: 'Mega Tree Crown', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Mega_tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Swirling tree1', assetId: 'object.Swirling_tree1', name: 'Swirling Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Swirling tree2', assetId: 'object.Swirling_tree2', name: 'Swirling Forest Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Swirling tree3', assetId: 'object.Swirling_tree3', name: 'Young Swirling Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Swirling tree3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Tree_idol_deer', assetId: 'object.Tree_idol_deer', name: 'Deer Tree Idol', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_deer.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
+  { itemId: 'Tree_idol_dragon', assetId: 'object.Tree_idol_dragon', name: 'Dragon Tree Idol', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_dragon.png'), pixelWidth: 256, pixelHeight: 256, tags: ['idol', 'forest', 'structure', 'large'] },
+  { itemId: 'Tree_idol_human', assetId: 'object.Tree_idol_human', name: 'Human Tree Idol', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_human.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
+  { itemId: 'Tree_idol_wolf', assetId: 'object.Tree_idol_wolf', name: 'Wolf Tree Idol', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Tree_idol_wolf.png'), pixelWidth: 128, pixelHeight: 128, tags: ['idol', 'forest', 'structure'] },
+  { itemId: 'White-red_mushroom1', assetId: 'object.White_red_mushroom1', name: 'White-Red Mushroom Cluster', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['mushroom', 'forest', 'large'] },
+  { itemId: 'White-red_mushroom2', assetId: 'object.White_red_mushroom2', name: 'White-Red Mushroom', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest'] },
+  { itemId: 'White-red_mushroom3', assetId: 'object.White_red_mushroom3', name: 'Small White-Red Mushroom', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White-red_mushroom3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['mushroom', 'forest', 'small'] },
+  { itemId: 'White_tree1', assetId: 'object.White_tree1', name: 'White Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'White_tree2', assetId: 'object.White_tree2', name: 'Young White Tree', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/White_tree2.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
+  { itemId: 'Willow1', assetId: 'object.Willow1', name: 'Willow', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow1.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Willow2', assetId: 'object.Willow2', name: 'Wide Willow', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow2.png'), pixelWidth: 128, pixelHeight: 128, tags: ['tree', 'forest', 'forage'] },
+  { itemId: 'Willow3', assetId: 'object.Willow3', name: 'Young Willow', source: require('../../assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/Willow3.png'), pixelWidth: 64, pixelHeight: 64, tags: ['tree', 'forest', 'forage', 'small'] },
 ] satisfies readonly RpgForestObjectAsset[];
 
 export const RPG_CRYSTAL_OBJECT_ASSETS = [
@@ -418,6 +422,29 @@ export const RPG_ARCHIVE_FRAMES = {
   closedBook: rpgBookFrame(0, 0),
   openBook: rpgBookFrame(2, 3),
 } satisfies Record<string, RpgSpriteFrame>;
+
+// Sanctuary ground terrain frames cropped from the ruined-temple exterior
+// tileset (`Tiles_exterior.png`, 432x256, 16px cells => sheet 27x16 tiles).
+// Coordinates are (col, row) in tile units. Every frame is visually verified
+// as a clean, seamless-fill ground tile (no rubble holes / no wall masonry
+// bleeding in) — see RPG_ASSET_ATLAS.md.
+function rpgTerrainTile(col: number, row: number): RpgSpriteFrame {
+  return rpgSpriteFrame(RPG_TERRAIN_EXTERIOR_SHEET, col * 16, row * 16, 16, 16, 432, 256);
+}
+
+export const RPG_SANCTUARY_TERRAIN_FRAMES = {
+  // 4 warm cozy grass variants: a flat base plus 3 with subtle leaf specks.
+  grass: [
+    rpgTerrainTile(17, 10), // pure flat grass rgb(122,173,85)
+    rpgTerrainTile(23, 7),  // grass + small leaf detail (top-left)
+    rpgTerrainTile(21, 7),  // grass + leaf clumps (top)
+    rpgTerrainTile(14, 14), // grass + light leaf clump (top-right)
+  ] as const,
+  // Warm brown earth, pure flat fill rgb(146,118,90) — dirt path / soil base.
+  dirt: rpgTerrainTile(17, 14),
+  // Pale stone masonry course rgb(199,195,178) — craftable stone slab floor.
+  stone: rpgTerrainTile(23, 2),
+} satisfies { grass: readonly RpgSpriteFrame[]; dirt: RpgSpriteFrame; stone: RpgSpriteFrame };
 
 export const RPG_CROP_STAGE_FRAMES = {
   whiteTree: {

@@ -1,6 +1,6 @@
 # RPG Asset Atlas
 
-Last updated: 2026-06-29
+Last updated: 2026-07-06
 
 This document records verified RPG sandbox assets and coordinates. It is the companion artifact for Phase 1 of `RPG_SANDBOX_PHASE_PLAN.md`.
 
@@ -14,17 +14,18 @@ Generated contact sheets are stored under `docs/rpg-asset-atlas/`.
 
 | Contact sheet | Source asset | Grid | Purpose |
 | --- | --- | --- | --- |
-| `ui-icons-16.png` | `app/assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png` | 16x16 | RPG HUD and item icons |
-| `inventory-sheet-16.png` | `app/assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png` | 16x16 | Backpack panel and inventory UI |
-| `shop-sheet-16.png` | `app/assets/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Shop.png` | 16x16 | Shop panel and buy buttons |
-| `farm-plants-16.png` | `app/assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Plants.png` | 16x16 | Crop and plant growth candidates |
-| `farm-supplies-16.png` | `app/assets/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Supplies.png` | 16x16 | Harvest/resource/produce candidates |
+| `ui-icons-16.png` | `app/assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Icons.png` | 16x16 | RPG HUD and item icons |
+| `inventory-sheet-16.png` | `app/assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Inventory.png` | 16x16 | Backpack panel and inventory UI |
+| `shop-sheet-16.png` | `app/assets/game/craftpix-net-255216-free-basic-pixel-art-ui-for-rpg/PNG/Shop.png` | 16x16 | Shop panel and buy buttons |
+| `farm-plants-16.png` | `app/assets/game/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Plants.png` | 16x16 | Crop and plant growth candidates |
+| `farm-supplies-16.png` | `app/assets/game/craftpix-net-200380-free-pixel-art-plants-for-farm/PNG/Supplies.png` | 16x16 | Harvest/resource/produce candidates |
 | `fish-seed-candidates.png` | mixed candidate sources | variable | Focused fish, squid, seaweed, bait, and seed candidate review |
 | `wood-cloth-candidates.png` | mixed candidate sources | variable | Focused wood, plank, wool, and cloth candidate review |
 | `remaining-placeholder-candidates.png` | mixed candidate sources | variable | Before choosing replacements for leftover placeholder items |
 | `wired-remaining-placeholder-fixes.png` | mixed candidate sources | variable | Before/after proof for the latest rewired item icons |
 | `wired-squid-fix.png` | fantasy icon sources | variable | Before/after proof replacing the squid bait/worm reuse |
 | `wired-wood-cloth-fixes.png` | mixed candidate sources | variable | Before/after proof replacing raw wood, wood plank, and cloth reuses |
+| `sanctuary-terrain-frames.png` | `Tiles_exterior.png` | 16x16 | The 6 shipped sanctuary ground frames (4 grass + dirt + stone), read back for visual verification |
 
 ## Verified Production Frames
 
@@ -47,6 +48,12 @@ These frames are safe for current production use.
 | `diamond` | `White_crystal4.png` | full file | 16x16 | `rpg_diamond` |
 | `archiveClosedBook` | `Open_book.png` | row 0, col 0 | 272x272 | Archive HUD button |
 | `archiveOpenBook` | `Open_book.png` | row 2, col 3 | 272x272 | Archive overlay panel |
+| `terrainGrassBase` | `Tiles_exterior.png` | col 17, row 10 (x 272, y 160) | 16x16 | Sanctuary GRASS base (flat warm grass rgb 122,173,85) |
+| `terrainGrassV1` | `Tiles_exterior.png` | col 23, row 7 (x 368, y 112) | 16x16 | Sanctuary GRASS variant (leaf clumps, top) |
+| `terrainGrassV2` | `Tiles_exterior.png` | col 21, row 7 (x 336, y 112) | 16x16 | Sanctuary GRASS variant (leaf clumps, top) |
+| `terrainGrassV3` | `Tiles_exterior.png` | col 14, row 14 (x 224, y 224) | 16x16 | Sanctuary GRASS variant (light leaf, top-right) |
+| `terrainDirt` | `Tiles_exterior.png` | col 17, row 14 (x 272, y 224) | 16x16 | Sanctuary PATH + TILLED/DITCH/WET_SOIL base (flat brown rgb 146,118,90) |
+| `terrainStone` | `Tiles_exterior.png` | col 23, row 2 (x 368, y 32) | 16x16 | Sanctuary STONE_SLAB floor (pale stone course rgb 199,195,178) |
 
 Notes:
 
@@ -169,9 +176,6 @@ RPG_UI_FRAMES.goldBar
 RPG_RESOURCE_SOURCES.turnip
 RPG_RESOURCE_SOURCES.cabbage
 RPG_RESOURCE_SOURCES.pumpkin
-BRIDGE_TILE_FRAME
-PATH_TILE_FRAME
-TILLED_TILE_FRAME
 RPG_ARCHIVE_FRAMES.closedBook
 RPG_ARCHIVE_FRAMES.openBook
 ```
@@ -228,7 +232,7 @@ Current item mappings:
 
 `RpgAssetRegistry.ts` now maps all 40 files from:
 
-`app/assets/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/`
+`app/assets/game/craftpix-net-505052-free-forest-objects-top-down-pixel-art/PNG/Assets/`
 
 Mapped categories:
 
@@ -257,21 +261,58 @@ Runtime behavior:
 
 ## Tool Terrain Tile Art
 
-`TileArt.tsx` now uses tracked sprite frames from:
+Shipped 2026-07-06 — sanctuary ground terrain now renders from verified sprite
+frames cropped out of the ruined-temple exterior tileset
+`Tiles_exterior.png` (432x256, 27x16 tiles of 16px). Frame constants live in
+`RpgAssetRegistry.ts` (`RPG_SANCTUARY_TERRAIN_FRAMES`) and are consumed by
+`SanctuaryTerrainTile` → `SanctuaryTerrainSpriteTile` in `TileArt.tsx` using the
+same overflow-hidden + translate crop technique as the dungeon floor/wall/water
+tiles. Proof contact sheet: `docs/rpg-asset-atlas/sanctuary-terrain-frames.png`
+(each frame read back and visually confirmed clean/seamless).
 
-`app/assets/game/craftpix-net-160005-free-ruined-temple-top-down-location-pixel-art/PNG/Tiles_exterior.png`
+Sprite-backed terrain types (real art):
 
-Runtime terrain mappings:
+- **GRASS** — 4 warm cozy grass variants (`terrainGrassBase` + `terrainGrassV1/V2/V3`),
+  chosen deterministically per world cell via the existing
+  `getSanctuaryTerrainVariant(row,col,type) = (row*31+col*17+type*13)%4` seed, so
+  the variant is stable frame-to-frame (never shimmers).
+- **PATH** — `terrainDirt` flat brown earth.
+- **TILLED** — `terrainDirt` + code-drawn furrow overlay lines.
+- **DITCH** — `terrainDirt` + furrow overlay (dry dug state).
+- **WET_SOIL** — `terrainDirt` + furrow + a translucent cool-dark tint View
+  (`tileWetTint`), i.e. tinted tilled soil (Stardew-style watered look).
+- **STONE_SLAB** — `terrainStone` pale stone-course floor.
+- **WALL / WATER** — unchanged; still the dungeon `walls_floor.png` /
+  `Water_coasts_animation.png` sprite crops.
 
-- `BRIDGE_TILE_FRAME`: x 352, y 0, 32x32. Used by `BridgeTile`.
-- `PATH_TILE_FRAME`: x 224, y 32, 32x32. Used by `PathTile`.
-- `TILLED_TILE_FRAME`: x 176, y 128, 32x32. Used by `TilledTile`.
+Still code-drawn placeholder (no clean verified frame in this tileset — not
+forced, per the atlas rule):
+
+- **BRIDGE** and **WOOD_TILE** — need wood-plank art; `Tiles_exterior.png` has
+  no wood tile. Kept as hand-drawn plank fills.
+- **SAND** — no tan/sand ground tile in this sheet (only warm brown dirt). Kept
+  as hand-drawn speckled fill.
+- **PORTAL_DUNGEON / PORTAL_SANCTUARY** — decorative portal bases, kept as the
+  existing code-drawn glowing-ring placeholder.
+
+Real sprite sheets now used by `TileArt.tsx`:
+
+- `craftpix-net-169442-.../PNG/walls_floor.png` (dungeon floor/wall)
+- `craftpix-net-169442-.../PNG/Water_coasts_animation.png` (water)
+- `craftpix-net-160005-.../PNG/Tiles_exterior.png` (sanctuary grass/dirt/stone)
 
 Notes:
 
-- Bridge and Path are now sprite-backed instead of hand-drawn view fills.
-- Tilled Soil is sprite-backed candidate ground art, but it is not final farm-soil art yet.
-- Future farming art should still replace Tilled Soil with a dedicated verified soil frame if one is found.
+- The `Tiles_exterior.png` sheet is ruin-flavored (most tiles mix stone masonry
+  with grass overgrowth or rubble holes). Only the fully clean flat-fill tiles
+  were mapped; the grass base rgb(122,173,85) is warm/cozy, not ruined-looking.
+- Integer scaling (2026-07-06): `getResponsiveTileSize` now snaps to 32/48/64
+  (integer multiples of the 16px source cell) instead of a continuously variable
+  size, and every sprite-crop offset/dimension in `TileArt.tsx`,
+  `RpgItemIcon.tsx`, and the terrain crop is `Math.round`-ed, so pixel-art tiles
+  no longer land on fractional pixels and blur under bilinear filtering.
+- Future work: revisit BRIDGE/WOOD_TILE/SAND if a dedicated verified plank/sand
+  frame set is added to the repo.
 
 ## Farm Animal Pack Mapping
 

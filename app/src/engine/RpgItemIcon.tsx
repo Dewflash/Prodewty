@@ -17,6 +17,10 @@ export function RpgSpriteFrameView({ frame, scale, size }: SpriteFrameProps) {
   const width = frame.width * resolvedScale;
   const height = frame.height * resolvedScale;
 
+  // Round the sheet offset/dimensions to whole pixels so the sprite crop does
+  // not land on a fractional pixel boundary (which React Native would bilinear-
+  // filter, blurring the pixel art). The outer View keeps the exact requested
+  // size; only the inner image translation is quantized.
   return (
     <View style={{ width, height, overflow: 'hidden' }}>
       <Image
@@ -24,10 +28,10 @@ export function RpgSpriteFrameView({ frame, scale, size }: SpriteFrameProps) {
         resizeMode="stretch"
         style={{
           position: 'absolute',
-          left: -frame.x * resolvedScale,
-          top: -frame.y * resolvedScale,
-          width: frame.sheetWidth * resolvedScale,
-          height: frame.sheetHeight * resolvedScale,
+          left: -Math.round(frame.x * resolvedScale),
+          top: -Math.round(frame.y * resolvedScale),
+          width: Math.round(frame.sheetWidth * resolvedScale),
+          height: Math.round(frame.sheetHeight * resolvedScale),
         }}
       />
     </View>

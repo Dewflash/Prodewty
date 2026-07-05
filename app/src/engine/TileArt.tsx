@@ -1,9 +1,11 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { TILE_SIZE, TileType } from './MapData';
+import { RPG_SANCTUARY_TERRAIN_FRAMES } from './RpgAssetRegistry';
+import type { RpgSpriteFrame } from './RpgAssetRegistry';
 
-const WALLS_FLOOR_SHEET = require('../../assets/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/walls_floor.png');
-const WATER_SHEET = require('../../assets/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/Water_coasts_animation.png');
+const WALLS_FLOOR_SHEET = require('../../assets/game/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/walls_floor.png');
+const WATER_SHEET = require('../../assets/game/craftpix-net-169442-free-2d-top-down-pixel-dungeon-asset-pack/PNG/Water_coasts_animation.png');
 
 const SHEET_TILE_PX = 16;
 
@@ -13,16 +15,20 @@ export const WATER_TILE_COORD = { col: 0, row: 27 };
 
 function sheetTile(source: any, widthTiles: number, heightTiles: number, col: number, row: number, tileSize: number) {
   const scale = tileSize / SHEET_TILE_PX;
+  // Round every derived pixel dimension/offset so crops always land on whole
+  // pixels. With an integer tileSize (32/48/64) `scale` is already an integer,
+  // but rounding keeps the crop exact even if a fractional tileSize is ever
+  // passed in, avoiding the bilinear-filter blur that fractional offsets cause.
   return (
     <View style={{ width: tileSize, height: tileSize, overflow: 'hidden' }}>
       <Image
         source={source}
         style={{
-          width: widthTiles * SHEET_TILE_PX * scale,
-          height: heightTiles * SHEET_TILE_PX * scale,
+          width: Math.round(widthTiles * SHEET_TILE_PX * scale),
+          height: Math.round(heightTiles * SHEET_TILE_PX * scale),
           transform: [
-            { translateX: -col * tileSize },
-            { translateY: -row * tileSize },
+            { translateX: -Math.round(col * tileSize) },
+            { translateY: -Math.round(row * tileSize) },
           ],
         }}
         resizeMode="stretch"
@@ -39,6 +45,28 @@ export function WaterTile({ tileSize = TILE_SIZE }: { tileSize?: number }) {
   return sheetTile(WATER_SHEET, 22, 28, WATER_TILE_COORD.col, WATER_TILE_COORD.row, tileSize);
 }
 
+// Renders a single 16px ground frame (grass/dirt/stone) cropped from a sprite
+// sheet, scaled up to `tileSize`. Same overflow-hidden + translate technique as
+// `sheetTile`, driven by an explicit RpgSpriteFrame (arbitrary sheet size).
+function TerrainFrameTile({ frame, tileSize }: { frame: RpgSpriteFrame; tileSize: number }) {
+  const scale = tileSize / frame.width;
+  return (
+    <View style={{ width: tileSize, height: tileSize, overflow: 'hidden' }}>
+      <Image
+        source={frame.source}
+        resizeMode="stretch"
+        style={{
+          position: 'absolute',
+          left: -Math.round(frame.x * scale),
+          top: -Math.round(frame.y * scale),
+          width: Math.round(frame.sheetWidth * scale),
+          height: Math.round(frame.sheetHeight * scale),
+        }}
+      />
+    </View>
+  );
+}
+
 type TerrainTone = {
   base: string;
   edge: string;
@@ -47,7 +75,17 @@ type TerrainTone = {
   stripe?: string;
 };
 
-type SanctuaryTerrainRenderer = 'placeholder' | 'wallSheet' | 'waterSheet';
+type SanctuaryTerrainRenderer = 'placeholder' | 'wallSheet' | 'waterSheet' | 'terrainSheet';
+
+// Which verified ground sprite backs a terrain type, plus an optional overlay
+// drawn on top of the sprite (furrow lines for tilled soil, a dark-blue tint
+// for wet/watered soil — Stardew renders watered soil as tinted tilled soil).
+type SanctuaryTerrainSpriteBase = 'grass' | 'dirt' | 'stone';
+type SanctuaryTerrainOverlay = 'none' | 'furrow' | 'wet';
+type SanctuaryTerrainSprite = {
+  base: SanctuaryTerrainSpriteBase;
+  overlay: SanctuaryTerrainOverlay;
+};
 type SanctuaryTerrainPattern = 'grass' | 'stone' | 'water' | 'portal' | 'plank' | 'path' | 'soil' | 'sand' | 'ditch';
 type SanctuaryTerrainDetail = 'none' | 'tuft' | 'speckle' | 'furrow' | 'plank' | 'portal';
 
@@ -58,23 +96,26 @@ type SanctuaryTerrainArt = {
   detail: SanctuaryTerrainDetail;
   tone: TerrainTone;
   edgeBlend: boolean;
+  // Present only when renderer === 'terrainSheet': the verified ground sprite
+  // (and any overlay) that replaces the code-drawn placeholder fill.
+  sprite?: SanctuaryTerrainSprite;
 };
 
 export type SanctuaryTerrainNeighbors = Partial<Record<'north' | 'east' | 'south' | 'west', TileType>>;
 
 export const SANCTUARY_TERRAIN_ART_REGISTRY: Record<TileType, SanctuaryTerrainArt> = {
-  [TileType.GRASS]: { assetSlot: 'terrain.grass', renderer: 'placeholder', pattern: 'grass', detail: 'tuft', tone: { base: '#5c8f56', edge: '#416f3f', accent: '#7ebd65', shade: '#3e6840' }, edgeBlend: false },
+  [TileType.GRASS]: { assetSlot: 'terrain.grass', renderer: 'terrainSheet', sprite: { base: 'grass', overlay: 'none' }, pattern: 'grass', detail: 'tuft', tone: { base: '#5c8f56', edge: '#416f3f', accent: '#7ebd65', shade: '#3e6840' }, edgeBlend: false },
   [TileType.WALL]: { assetSlot: 'terrain.wall', renderer: 'wallSheet', pattern: 'stone', detail: 'none', tone: { base: '#56615b', edge: '#363f3b', accent: '#737e77', shade: '#3e4843' }, edgeBlend: false },
   [TileType.WATER]: { assetSlot: 'terrain.water', renderer: 'waterSheet', pattern: 'water', detail: 'none', tone: { base: '#4d8aa8', edge: '#2f657e', accent: '#82c7dd', shade: '#326f8d' }, edgeBlend: false },
   [TileType.PORTAL_DUNGEON]: { assetSlot: 'terrain.portal.dungeon', renderer: 'placeholder', pattern: 'portal', detail: 'portal', tone: { base: '#8f63b8', edge: '#573370', accent: '#cfb0ff', shade: '#6f4a91' }, edgeBlend: true },
   [TileType.PORTAL_SANCTUARY]: { assetSlot: 'terrain.portal.sanctuary', renderer: 'placeholder', pattern: 'portal', detail: 'portal', tone: { base: '#d7b84b', edge: '#9c7b24', accent: '#fff2bb', shade: '#b08e32' }, edgeBlend: true },
   [TileType.BRIDGE]: { assetSlot: 'terrain.bridge', renderer: 'placeholder', pattern: 'plank', detail: 'plank', tone: { base: '#9a6b3c', edge: '#5f3b1e', accent: '#c39158', shade: '#744923', stripe: '#5b361b' }, edgeBlend: true },
-  [TileType.PATH]: { assetSlot: 'terrain.path', renderer: 'placeholder', pattern: 'path', detail: 'speckle', tone: { base: '#c2a06b', edge: '#8c6b3e', accent: '#d8bd85', shade: '#a37f4a' }, edgeBlend: true },
-  [TileType.TILLED]: { assetSlot: 'terrain.soil.tilled', renderer: 'placeholder', pattern: 'soil', detail: 'furrow', tone: { base: '#6b4a2e', edge: '#3f2a1c', accent: '#8a6340', shade: '#4f321f', stripe: '#332116' }, edgeBlend: true },
+  [TileType.PATH]: { assetSlot: 'terrain.path', renderer: 'terrainSheet', sprite: { base: 'dirt', overlay: 'none' }, pattern: 'path', detail: 'speckle', tone: { base: '#c2a06b', edge: '#8c6b3e', accent: '#d8bd85', shade: '#a37f4a' }, edgeBlend: true },
+  [TileType.TILLED]: { assetSlot: 'terrain.soil.tilled', renderer: 'terrainSheet', sprite: { base: 'dirt', overlay: 'furrow' }, pattern: 'soil', detail: 'furrow', tone: { base: '#6b4a2e', edge: '#3f2a1c', accent: '#8a6340', shade: '#4f321f', stripe: '#332116' }, edgeBlend: true },
   [TileType.SAND]: { assetSlot: 'terrain.sand', renderer: 'placeholder', pattern: 'sand', detail: 'speckle', tone: { base: '#d9c08a', edge: '#ad8f54', accent: '#f1dba4', shade: '#b99a62' }, edgeBlend: true },
-  [TileType.DITCH]: { assetSlot: 'terrain.ditch', renderer: 'placeholder', pattern: 'ditch', detail: 'furrow', tone: { base: '#7a6a4a', edge: '#4d432e', accent: '#9b8457', shade: '#5d4f35', stripe: '#403522' }, edgeBlend: true },
-  [TileType.WET_SOIL]: { assetSlot: 'terrain.soil.wet', renderer: 'placeholder', pattern: 'soil', detail: 'furrow', tone: { base: '#4a3420', edge: '#2e2117', accent: '#6a4e34', shade: '#352416', stripe: '#221712' }, edgeBlend: true },
-  [TileType.STONE_SLAB]: { assetSlot: 'terrain.floor.stone', renderer: 'placeholder', pattern: 'plank', detail: 'plank', tone: { base: '#8a8f92', edge: '#5b6266', accent: '#aeb4b7', shade: '#70777a', stripe: '#62696d' }, edgeBlend: true },
+  [TileType.DITCH]: { assetSlot: 'terrain.ditch', renderer: 'terrainSheet', sprite: { base: 'dirt', overlay: 'furrow' }, pattern: 'ditch', detail: 'furrow', tone: { base: '#7a6a4a', edge: '#4d432e', accent: '#9b8457', shade: '#5d4f35', stripe: '#403522' }, edgeBlend: true },
+  [TileType.WET_SOIL]: { assetSlot: 'terrain.soil.wet', renderer: 'terrainSheet', sprite: { base: 'dirt', overlay: 'wet' }, pattern: 'soil', detail: 'furrow', tone: { base: '#4a3420', edge: '#2e2117', accent: '#6a4e34', shade: '#352416', stripe: '#221712' }, edgeBlend: true },
+  [TileType.STONE_SLAB]: { assetSlot: 'terrain.floor.stone', renderer: 'terrainSheet', sprite: { base: 'stone', overlay: 'none' }, pattern: 'plank', detail: 'plank', tone: { base: '#8a8f92', edge: '#5b6266', accent: '#aeb4b7', shade: '#70777a', stripe: '#62696d' }, edgeBlend: true },
   [TileType.WOOD_TILE]: { assetSlot: 'terrain.floor.wood', renderer: 'placeholder', pattern: 'plank', detail: 'plank', tone: { base: '#a9763f', edge: '#694019', accent: '#cc9858', shade: '#804f24', stripe: '#5b3516' }, edgeBlend: true },
 };
 
@@ -99,6 +140,76 @@ function normalizeTerrainVariant(variant: number | undefined) {
   return Math.abs(Math.floor(variant ?? 0)) % 4;
 }
 
+// Renders a sanctuary ground tile from a verified sprite frame. Grass picks one
+// of 4 leaf variants deterministically from `variant` (stable per world cell so
+// it never shimmers frame-to-frame). Tilled/ditch/wet reuse the dirt sprite
+// with a translucent overlay (furrow lines / dark-blue watered tint) on top —
+// the same trick Stardew uses so watered soil is just tinted tilled soil.
+function SanctuaryTerrainSpriteTile({
+  art,
+  sprite,
+  type,
+  tileSize,
+  neighbors,
+  variant,
+}: {
+  art: SanctuaryTerrainArt;
+  sprite: SanctuaryTerrainSprite;
+  type: TileType;
+  tileSize: number;
+  neighbors?: SanctuaryTerrainNeighbors;
+  variant?: number;
+}) {
+  const variantIndex = normalizeTerrainVariant(variant);
+  let frame;
+  if (sprite.base === 'grass') {
+    const grassFrames = RPG_SANCTUARY_TERRAIN_FRAMES.grass;
+    frame = grassFrames[variantIndex % grassFrames.length];
+  } else if (sprite.base === 'stone') {
+    frame = RPG_SANCTUARY_TERRAIN_FRAMES.stone;
+  } else {
+    frame = RPG_SANCTUARY_TERRAIN_FRAMES.dirt;
+  }
+
+  const transitionEdges = getTransitionEdges(type, neighbors);
+  const tone = art.tone;
+  const stripeHeight = Math.max(1, Math.round(tileSize / 14));
+  const edgeSize = Math.max(2, Math.round(tileSize / 8));
+  const variantFlip = variantIndex % 2 === 1;
+
+  return (
+    <View style={{ width: tileSize, height: tileSize, overflow: 'hidden' }}>
+      <TerrainFrameTile frame={frame} tileSize={tileSize} />
+      {sprite.overlay === 'furrow' && (
+        <>
+          <View style={[styles.tileFurrow, { top: tileSize * (variantFlip ? 0.28 : 0.3), height: stripeHeight, backgroundColor: tone.stripe ?? tone.shade }]} />
+          <View style={[styles.tileFurrow, { top: tileSize * (variantFlip ? 0.56 : 0.58), height: stripeHeight, backgroundColor: tone.stripe ?? tone.shade }]} />
+          <View style={[styles.tileFurrowHighlight, { top: tileSize * (variantFlip ? 0.37 : 0.4), height: Math.max(1, Math.round(stripeHeight * 0.65)), backgroundColor: tone.accent }]} />
+        </>
+      )}
+      {sprite.overlay === 'wet' && (
+        <>
+          <View style={[styles.tileFurrow, { top: tileSize * 0.3, height: stripeHeight, backgroundColor: tone.stripe ?? tone.shade }]} />
+          <View style={[styles.tileFurrow, { top: tileSize * 0.58, height: stripeHeight, backgroundColor: tone.stripe ?? tone.shade }]} />
+          <View style={styles.tileWetTint} />
+        </>
+      )}
+      {transitionEdges.includes('north') && (
+        <View style={[styles.tileTransitionEdge, styles.tileTransitionEdgeNorth, { height: edgeSize, backgroundColor: tone.edge }]} />
+      )}
+      {transitionEdges.includes('east') && (
+        <View style={[styles.tileTransitionEdge, styles.tileTransitionEdgeEast, { width: edgeSize, backgroundColor: tone.edge }]} />
+      )}
+      {transitionEdges.includes('south') && (
+        <View style={[styles.tileTransitionEdge, styles.tileTransitionEdgeSouth, { height: edgeSize, backgroundColor: tone.edge }]} />
+      )}
+      {transitionEdges.includes('west') && (
+        <View style={[styles.tileTransitionEdge, styles.tileTransitionEdgeWest, { width: edgeSize, backgroundColor: tone.edge }]} />
+      )}
+    </View>
+  );
+}
+
 // Sanctuary terrain is still an honest placeholder layer: the project does
 // not yet have a matching farm/sanctuary ground tileset. These code-native pixel textures
 // now flow through an asset-slot registry with deterministic detail variants so final
@@ -119,6 +230,18 @@ export function SanctuaryTerrainTile({
 
   if (art.renderer === 'waterSheet') return <WaterTile tileSize={tileSize} />;
   if (art.renderer === 'wallSheet') return <TilesetTile {...WALL_TILE_COORD} tileSize={tileSize} />;
+  if (art.renderer === 'terrainSheet' && art.sprite) {
+    return (
+      <SanctuaryTerrainSpriteTile
+        art={art}
+        sprite={art.sprite}
+        type={type}
+        tileSize={tileSize}
+        neighbors={neighbors}
+        variant={variant}
+      />
+    );
+  }
 
   const tone = art.tone;
   const unit = Math.max(1, Math.round(tileSize / 16));
@@ -248,6 +371,16 @@ const styles = StyleSheet.create({
     right: '30%',
     borderRadius: 2,
     opacity: 0.2,
+  },
+  tileWetTint: {
+    // Translucent cool-dark wash over the dirt sprite: reads as watered/wet
+    // soil (Stardew renders watered tilled soil as a darkened tint).
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(28,42,74,0.42)',
   },
   tilePlankLine: {
     position: 'absolute',
