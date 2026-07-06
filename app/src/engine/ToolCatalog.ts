@@ -36,3 +36,30 @@ export const TOOL_CATALOG: Record<string, ToolDefinition> = {
 export function getToolDef(itemId: string): ToolDefinition | null {
   return TOOL_CATALOG[itemId] || null;
 }
+
+// ─── Tool-upgrade mastery gates (RPG_PROGRESSION_LATTICE.md D4) ──────────────
+// Acquiring a Copper (or higher) tool requires the matching mastery at Silver
+// (level ≥2 here — the first non-Bronze rung on the tool-upgrade ladder, which
+// is a coarser gate than the mastery-tier ladder used for veins). Basic tools
+// are ungated (they're the starter kit). Maps a ToolType → { skill, minLevel }.
+// skill strings match SkillType in db/skills.ts.
+export type ToolUpgradeGate = { skill: string; minLevel: number; skillDisplay: string };
+
+export const TOOL_UPGRADE_GATES: Record<ToolType, ToolUpgradeGate> = {
+  Pickaxe: { skill: 'mining', minLevel: 2, skillDisplay: 'Mining' },
+  Hoe: { skill: 'farming', minLevel: 2, skillDisplay: 'Farming' },
+  WateringCan: { skill: 'farming', minLevel: 2, skillDisplay: 'Farming' },
+  FishingRod: { skill: 'fishing', minLevel: 2, skillDisplay: 'Fishing' },
+  Sword: { skill: 'combat', minLevel: 2, skillDisplay: 'Combat' },
+  Axe: { skill: 'foraging', minLevel: 2, skillDisplay: 'Foraging' },
+  // Rake/Shovel have no upgrade tiers today — no gate needed.
+  Rake: { skill: 'farming', minLevel: 2, skillDisplay: 'Farming' },
+  Shovel: { skill: 'farming', minLevel: 2, skillDisplay: 'Farming' },
+};
+
+// Returns the upgrade gate for the tool being upgraded TO. Basic-tier targets
+// are never gated (they're the starter kit, not an upgrade).
+export function upgradeGateFor(toolDef: ToolDefinition): ToolUpgradeGate | null {
+  if (toolDef.tier === 'Basic') return null;
+  return TOOL_UPGRADE_GATES[toolDef.type] ?? null;
+}

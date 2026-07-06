@@ -1,14 +1,34 @@
 import { db } from './schema';
-import { getToolDef, ToolDefinition } from '../engine/ToolCatalog';
+import { getToolDef, ToolDefinition, upgradeGateFor } from '../engine/ToolCatalog';
 import { getRPGState } from './rpg';
+import { getMasteryLevel, getMasteryTier } from './skills';
 
-export function upgradeTool(currentToolId: string, upgradeToToolId: string): 'ok' | 'no_coins' | 'no_materials' | 'db_error' {
+export type UpgradeToolResult = 'ok' | 'no_coins' | 'no_materials' | 'db_error' | 'locked';
+
+// Result of a blocked upgrade, so callers can surface the exact requirement.
+export function upgradeToolLockMessage(upgradeToToolId: string): string | null {
+  const nextDef = getToolDef(upgradeToToolId);
+  if (!nextDef) return null;
+  const gate = upgradeGateFor(nextDef);
+  if (!gate) return null;
+  return `Needs ${gate.skillDisplay} ${getMasteryTier(gate.minLevel)}`;
+}
+
+export function upgradeTool(currentToolId: string, upgradeToToolId: string): UpgradeToolResult {
   const currentDef = getToolDef(currentToolId);
   const nextDef = getToolDef(upgradeToToolId);
 
   if (!currentDef || !nextDef) return 'db_error';
-  
+
   if (!nextDef.upgradeRequiredItemId || !nextDef.upgradeRequiredQuantity) return 'db_error';
+
+  // D4 mastery gate: acquiring a Copper+ tool requires the matching mastery at
+  // the gate level. Checked before any DB mutation so a blocked upgrade is a
+  // clean no-op; callers show upgradeToolLockMessage() for the exact tier.
+  const gate = upgradeGateFor(nextDef);
+  if (gate && getMasteryLevel(gate.skill as any) < gate.minLevel) {
+    return 'locked';
+  }
 
   try {
     db.execSync('BEGIN TRANSACTION');

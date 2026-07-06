@@ -56,7 +56,8 @@
     "test:catch": "npx tsx src/engine/CatchLogic.test.ts",
     "test:combat": "npx tsx src/engine/BiomeCombatLogic.test.ts",
     "test:stats": "npx tsx src/engine/StatEffects.test.ts",
-    "test:all": "npm run test:zones && npm run test:farming && npm run test:fishing && npm run test:catch && npm run test:combat && npm run test:stats"
+    "test:villager": "npx tsx src/engine/VillagerLogic.test.ts",
+    "test:all": "npm run test:zones && npm run test:farming && npm run test:fishing && npm run test:catch && npm run test:combat && npm run test:stats && npm run test:villager"
   },
   "private": true
 }

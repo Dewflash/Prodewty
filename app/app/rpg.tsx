@@ -98,8 +98,15 @@ import {
 import { getCalendarState, sleepOvernight, fastForwardTime, type CalendarState } from '../src/db/time';
 import { tryDropBlueprint } from '../src/db/blueprints';
 import { travelToZone } from '../src/db/zones';
-import { grantSkillPoints } from '../src/db/skills';
+import { grantSkillPoints, getMasteryLevel } from '../src/db/skills';
 import { getComputedStats } from '../src/db/game';
+import { VILLAGER_CATALOG, getVillagerDef, type VillagerDefinition } from '../src/engine/VillagerCatalog';
+import {
+  friendshipBand, pickDialogueLine, chooseBestGift, giftPreferenceFor,
+  giftFriendshipDelta, giftLanguageDelta, applyFriendshipDelta,
+  gateMet, gateMessage, CHAT_FRIENDSHIP_GAIN, CHAT_LANGUAGE_POINTS,
+  GIFTS_PER_VILLAGER_PER_DAY,
+} from '../src/engine/VillagerLogic';
 import {
   combatDamage,
   fishingWindowMultiplier,
@@ -283,18 +290,26 @@ const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_rock', row: 8, col: 14 },
   { type: 'rpg_clutter_rock', row: 15, col: 8 },
 ];
-// Minimal villager stub spawn — one fixed NPC, seeded once. Real spawning
-// (via Villager House construction) is part of the deferred full social
-// system; this is just enough to test Interact -> blueprint-chance.
-const STARTER_VILLAGER_SPAWN = { type: 'rpg_villager_brog', row: 10, col: 10 };
+// Villager stub spawns — fixed NPCs, seeded once. Real spawning (via Villager
+// House construction) is part of the deferred full social system; these two are
+// enough to exercise the dialogue/gift/friendship loop (lattice D5). Each maps
+// to a VillagerCatalog entry via its object tags (villager_blacksmith/explorer).
+const STARTER_VILLAGER_SPAWNS = [
+  { type: 'rpg_villager_brog', row: 10, col: 10 },
+  { type: 'rpg_villager_elara', row: 11, col: 12 },
+];
 // Free, naturally-occurring mining nodes (RPG resource dynamics, 2026-06-30)
 // — not purchasable, unlike the Cave pack's decorative rocks. Same
 // seed-once + nightly-respawn pattern as clutter, just Pickaxe-gated.
+// Copper veins mine at any Mining level; iron veins need Mining Silver (≥4)
+// (lattice D4 material tier gate).
 const STARTER_ROCK_VEIN_SPAWNS = [
   { type: 'rpg_rock_vein', row: 3, col: 9 },
   { type: 'rpg_rock_vein', row: 9, col: 16 },
   { type: 'rpg_rock_vein', row: 16, col: 3 },
   { type: 'rpg_rock_vein', row: 17, col: 14 },
+  { type: 'rpg_iron_vein', row: 4, col: 15 },
+  { type: 'rpg_iron_vein', row: 15, col: 6 },
 ];
 // Recipes now live in src/engine/CraftingCatalog.ts (timed, real
 // crafting_queue jobs) — see startCraftingJob/claimCraftingJob below.
@@ -517,6 +532,9 @@ export default function RpgScreen() {
   const interactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const worldCellReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const forageCooldowns = useRef<Record<number, number>>({});
+  // Per-villager neutral-dialogue rotation index, so repeat same-day chats cycle
+  // through the greeting/idle pool instead of repeating one line (lattice D5).
+  const villagerChatRotation = useRef<Record<string, number>>({});
   const defeatedEnemyUids = useRef<Set<string>>(new Set());
   const emptyInteractCooldownUntil = useRef(0);
 
@@ -2155,17 +2173,21 @@ export default function RpgScreen() {
         refreshMapObjects();
       }
 
-      const villagerExists = db.getFirstSync<{ id: number }>(
-        'SELECT id FROM sanctuary_objects WHERE type = ?',
-        STARTER_VILLAGER_SPAWN.type,
-      );
-      if (!villagerExists) {
-        db.runSync(
-          'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
-          STARTER_VILLAGER_SPAWN.type, STARTER_VILLAGER_SPAWN.row, STARTER_VILLAGER_SPAWN.col,
+      let villagerSeeded = false;
+      STARTER_VILLAGER_SPAWNS.forEach(spawn => {
+        const exists = db.getFirstSync<{ id: number }>(
+          'SELECT id FROM sanctuary_objects WHERE type = ?',
+          spawn.type,
         );
-        refreshMapObjects();
-      }
+        if (!exists) {
+          db.runSync(
+            'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+            spawn.type, spawn.row, spawn.col,
+          );
+          villagerSeeded = true;
+        }
+      });
+      if (villagerSeeded) refreshMapObjects();
 
       STARTER_TOOL_ITEM_IDS.forEach(itemId => {
         db.runSync(
@@ -2731,24 +2753,134 @@ export default function RpgScreen() {
 
   const isVillagerObject = (item: ShopCatalogItem) => item.tags?.includes('villager');
 
-  // Minimal villager stub (RPG resource dynamics spec, 2026-06-30): Interact
-  // always succeeds — it never blocks, even once the blueprint pool is dry,
-  // because the future villager system needs Interact to stay a stable verb
-  // (NPC-to-NPC trading etc). It just has nothing to give once exhausted.
+  // Maps a spawned villager OBJECT to its VillagerCatalog definition via the
+  // object's tags (villager_blacksmith → 'blacksmith', villager_explorer →
+  // 'explorer'). Returns { villagerType, def } or null for an unmapped object.
+  const resolveVillagerDef = (item: ShopCatalogItem): { villagerType: string; def: VillagerDefinition } | null => {
+    const tag = item.tags?.find(t => t.startsWith('villager_'));
+    if (!tag) return null;
+    const villagerType = tag.slice('villager_'.length);
+    const def = getVillagerDef(villagerType);
+    return def ? { villagerType, def } : null;
+  };
+
+  type VillagerStateRow = {
+    villager_id: string;
+    friendship: number;
+    last_chat_day: string | null;
+    gifts_today: number;
+    gifts_day: string | null;
+  };
+
+  // Reads (creating on first touch) the persisted rpg_villager_state row.
+  const getVillagerState = (villagerType: string): VillagerStateRow => {
+    let row = db.getFirstSync<VillagerStateRow>(
+      'SELECT * FROM rpg_villager_state WHERE villager_id = ?', villagerType,
+    );
+    if (!row) {
+      db.runSync('INSERT OR IGNORE INTO rpg_villager_state (villager_id) VALUES (?)', villagerType);
+      row = db.getFirstSync<VillagerStateRow>(
+        'SELECT * FROM rpg_villager_state WHERE villager_id = ?', villagerType,
+      );
+    }
+    return row ?? { villager_id: villagerType, friendship: 0, last_chat_day: null, gifts_today: 0, gifts_day: null };
+  };
+
+  // Snapshot of every giftable material the player currently carries
+  // (itemId → quantity) — feeds VillagerLogic.chooseBestGift.
+  const readBackpackQuantities = (): Record<string, number> => {
+    const rows = db.getAllSync<{ item_id: string; quantity: number }>(
+      'SELECT item_id, quantity FROM user_inventory WHERE quantity > 0',
+    );
+    const out: Record<string, number> = {};
+    rows.forEach(r => { out[r.item_id] = r.quantity; });
+    return out;
+  };
+
   const VILLAGER_BLUEPRINT_CHANCE = 0.2;
+
+  // Villager interaction (lattice D5). On Interact:
+  //  1. If the player carries a giftable item AND hasn't gifted this villager
+  //     today, give the single best-preference gift (consume 1): friendship +
+  //     Language deltas per VillagerLogic; capped 1 gift/villager/day.
+  //  2. Otherwise chat: dialogue line chosen by friendship band. First chat of
+  //     the logical day grants +5 friendship, Language +3, and keeps the 20%
+  //     blueprint roll. Repeat chats same day are dialogue-only (no grants).
   const interactWithVillager = (object: MapObject, item: ShopCatalogItem) => {
-    if (Math.random() < VILLAGER_BLUEPRINT_CHANCE) {
-      const blueprintId = tryDropBlueprint();
-      if (blueprintId) {
+    const resolved = resolveVillagerDef(item);
+    if (!resolved) {
+      // Unmapped villager object — fall back to a plain dialogue-free reaction.
+      showWorldToast({ text: `${item.name} nods at you`, item, tone: 'muted' });
+      showObjectReaction(object, '...', item, 'muted');
+      return;
+    }
+    const { villagerType, def } = resolved;
+    const today = logicalToday();
+    const state = getVillagerState(villagerType);
+
+    // ── Gifting branch ──
+    const giftsToday = state.gifts_day === today ? state.gifts_today : 0;
+    if (giftsToday < GIFTS_PER_VILLAGER_PER_DAY) {
+      const best = chooseBestGift(def, readBackpackQuantities());
+      if (best) {
+        const pref = best.preference;
+        const fDelta = giftFriendshipDelta(pref);
+        const langDelta = giftLanguageDelta(pref);
+        const giftDef = getRpgItem(best.itemId);
+        const newFriendship = applyFriendshipDelta(state.friendship, fDelta);
+        db.runSync(
+          `UPDATE rpg_villager_state
+             SET friendship = ?, gifts_today = ?, gifts_day = ?
+           WHERE villager_id = ?`,
+          newFriendship, giftsToday + 1, today, villagerType,
+        );
+        db.runSync('UPDATE user_inventory SET quantity = quantity - 1 WHERE item_id = ?', best.itemId);
+        if (langDelta > 0) grantSkillPoints('language', langDelta);
         bumpInventoryRevision();
-        const blueprintItem = getRpgItem(blueprintId);
-        showWorldToast({ text: `${item.name} hands you: ${blueprintItem?.name ?? blueprintId}`, item: blueprintItem, tone: 'success' });
-        showObjectReaction(object, '!', item, 'success');
+        const reaction = pref === 'love' ? '♥' : pref === 'like' ? ':)' : pref === 'neutral' ? '...' : ':(';
+        const tone: WorldToast['tone'] = fDelta > 0 ? 'success' : 'warn';
+        const fText = fDelta >= 0 ? `+${fDelta}` : `${fDelta}`;
+        showWorldToast({
+          text: `Gave ${giftDef?.name ?? best.itemId} to ${def.name} (${pref}, ${fText} friendship)`,
+          item: giftDef, tone,
+        });
+        showObjectReaction(object, reaction, item, tone === 'success' ? 'success' : 'warn');
         return;
       }
     }
-    showWorldToast({ text: `${item.name} has nothing for you right now`, item, tone: 'muted' });
-    showObjectReaction(object, '...', item, 'muted');
+
+    // ── Chat branch ──
+    const firstChatToday = state.last_chat_day !== today;
+    const rotation = firstChatToday ? 0 : (villagerChatRotation.current[villagerType] ?? 0) + 1;
+    villagerChatRotation.current[villagerType] = rotation;
+    let friendship = state.friendship;
+
+    if (firstChatToday) {
+      friendship = applyFriendshipDelta(friendship, CHAT_FRIENDSHIP_GAIN);
+      db.runSync(
+        'UPDATE rpg_villager_state SET friendship = ?, last_chat_day = ? WHERE villager_id = ?',
+        friendship, today, villagerType,
+      );
+      grantSkillPoints('language', CHAT_LANGUAGE_POINTS);
+
+      // Blueprint roll survives on first-chat-of-day only.
+      if (Math.random() < VILLAGER_BLUEPRINT_CHANCE) {
+        const blueprintId = tryDropBlueprint();
+        if (blueprintId) {
+          bumpInventoryRevision();
+          const blueprintItem = getRpgItem(blueprintId);
+          showWorldToast({ text: `${def.name} hands you: ${blueprintItem?.name ?? blueprintId}`, item: blueprintItem, tone: 'success' });
+          showObjectReaction(object, '!', item, 'success');
+          return;
+        }
+      }
+    }
+
+    const line = pickDialogueLine(def, friendship, rotation);
+    const band = friendshipBand(friendship);
+    const tone: WorldToast['tone'] = band === 'low' ? 'muted' : 'success';
+    showWorldToast({ text: `${def.name}: ${line}`, item, tone });
+    showObjectReaction(object, firstChatToday ? '+5' : '...', item, firstChatToday ? 'success' : 'muted');
   };
 
   const isLeverObject = (item: ShopCatalogItem) => (
@@ -2922,12 +3054,39 @@ export default function RpgScreen() {
   // Free, naturally-occurring rock — Pickaxe-gated, unlike clutter (which
   // any tool can clear). Same delete-then-nightly-respawn shape as clutter,
   // just with mining drops (Stone + a real Coal source) instead.
+  // Ore-vein tiers (lattice D4). Each vein object type names the Mining mastery
+  // LEVEL needed to break it: copper = 1 (always crossable), iron = 4 (Silver).
+  // Blocked attempts surface the exact requirement via VillagerLogic.gateMessage.
+  const VEIN_TIERS: Record<string, { requiredMiningLevel: number; drops: RpgDrop[] }> = {
+    rpg_rock_vein: {
+      requiredMiningLevel: 1,
+      drops: [
+        { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 1, max: 3 },
+        { itemId: 'rpg_coal', chance: 0.3, min: 1, max: 1 },
+      ],
+    },
+    rpg_iron_vein: {
+      requiredMiningLevel: 4, // Mining Silver
+      drops: [
+        { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 3, max: 5 },
+        { itemId: 'rpg_coal', chance: 0.8, min: 1, max: 2 },
+      ],
+    },
+  };
+
   const mineRockVein = (object: MapObject) => {
+    const tier = VEIN_TIERS[object.type] ?? VEIN_TIERS.rpg_rock_vein;
+    // D4 gate: block the mine (and refund energy — check BEFORE spending) when
+    // Mining mastery is too low, naming the exact tier needed.
+    if (!gateMet(getMasteryLevel('mining'), tier.requiredMiningLevel)) {
+      const needTier = getMasteryTier(tier.requiredMiningLevel);
+      const veinItem = getPlaceableItem(object.type);
+      showWorldToast({ text: gateMessage('Mining', needTier), item: veinItem, tone: 'warn' });
+      showObjectReaction(object, '🔒', veinItem, 'warn');
+      return;
+    }
     if (!spendToolEnergy('rpg_pickaxe_basic')) return;
-    const drops = rollHarvestDrops([
-      { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 1, max: 3 },
-      { itemId: 'rpg_coal', chance: 0.3, min: 1, max: 1 },
-    ]);
+    const drops = rollHarvestDrops(tier.drops);
     try {
       db.execSync('BEGIN TRANSACTION');
       deleteSanctuaryObjectInteractions(object.id);
@@ -3929,7 +4088,8 @@ export default function RpgScreen() {
         { row, col: col + 1 },
       ];
       const rockVein = mapObjects.find(obj => (
-        obj.type === 'rpg_rock_vein' && candidateCells.some(cell => cell.row === obj.row && cell.col === obj.col)
+        (obj.type === 'rpg_rock_vein' || obj.type === 'rpg_iron_vein')
+        && candidateCells.some(cell => cell.row === obj.row && cell.col === obj.col)
       ));
       if (rockVein) {
         mineRockVein(rockVein);

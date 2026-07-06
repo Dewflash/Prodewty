@@ -1311,7 +1311,7 @@ export const RPG_ITEM_CATALOG = {
     description: 'A one-of-a-kind find — plans for a Vendor Stall station.',
   },
   rpg_rock_vein: {
-    name: 'Rock Vein',
+    name: 'Copper Vein',
     kind: 'object',
     price: 0,
     colWidth: 1,
@@ -1321,8 +1321,25 @@ export const RPG_ITEM_CATALOG = {
     source: RPG_OBJECT_SOURCES.Cave_beige_rock2,
     rarity: 'common',
     sourceLabel: 'Sanctuary',
-    tags: ['rock_vein'],
-    description: 'A free, naturally-occurring rock. Mine it with a Pickaxe for Stone and Coal — respawns nightly, same as clutter.',
+    tags: ['rock_vein', 'vein_copper'],
+    description: 'A free, naturally-occurring copper-bearing rock. Mine it with a Pickaxe for Stone and Coal — respawns nightly, same as clutter.',
+  },
+  rpg_iron_vein: {
+    name: 'Iron Vein',
+    kind: 'object',
+    price: 0,
+    colWidth: 1,
+    colHeight: 1,
+    visWidth: 1,
+    visHeight: 1,
+    // Reuses the verified Large Beige Cave Rock frame (Cave_beige_rock1) — a
+    // visually distinct, bulkier rock than the copper vein's Cave_beige_rock2,
+    // so no new art is added. Iron veins need Mining Silver (lvl ≥4) to break.
+    source: RPG_OBJECT_SOURCES.Cave_beige_rock1,
+    rarity: 'uncommon',
+    sourceLabel: 'Sanctuary',
+    tags: ['rock_vein', 'vein_iron'],
+    description: 'A dense iron-bearing rock. Requires Mining Silver to break — yields more Stone plus Iron Ore. Respawns nightly.',
   },
   rpg_villager_brog: {
     name: 'Brog',
@@ -1335,8 +1352,24 @@ export const RPG_ITEM_CATALOG = {
     featherIcon: 'user',
     rarity: 'common',
     sourceLabel: 'Sanctuary',
-    tags: ['villager'],
+    // villager_blacksmith maps this object to VillagerCatalog 'blacksmith' (Brog).
+    tags: ['villager', 'villager_blacksmith'],
     description: 'A burly orc who wanders the Sanctuary. Worth talking to.',
+  },
+  rpg_villager_elara: {
+    name: 'Elara',
+    kind: 'object',
+    price: 0,
+    colWidth: 1,
+    colHeight: 1,
+    visWidth: 1,
+    visHeight: 1,
+    featherIcon: 'user',
+    rarity: 'common',
+    sourceLabel: 'Sanctuary',
+    // villager_explorer maps this object to VillagerCatalog 'explorer' (Elara).
+    tags: ['villager', 'villager_explorer'],
+    description: 'A nimble adventurer scouting the Sanctuary. Worth talking to.',
   },
   [RPG_CHEESE_ITEM_ID]: {
     name: 'Cheese',

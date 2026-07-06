@@ -1842,6 +1842,28 @@ function runMigrations() {
     try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN trading_points_day TEXT`); } catch {}
     db.execSync('PRAGMA user_version = 96');
   }
+
+  if (version < 97) {
+    // Villager relationships (RPG_PROGRESSION_LATTICE.md D5). One System-B row
+    // per catalog villager (keyed by VillagerCatalog villagerType, e.g.
+    // 'blacksmith'/'explorer'), tracking friendship + the daily-cadence bucket
+    // for chats and gifts. The legacy villagers/villager_relationships tables
+    // are treated as MISSING per the lattice gap audit and are ignored — this
+    // is a fresh, self-contained store. last_chat_day / gifts_day are logical-
+    // day strings (dayBoundary.logicalToday()); gifts_today resets when the
+    // player's first gift of a new logical day lands (rpg.tsx compares the
+    // bucket to today before granting), so no nightly job is needed.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_villager_state (
+        villager_id TEXT PRIMARY KEY,
+        friendship INTEGER NOT NULL DEFAULT 0,
+        last_chat_day TEXT,
+        gifts_today INTEGER NOT NULL DEFAULT 0,
+        gifts_day TEXT
+      );
+    `);
+    db.execSync('PRAGMA user_version = 97');
+  }
 }
 
 function addExtendedSkillPointsColumns() {
