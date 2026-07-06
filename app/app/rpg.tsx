@@ -32,6 +32,7 @@ import {
   getSanctuaryDesignRole,
   getSanctuaryLayoutFitLabels,
   RPG_UI_FRAMES,
+  SHOP_CATALOG,
   type RpgDrop,
   type RpgItemDefinition,
   type ShopCatalogItem,
@@ -108,7 +109,7 @@ import {
 import { getCalendarState, sleepOvernight, fastForwardTime, type CalendarState } from '../src/db/time';
 import { tryDropBlueprint } from '../src/db/blueprints';
 import { travelToZone } from '../src/db/zones';
-import { grantSkillPoints, getMasteryLevel } from '../src/db/skills';
+import { grantSkillPoints, getMasteryLevel, hasRequiredMastery } from '../src/db/skills';
 import { getComputedStats } from '../src/db/game';
 import { VILLAGER_CATALOG, getVillagerDef, type VillagerDefinition } from '../src/engine/VillagerCatalog';
 import {
@@ -2030,6 +2031,16 @@ export default function RpgScreen() {
       const buildingDef = getBuildingDef(itemId);
       const woodCost = buildingDef?.priceWood ?? 0;
       const stoneCost = buildingDef?.priceStone ?? 0;
+
+      // Trading mastery vendor-stock tier gate (lattice D4). Blocked with the
+      // same "Needs Trading <tier>" message the shop detail area shows.
+      const requiredTradingMastery = SHOP_CATALOG[itemId]?.requiredTradingMastery;
+      if (requiredTradingMastery && !hasRequiredMastery('trading', requiredTradingMastery)) {
+        const tier = getMasteryTier(requiredTradingMastery);
+        const message = `Needs Trading ${tier}`;
+        showWorldToast({ text: message, item, tone: 'warn' });
+        return { ok: false as const, message };
+      }
 
       if (!state || state.coins < price) {
         const shortfall = Math.max(0, price - (state?.coins ?? 0));

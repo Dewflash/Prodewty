@@ -1,6 +1,6 @@
 import { db } from './schema';
 import { sqlNow } from '../utils/date';
-import { getConstructionDef } from '../engine/ConstructionCatalog';
+import { getBuildingDef } from '../engine/BuildingCatalog';
 
 export type SanctuaryConstruction = {
   id: number;
@@ -22,7 +22,7 @@ export type StartConstructionResult =
   | { ok: false; reason: 'db_error' | 'no_def' };
 
 export function startConstruction(objectId: number, itemType: string): StartConstructionResult {
-  const def = getConstructionDef(itemType);
+  const def = getBuildingDef(itemType);
   if (!def) {
     return { ok: false, reason: 'no_def' };
   }
@@ -93,7 +93,7 @@ export type StartUpgradeResult =
 // checkAndCompleteConstructions applies on completion. Callers gate the
 // prerequisite/cost and deduct materials BEFORE calling this.
 export function startUpgrade(objectId: number, itemType: string, targetLevel: number): StartUpgradeResult {
-  const def = getConstructionDef(itemType);
+  const def = getBuildingDef(itemType);
   const buildMinutes = def?.buildTimeMinutes ?? 60;
   try {
     const existing = getConstructionForObject(objectId);

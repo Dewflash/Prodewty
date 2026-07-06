@@ -20,6 +20,9 @@ export type BuildingDefinition = {
   priceStone: number;
   colWidth: number;
   colHeight: number;
+  // Two-phase timed-build duration (db/construction.ts). Values migrated from the
+  // former ConstructionCatalog; construction.ts falls back to 60 when absent.
+  buildTimeMinutes: number;
   // Set on the 6 empty-shell buildings only.
   role?: BuildingRole;
   // Set on stations placed inside a building (Furnace, Loom, etc.) —
@@ -42,6 +45,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 100,
     colWidth: 6,
     colHeight: 3,
+    buildTimeMinutes: 60 * 5, // legacy Coop value
   },
   rpg_barn: {
     id: 'rpg_barn',
@@ -52,6 +56,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 150,
     colWidth: 7,
     colHeight: 4,
+    buildTimeMinutes: 60 * 8, // legacy Barn value
   },
 
   // ── Stations — placed inside a matching building, see requiredBuildingRole ──
@@ -64,6 +69,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 20,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 30,
     requiredBuildingRole: 'Workshop',
   },
   rpg_loom: {
@@ -75,6 +81,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 0,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 45,
     requiredBuildingRole: 'Factory',
   },
   rpg_cheese_press: {
@@ -86,6 +93,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 0,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 45,
     requiredBuildingRole: 'Factory',
   },
   rpg_mayonnaise_machine: {
@@ -97,6 +105,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 0,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 30,
     requiredBuildingRole: 'Factory',
   },
   rpg_fertiliser_mixer: {
@@ -108,6 +117,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 10,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 60, // former ConstructionCatalog default fallback
     requiredBuildingRole: 'ToolShed',
   },
   rpg_irrigation_bench: {
@@ -119,6 +129,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 30,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 60, // former ConstructionCatalog default fallback
     requiredBuildingRole: 'ToolShed',
   },
   rpg_vendor_stall: {
@@ -130,6 +141,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 20,
     colWidth: 1,
     colHeight: 1,
+    buildTimeMinutes: 60, // former ConstructionCatalog default fallback
     requiredBuildingRole: 'Market',
   },
 
@@ -143,6 +155,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 100,
     colWidth: 5,
     colHeight: 5,
+    buildTimeMinutes: 60 * 4,
     role: 'Workshop',
   },
   rpg_artisan_mill: {
@@ -154,6 +167,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 120,
     colWidth: 6,
     colHeight: 6,
+    buildTimeMinutes: 60 * 4,
     role: 'Factory',
   },
   rpg_tool_shed: {
@@ -165,6 +179,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 60,
     colWidth: 4,
     colHeight: 4,
+    buildTimeMinutes: 60 * 3,
     role: 'ToolShed',
   },
   rpg_wanderers_bazaar: {
@@ -176,6 +191,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 150,
     colWidth: 6,
     colHeight: 6,
+    buildTimeMinutes: 60 * 5,
     role: 'Market',
   },
   rpg_village_hearth: {
@@ -192,6 +208,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 20,
     colWidth: 5,
     colHeight: 5,
+    buildTimeMinutes: 60 * 2,
     role: 'TownHall',
   },
   rpg_forgotten_chamber: {
@@ -203,6 +220,7 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     priceStone: 180,
     colWidth: 5,
     colHeight: 5,
+    buildTimeMinutes: 60 * 5,
     role: 'Library',
   },
 };

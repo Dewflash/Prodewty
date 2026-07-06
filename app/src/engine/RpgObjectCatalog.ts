@@ -165,6 +165,10 @@ export type RpgPlaceableItem = RpgInventoryItem & {
   visHeight: number;
   forageDrops?: RpgDrop[];
   interactLoot?: RpgInteractionLoot;
+  // Trading mastery LEVEL required to buy this item (lattice D4 tier gate).
+  // Silver = level 4, Gold = level 7 (skills.ts LEVELS_PER_TIER = 3). Undefined
+  // = no gate (sold to everyone). Locked items still appear in the shop grid.
+  requiredTradingMastery?: number;
 };
 
 export type RpgItemDefinition = RpgInventoryItem | RpgPlaceableItem;
@@ -1918,7 +1922,39 @@ const RPG_MATERIAL_SHOP_CATALOG: Record<string, RpgPlaceableItem> = Object.fromE
     }]),
 );
 
-const SHOP_CATALOG_BASE = {
+// ─── Trading mastery vendor-stock tiers (RPG_PROGRESSION_LATTICE.md D4) ──────
+// Higher-value decor/statues/saplings are gated behind Trading mastery. Silver
+// (level 4) unlocks the premium relic/idol/sapling stock; Gold (level 7) unlocks
+// the marquee landmark pieces. Locked items stay VISIBLE in the shop; the buy is
+// blocked via hasRequiredMastery('trading', …) with a "Needs Trading Silver/Gold"
+// message. Keyed by shop item id — only ids that exist in SHOP_CATALOG_BASE.
+export const TRADING_MASTERY_SILVER_LEVEL = 4;
+export const TRADING_MASTERY_GOLD_LEVEL = 7;
+const SHOP_TRADING_GATES: Record<string, number> = {
+  // Silver (level 4) — premium forest idols, an ent guardian, and a temple statue.
+  Tree_idol_deer: TRADING_MASTERY_SILVER_LEVEL,
+  Tree_idol_human: TRADING_MASTERY_SILVER_LEVEL,
+  Tree_idol_wolf: TRADING_MASTERY_SILVER_LEVEL,
+  Ent_man: TRADING_MASTERY_SILVER_LEVEL,
+  Temple_winged_statue: TRADING_MASTERY_SILVER_LEVEL,
+  // Gold (level 7) — marquee landmark pieces (mega tree, dragon idol, facades).
+  Mega_tree1: TRADING_MASTERY_GOLD_LEVEL,
+  Tree_idol_dragon: TRADING_MASTERY_GOLD_LEVEL,
+  Ent_woman: TRADING_MASTERY_GOLD_LEVEL,
+  Temple_stone_facade: TRADING_MASTERY_GOLD_LEVEL,
+  Temple_overgrown_facade: TRADING_MASTERY_GOLD_LEVEL,
+};
+
+function applyTradingGates<T extends Record<string, RpgPlaceableItem>>(catalog: T): T {
+  const out = { ...catalog };
+  for (const [id, level] of Object.entries(SHOP_TRADING_GATES)) {
+    const item = out[id];
+    if (item) (out as Record<string, RpgPlaceableItem>)[id] = { ...item, requiredTradingMastery: level };
+  }
+  return out;
+}
+
+const SHOP_CATALOG_BASE = applyTradingGates({
   ...RPG_FOREST_OBJECT_CATALOG,
   ...RPG_CRYSTAL_OBJECT_CATALOG,
   ...RPG_BUSH_OBJECT_CATALOG,
@@ -1929,7 +1965,7 @@ const SHOP_CATALOG_BASE = {
   ...RPG_MATERIAL_SHOP_CATALOG,
   rpg_coin_mine: RPG_ITEM_CATALOG.rpg_coin_mine,
   rpg_materials_chest: RPG_ITEM_CATALOG.rpg_materials_chest,
-} satisfies Record<string, RpgPlaceableItem>;
+} satisfies Record<string, RpgPlaceableItem>);
 
 // Real shop prices are live (Wave 4 economy truth). Historically this zeroed
 // every price while testing big buildings; it is now false so buying costs coins.

@@ -22,6 +22,7 @@ import { RpgItemIcon } from './RpgItemIcon';
 import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
 import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
 import { getDecodedBlueprintIds, STATION_BLUEPRINT } from '../db/research';
+import { getMasteryLevel, getMasteryTier } from '../db/skills';
 
 type OwnedRow = {
   item_id: string;
@@ -146,6 +147,14 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
   // only appear once their blueprint is decoded at the Library (lattice D7).
   // Recomputed on open/refresh so a fresh decode surfaces the station.
   const decodedStations = useMemo(() => getDecodedBlueprintIds(), [isOpen, refreshKey]);
+  // Player's live Trading mastery level for the vendor-stock tier gate (D4).
+  // Recomputed on open/refresh so a fresh tier unlocks the locked stock.
+  const tradingMasteryLevel = useMemo(() => getMasteryLevel('trading'), [isOpen, refreshKey]);
+  const isTradingLocked = useCallback(
+    (item: ShopCatalogItem | undefined) =>
+      !!item?.requiredTradingMastery && tradingMasteryLevel < item.requiredTradingMastery,
+    [tradingMasteryLevel],
+  );
   const shopEntries = useMemo(
     () => Object.entries(SHOP_CATALOG).filter(([id]) => {
       const blueprintId = STATION_BLUEPRINT[id];
@@ -195,7 +204,11 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
   const selectedShortfall = Math.max(0, selectedPrice - coins);
   const panelWidth = Math.min(width - 24, 430);
   const panelMaxHeight = Math.min(height - 60, 710);
-  const selectedCanBuy = !!selectedEntry && selectedShortfall === 0;
+  const selectedLocked = isTradingLocked(selectedEntry?.[1]);
+  const selectedLockTier = selectedEntry?.[1].requiredTradingMastery
+    ? getMasteryTier(selectedEntry[1].requiredTradingMastery)
+    : null;
+  const selectedCanBuy = !!selectedEntry && selectedShortfall === 0 && !selectedLocked;
   const selectedMechanismHint = mechanismHint(selectedEntry?.[1]);
   const selectedDesignRole = getSanctuaryDesignRole(selectedEntry?.[1]);
   const selectedLayoutFits = getSanctuaryLayoutFitLabels(selectedEntry?.[1]);
@@ -385,6 +398,8 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
             const owned = ownedCounts[id] ?? 0;
             const isSelected = id === selectedId;
             const cardDesignRole = getSanctuaryDesignRole(item);
+            const locked = isTradingLocked(item);
+            const lockTier = item.requiredTradingMastery ? getMasteryTier(item.requiredTradingMastery) : null;
             return (
               <Pressable
                 key={id}
@@ -405,6 +420,12 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
                   {owned > 0 && (
                     <View style={styles.ownedBadge}>
                       <Text style={styles.ownedText}>{owned}</Text>
+                    </View>
+                  )}
+                  {locked && (
+                    <View style={styles.lockBadge}>
+                      <Feather name="lock" size={11} color="#ffdca8" />
+                      {lockTier && <Text style={styles.lockBadgeText}>{lockTier}</Text>}
                     </View>
                   )}
                 </View>
@@ -468,6 +489,12 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
               {selectedMechanismHint && (
                 <Text numberOfLines={1} style={styles.mechanismHint}>{selectedMechanismHint}</Text>
               )}
+              {selectedLocked && selectedLockTier && (
+                <View style={styles.lockHintRow}>
+                  <Feather name="lock" size={10} color="#ffb0a8" />
+                  <Text numberOfLines={1} style={styles.lockHintText}>Needs Trading {selectedLockTier}</Text>
+                </View>
+              )}
               {selectedDesignRole && (
                 <View style={styles.designRoleRow}>
                   <View style={[
@@ -529,9 +556,13 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
                 selectedCanBuyAndPlace && styles.buyButtonSplit,
               ]}
             >
-              <Feather name="shopping-bag" size={15} color={selectedCanBuy ? '#13351f' : '#fff2bb'} />
+              <Feather name={selectedLocked ? 'lock' : 'shopping-bag'} size={15} color={selectedCanBuy ? '#13351f' : '#fff2bb'} />
               <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.buyPrice, !selectedCanBuy && styles.buyPriceWarn]}>
-                {selectedCanBuy ? `Buy ${selectedPrice}` : selectedEntry ? `Need ${selectedShortfall}` : 'No item'}
+                {selectedCanBuy
+                  ? `Buy ${selectedPrice}`
+                  : selectedLocked && selectedLockTier
+                    ? `Trading ${selectedLockTier}`
+                    : selectedEntry ? `Need ${selectedShortfall}` : 'No item'}
               </Text>
             </Pressable>
             {selectedDirectPlaceable && (
@@ -899,6 +930,37 @@ const styles = StyleSheet.create({
     color: '#f7e6a5',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  lockBadge: {
+    position: 'absolute',
+    left: -3,
+    top: -3,
+    minHeight: 15,
+    paddingHorizontal: 3,
+    borderRadius: 7,
+    backgroundColor: 'rgba(30,19,14,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,220,168,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  lockBadgeText: {
+    color: '#ffdca8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 7,
+    textTransform: 'uppercase',
+  },
+  lockHintRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  lockHintText: {
+    color: '#ffb0a8',
+    fontFamily: fonts.ui.bold,
+    fontSize: 9,
   },
   pricePill: {
     minHeight: 22,
