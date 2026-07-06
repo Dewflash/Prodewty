@@ -1973,6 +1973,40 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 99');
   }
+
+  if (version < 100) {
+    // ── Wave 5a — Livestock v1 (RPG_PROGRESSION_LATTICE.md Wave 5) ──
+    // System-B rebuild of livestock (the ONE mastery with no accrual path). The
+    // legacy livestock.ts/animals.ts tables (rpg_animals, …) are treated as
+    // MISSING per the lattice gap audit and are ignored — this is a fresh,
+    // self-contained store keyed to a completed Coop/Barn object.
+    //
+    //  • building_object_id — the sanctuary_objects id of the Coop/Barn housing
+    //    this animal (capacity is checked per that building's level).
+    //  • happiness — 0-100, clamped by LivestockLogic (starts 50).
+    //  • fed_day / petted_day — logical-day buckets (dayBoundary.logicalToday())
+    //    so feed/pet are once-per-day and the nightly processor is idempotent.
+    //  • last_produce_day — the logical day produce was last made available, so
+    //    the overnight readiness pass runs at most once per logical day.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_livestock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        animal_type TEXT NOT NULL,
+        building_object_id INTEGER,
+        object_id INTEGER,
+        name TEXT,
+        happiness INTEGER NOT NULL DEFAULT 50,
+        fed_day TEXT,
+        petted_day TEXT,
+        last_produce_day TEXT,
+        born_at TEXT
+      );
+    `);
+    // object_id links the animal's placed sanctuary_objects row so tapping the
+    // in-world animal resolves its livestock state directly (set after the caller
+    // inserts the object — see db/livestockState.ts linkLivestockObject).
+    db.execSync('PRAGMA user_version = 100');
+  }
 }
 
 function addExtendedSkillPointsColumns() {

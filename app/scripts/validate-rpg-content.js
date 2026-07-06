@@ -1833,17 +1833,23 @@ function validateFarmAnimalsV1() {
   if (catalog.includes("description: 'Fresh milk from a Calf. Placeholder droplet art")) {
     fail('Milk must no longer use water-drop placeholder copy');
   }
-  if (!rpgScreen.includes('const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;')) {
-    fail('Animal product collection must have an explicit cooldown');
+  // Wave 5a — livestock v1: produce is gated once-per-logical-day via
+  // rpg_livestock (last_produce_day), armed by the overnight readiness pass,
+  // not a millisecond forage cooldown.
+  if (!rpgScreen.includes('const collect = collectProduce(state.id);')) {
+    fail('Animal product collection must run through the once/day livestock loop');
   }
   if (!rpgScreen.includes('const isFarmAnimalObject = (item: ShopCatalogItem)')) {
     fail('RPG screen must centralize farm animal object detection');
   }
-  if (!rpgScreen.includes('const collectAnimalProduct = (object: MapObject, item: ShopCatalogItem)')) {
+  // Wave 5a — livestock v1: animal Interact is now a contextual
+  // Collect/Feed/Pet loop backed by rpg_livestock (interactWithAnimal), which
+  // superseded the legacy collectAnimalProduct forage stub.
+  if (!rpgScreen.includes('const interactWithAnimal = (object: MapObject, item: ShopCatalogItem)')) {
     fail('RPG screen must expose animal product collection through Interact');
   }
-  if (!rpgScreen.includes('addSandboxInventoryItem(drop.itemId, drop.quantity, \'forage\')')) {
-    fail('Animal products must be granted through inventory/discovery helper');
+  if (!rpgScreen.includes('const collect = collectProduce(state.id);')) {
+    fail('Animal Interact must collect produce through the livestock state module');
   }
   if (!rpgScreen.includes('if (isFarmAnimalObject(item))')) {
     fail('Interact object flow must route farm animals before generic forage handling');
@@ -1905,7 +1911,6 @@ function validateObjectInteractionReactionsV1() {
     "showPlotReaction(plot, result.stage >= 2 ? 'mature' : '+growth', getRpgItem(RPG_WATER_DROPS_ITEM_ID), 'success');",
     "showPlotReaction(plot, `${growth.remainingMinutes}m`, getRpgItem(plot.seed_item_id), 'muted');",
     "showPlotReaction(plot, cropAffinityDrop ? 'season+' : `+${result.coins}`, affinityItem ?? firstDropItem ?? seasonalItem ?? getRpgItem(plot.seed_item_id), 'success');",
-    "showObjectReaction(object, 'rest', item, 'muted');",
     "showObjectReaction(object, '...', item, 'muted');",
     "showObjectReaction(object, isOn ? 'ON' : 'OFF', item, affected.length ? 'success' : 'muted');",
     "showObjectReaction(object, isDisabled ? 'safe' : 'armed', item, isDisabled ? 'success' : 'muted');",

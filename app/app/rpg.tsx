@@ -23,7 +23,7 @@ import { RpgBackpack } from '../src/engine/RpgBackpack';
 import { RpgArchive } from '../src/engine/RpgArchive';
 import { RpgItemIcon, RpgItemWorldArt, RpgSpriteFrameView } from '../src/engine/RpgItemIcon';
 import { SanctuaryObject } from '../src/engine/SanctuaryObject';
-import { SanctuaryShop } from '../src/engine/SanctuaryShop';
+import { SanctuaryShop, type ShopPurchaseResult } from '../src/engine/SanctuaryShop';
 import {
   getCropForSeed,
   getPlaceableItem,
@@ -118,6 +118,16 @@ import {
   gateMet, gateMessage, CHAT_FRIENDSHIP_GAIN, CHAT_LANGUAGE_POINTS,
   GIFTS_PER_VILLAGER_PER_DAY,
 } from '../src/engine/VillagerLogic';
+import {
+  getLivestockDefByObjectType, type LivestockBuilding,
+} from '../src/engine/LivestockLogic';
+import { getLivestockUpgradeDef, isLivestockBuildingType } from '../src/engine/BuildingCatalog';
+import {
+  buyAnimal, feedAnimal, petAnimal, collectProduce,
+  linkLivestockObject, removeLivestockByObjectId, getLivestockByObjectId,
+  countLivestockForBuilding, buildingCapacity as livestockCapacity,
+  LIVESTOCK_FEED_ITEM_ID,
+} from '../src/db/livestockState';
 import {
   combatDamage,
   fishingWindowMultiplier,
@@ -321,7 +331,6 @@ const EQUIPPABLE_TOOL_ITEM_IDS = ['rpg_axe_basic', 'rpg_pickaxe_basic', 'rpg_hoe
 // there'd be no way to test terrain-edit placement otherwise.
 const STARTER_TOOL_ITEM_IDS = [...EQUIPPABLE_TOOL_ITEM_IDS, ...TERRAIN_EDIT_ITEM_IDS];
 const CLUTTER_ENERGY_COST = 3;
-const ANIMAL_PRODUCT_COOLDOWN_MS = 30000;
 const CLUTTER_ITEM_IDS = ['rpg_clutter_weeds', 'rpg_clutter_twig', 'rpg_clutter_rock'];
 const STARTER_CLUTTER_SPAWNS = [
   { type: 'rpg_clutter_weeds', row: 4, col: 5 },
@@ -1978,6 +1987,13 @@ export default function RpgScreen() {
         throw new Error('Failed to clean object relations');
       }
       db.runSync('DELETE FROM sanctuary_objects WHERE id = ?', selectedObject.id);
+      // Livestock v1: stashing an animal object retires its rpg_livestock row so
+      // capacity accounting stays honest (the animal isn't re-placeable from the
+      // bag — it must be re-bought through the Coop/Barn — but this keeps counts
+      // correct if it's ever re-added).
+      if (getLivestockDefByObjectType(selectedObject.type)) {
+        removeLivestockByObjectId(selectedObject.id);
+      }
       db.runSync(
         `INSERT INTO user_inventory (item_id, quantity) VALUES (?, 1)
          ON CONFLICT(item_id) DO UPDATE SET quantity = quantity + 1`,
@@ -2025,6 +2041,12 @@ export default function RpgScreen() {
   };
 
   const purchaseShopItem = (itemId: string, price: number) => {
+    // Livestock v1: animals aren't generic placeables — buying one requires a
+    // completed Coop/Barn with free capacity and auto-places the animal by it
+    // (buyLivestockAnimal owns the atomic coin spend + rpg_livestock row).
+    if (getLivestockDefByObjectType(itemId)) {
+      return buyLivestockAnimal(itemId);
+    }
     try {
       const state = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1');
       const item = getRpgItem(itemId);
@@ -3104,38 +3126,158 @@ export default function RpgScreen() {
 
   const isFarmAnimalObject = (item: ShopCatalogItem) => item.tags?.includes('animal') && item.tags?.includes('livestock');
 
-  const getAnimalProductText = (item: ShopCatalogItem, dropDef: RpgItemDefinition | null, quantity: number) => {
-    const reward = `+${quantity} ${dropDef?.name ?? 'product'}`;
-    if (item.tags?.includes('chick')) return `Collected egg: ${reward}`;
-    if (item.tags?.includes('piglet')) return `Piglet found: ${reward}`;
-    if (item.tags?.includes('sheep')) return `Gathered wool: ${reward}`;
-    if (item.tags?.includes('calf')) return `Collected milk: ${reward}`;
-    return `Animal product: ${reward}`;
+  // ─── Livestock v1 (RPG_PROGRESSION_LATTICE.md Wave 5) ────────────────────
+  // The placed animal is a sanctuary_objects row whose `type` is its objectType
+  // (Farm_chick/…). Its state lives in rpg_livestock, linked by object_id. A
+  // single Interact runs the highest-priority contextual action: Collect a ready
+  // produce → else Feed (once/day, costs 1 hay) → else Pet (once/day) → else a
+  // status line. Mirrors the villager gift-then-chat single-button priority.
+
+  // The completed Coop/Barn that houses `building` role, if any (nearest to the
+  // avatar is preferred so a buy lands by the building the player is standing at).
+  const findLivestockBuilding = (building: LivestockBuilding): { objectId: number; level: number; row: number; col: number } | null => {
+    let best: { objectId: number; level: number; row: number; col: number } | null = null;
+    let bestScore = Infinity;
+    const avatarRow = Math.floor((avatarY.value + AVATAR_FOOT_BOX.offsetY) / TILE_SIZE);
+    const avatarCol = Math.floor((avatarX.value + AVATAR_FOOT_BOX.offsetX) / TILE_SIZE);
+    for (const obj of mapObjects) {
+      const def = getBuildingDef(obj.type);
+      if (def?.type !== building) continue;
+      const construction = getConstructionForObject(obj.id);
+      if (!construction?.is_complete) continue;
+      const dr = obj.row - avatarRow;
+      const dc = obj.col - avatarCol;
+      const score = dr * dr + dc * dc;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { objectId: obj.id, level: construction.level ?? 1, row: obj.row, col: obj.col };
+      }
+    }
+    return best;
   };
 
-  const collectAnimalProduct = (object: MapObject, item: ShopCatalogItem) => {
-    const now = Date.now();
-    if ((forageCooldowns.current[object.id] ?? 0) > now) {
+  // A free, walkable tile adjacent to (below/around) the building footprint to
+  // drop the animal object. Falls back to the building's own anchor tile.
+  const findFreeTileNearBuilding = (building: { row: number; col: number; objectId: number }): { row: number; col: number } => {
+    const buildingDef = mapObjects.find(o => o.id === building.objectId);
+    const def = buildingDef ? getBuildingDef(buildingDef.type) : null;
+    const width = def?.colWidth ?? 1;
+    const height = def?.colHeight ?? 1;
+    const occupied = new Set(mapObjects.map(o => `${o.row}:${o.col}`));
+    // Scan a ring just below then around the building for the first empty tile.
+    for (let c = building.col; c < building.col + width; c++) {
+      const r = building.row + height;
+      if (!occupied.has(`${r}:${c}`)) return { row: r, col: c };
+    }
+    for (let r = building.row; r < building.row + height; r++) {
+      for (const c of [building.col - 1, building.col + width]) {
+        if (!occupied.has(`${r}:${c}`)) return { row: r, col: c };
+      }
+    }
+    return { row: building.row + height, col: building.col };
+  };
+
+  // Animal purchase (routed here from purchaseShopItem for animal shop items).
+  // Requires a completed Coop/Barn with free capacity; buyAnimal deducts coins +
+  // creates the row atomically, then we place the world object near the building
+  // and link it. Returns the shop-style result the shop UI expects.
+  const buyLivestockAnimal = (objectType: string): ShopPurchaseResult => {
+    const def = getLivestockDefByObjectType(objectType);
+    const item = getPlaceableItem(objectType);
+    if (!def) return { ok: false as const, message: 'Unknown animal' };
+
+    const target = findLivestockBuilding(def.housing);
+    if (!target) {
+      const msg = `Build a ${def.housing} first`;
+      showWorldToast({ text: msg, item, tone: 'warn' });
+      return { ok: false as const, message: msg };
+    }
+    const count = countLivestockForBuilding(target.objectId);
+    if (count >= livestockCapacity(target.level)) {
+      const msg = `${def.housing} is full (${count}/${livestockCapacity(target.level)})`;
+      showWorldToast({ text: msg, item, tone: 'warn' });
+      return { ok: false as const, message: msg };
+    }
+
+    const result = buyAnimal(def.animalType, def.housing, target.objectId, target.level);
+    if (!result.ok) {
+      const msg = result.reason === 'insufficient_coins' ? `Need ${def.buyPrice} coins`
+        : result.reason === 'no_capacity' ? `${def.housing} is full`
+        : result.reason === 'wrong_building' ? `A ${def.housing} can't house a ${def.name}`
+        : 'Could not buy animal';
+      showWorldToast({ text: msg, item, tone: 'warn' });
+      return { ok: false as const, message: msg };
+    }
+
+    // Place the animal's world object near the building, then link it.
+    const tile = findFreeTileNearBuilding(target);
+    const insert = db.runSync(
+      'INSERT INTO sanctuary_objects (type, row, col) VALUES (?, ?, ?)',
+      objectType, tile.row, tile.col,
+    );
+    linkLivestockObject(result.livestockId, insert.lastInsertRowId);
+    recordRpgDiscovery(objectType, 'buy');
+    refreshCoins();
+    bumpInventoryRevision();
+    const freshObjects = refreshMapObjects();
+    applyMovementCollision(freshObjects);
+    pulseObject(insert.lastInsertRowId);
+    showWorldToast({ text: `Bought ${def.name} · placed by your ${def.housing}`, item, tone: 'success' });
+    return { ok: true as const, message: `Bought ${def.name}` };
+  };
+
+  // Contextual single-Interact for a placed animal (Collect > Feed > Pet > status).
+  const interactWithAnimal = (object: MapObject, item: ShopCatalogItem) => {
+    const state = getLivestockByObjectId(object.id);
+    const def = getLivestockDefByObjectType(object.type);
+    if (!state || !def) {
+      // An animal object with no livestock row (e.g. a pre-Wave-5a placement).
+      showWorldToast({ text: `${item.name} looks after itself`, item, tone: 'muted' });
       showObjectReaction(object, '...', item, 'muted');
-      showWorldToast({ text: 'Animal needs a little time', item, tone: 'muted' });
       return;
     }
 
-    forageCooldowns.current[object.id] = now + ANIMAL_PRODUCT_COOLDOWN_MS;
-    const drop = rollForageDrop(item.forageDrops ?? []);
-    if (!drop) {
-      showObjectReaction(object, 'rest', item, 'muted');
-      showWorldToast({ text: `${item.name} is resting`, item, tone: 'muted' });
+    // 1. Collect ready produce.
+    const collect = collectProduce(state.id);
+    if (collect.ok) {
+      const produceDef = getRpgItem(collect.produceItemId);
+      bumpInventoryRevision();
+      showObjectReaction(object, `+${collect.quantity}`, produceDef, 'success');
+      showWorldToast({
+        text: `Collected ${collect.quantity} ${collect.produceName} from ${def.name}`,
+        item: produceDef, tone: 'success',
+      });
       return;
     }
 
-    const dropDef = getRpgItem(drop.itemId);
-    addSandboxInventoryItem(drop.itemId, drop.quantity, 'forage');
-    showObjectReaction(object, `+${drop.quantity}`, dropDef, 'success');
+    // 2. Feed (once/day, costs 1 hay).
+    const feed = feedAnimal(state.id);
+    if (feed.ok) {
+      bumpInventoryRevision();
+      showObjectReaction(object, '🌾', item, 'success');
+      showWorldToast({ text: `Fed ${def.name} (happiness ${feed.happiness})`, item, tone: 'success' });
+      return;
+    }
+    if (feed.reason === 'no_feed') {
+      const hayDef = getRpgItem(LIVESTOCK_FEED_ITEM_ID);
+      showObjectReaction(object, 'hay?', hayDef, 'warn');
+      showWorldToast({ text: `Need Hay to feed ${def.name}`, item: hayDef, tone: 'warn' });
+      return;
+    }
+
+    // 3. Pet (once/day).
+    const pet = petAnimal(state.id);
+    if (pet.ok) {
+      showObjectReaction(object, '♥', item, 'success');
+      showWorldToast({ text: `Petted ${def.name} (+happiness ${pet.happiness})`, item, tone: 'success' });
+      return;
+    }
+
+    // 4. Nothing to do today — status line.
+    showObjectReaction(object, `${state.happiness}%`, item, 'muted');
     showWorldToast({
-      text: getAnimalProductText(item, dropDef, drop.quantity),
-      item: dropDef,
-      tone: 'success',
+      text: `${def.name} is content today (happiness ${state.happiness})`,
+      item, tone: 'muted',
     });
   };
 
@@ -3505,6 +3647,68 @@ export default function RpgScreen() {
     showObjectReaction(object, '⬆', item, 'success');
   };
 
+  // Coop/Barn capacity upgrade (Wave 5a). Same two-phase timed rebuild as
+  // upgradeBuilding, but keyed by building TYPE (Coop/Barn have no role) via
+  // getLivestockUpgradeDef; lvl 2 raises housing capacity 2 → 4.
+  const upgradeLivestockBuilding = (object: MapObject, def: ReturnType<typeof getBuildingDef>) => {
+    if (!def) return;
+    const item = getPlaceableItem(object.type);
+    const construction = getConstructionForObject(object.id);
+    if (!construction) {
+      showWorldToast({ text: 'No construction record', item, tone: 'warn' });
+      return;
+    }
+    if (!construction.is_complete) {
+      showWorldToast({ text: `${def.name} is still being built`, item, tone: 'muted' });
+      return;
+    }
+    const level = construction.level ?? 1;
+    const capNow = livestockCapacity(level);
+    const upgrade = getLivestockUpgradeDef(def.type, level);
+    if (!upgrade) {
+      showWorldToast({ text: `${def.name} · Lv ${level} (cap ${capNow}, max)`, item, tone: 'muted' });
+      return;
+    }
+    const playerCoins = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1')?.coins ?? 0;
+    if (playerCoins < upgrade.coins) {
+      showWorldToast({ text: `Need ${upgrade.coins} coins`, item, tone: 'warn' });
+      return;
+    }
+    for (const mat of upgrade.materials) {
+      if (getInventoryQuantity(mat.itemId) < mat.quantity) {
+        const matItem = getRpgItem(mat.itemId);
+        showWorldToast({ text: `Need ${mat.quantity} ${matItem?.name ?? mat.itemId}`, item: matItem, tone: 'warn' });
+        return;
+      }
+    }
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      if (upgrade.coins > 0) db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', upgrade.coins);
+      for (const mat of upgrade.materials) {
+        db.runSync('UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ?', mat.quantity, mat.itemId);
+      }
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to spend livestock upgrade cost', e);
+      showWorldToast({ text: 'Could not start upgrade', item, tone: 'warn' });
+      return;
+    }
+    const result = startUpgrade(object.id, object.type, upgrade.targetLevel);
+    if (!result.ok) {
+      showWorldToast({ text: 'Could not start upgrade', item, tone: 'warn' });
+      return;
+    }
+    refreshCoins();
+    bumpInventoryRevision();
+    refreshMapObjects();
+    showWorldToast({
+      text: `Upgrading ${def.name} to Lv ${upgrade.targetLevel} (cap ${livestockCapacity(upgrade.targetLevel)})`,
+      item, tone: 'success',
+    });
+    showObjectReaction(object, '⬆', item, 'success');
+  };
+
   // ─── Town Hall bundles (Wave 4) ─────────────────────────────────────────
   // Interacting a completed Village Hearth opens the donation panel. A build
   // still in progress reports its status (matches upgradeBuilding's behaviour).
@@ -3676,6 +3880,15 @@ export default function RpgScreen() {
       return;
     }
 
+    // Livestock buildings (Coop/Barn, Wave 5a): not part of the 6-role shell
+    // model, so they get their own upgrade branch — tapping a completed one
+    // bumps capacity (2 → 4 animals) via the same two-phase timed rebuild.
+    const buildingDefForObjectEarly = getBuildingDef(object.type);
+    if (buildingDefForObjectEarly && isLivestockBuildingType(buildingDefForObjectEarly.type)) {
+      upgradeLivestockBuilding(object, buildingDefForObjectEarly);
+      return;
+    }
+
     // Building shells (lattice D6): interacting a completed building attempts an
     // upgrade to the next level; an in-progress build just reports its status.
     const buildingDefForObject = getBuildingDef(object.type);
@@ -3761,7 +3974,7 @@ export default function RpgScreen() {
     }
 
     if (isFarmAnimalObject(item)) {
-      collectAnimalProduct(object, item);
+      interactWithAnimal(object, item);
       return;
     }
 
@@ -6424,7 +6637,12 @@ export default function RpgScreen() {
             setIsCraftingOpen(false);
             setIsExploreOpen(false);
             setIsBundlesOpen(false);
-            handleBackpackPlaceItem(itemId);
+            // Livestock animals are auto-placed by their building inside
+            // buyLivestockAnimal — they never enter inventory, so skip the
+            // manual place step (handleBackpackPlaceItem would find no item).
+            if (!getLivestockDefByObjectType(itemId)) {
+              handleBackpackPlaceItem(itemId);
+            }
           }
           return result;
         }}

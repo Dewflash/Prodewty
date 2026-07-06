@@ -59,7 +59,8 @@
     "test:villager": "npx tsx src/engine/VillagerLogic.test.ts",
     "test:research": "npx tsx src/engine/ResearchLogic.test.ts",
     "test:bundles": "npx tsx src/engine/BundleCatalog.test.ts",
-    "test:all": "npm run test:zones && npm run test:farming && npm run test:fishing && npm run test:catch && npm run test:combat && npm run test:stats && npm run test:villager && npm run test:research && npm run test:bundles"
+    "test:livestock": "npx tsx src/engine/LivestockLogic.test.ts",
+    "test:all": "npm run test:zones && npm run test:farming && npm run test:fishing && npm run test:catch && npm run test:combat && npm run test:stats && npm run test:villager && npm run test:research && npm run test:bundles && npm run test:livestock"
   },
   "private": true
 }

@@ -2,6 +2,7 @@ import { db } from './schema';
 import { getRPGState, RPGState } from './rpg';
 import { processOvernightFarming, FarmingPlot } from './farming';
 import { processOvernightAnimals, RpgAnimal } from './animals';
+import { processOvernightLivestock } from './livestockState';
 import { resetOvernightResources } from './resources';
 import { resetWeeklyGifts } from './relationships';
 import { resetMinesOvernight } from './mines';
@@ -69,6 +70,10 @@ export function sleepOvernight(): 'ok' | 'db_error' {
     // Run subsystem updates
     processOvernightFarming(seasonChanged ? newSeason : undefined);
     processOvernightAnimals();
+    // Wave 5a — System-B livestock daily happiness decay + produce readiness.
+    // Idempotent per logical day (guarded internally), so a double sleep in the
+    // same logical day won't double-decay.
+    processOvernightLivestock();
     resetOvernightResources();
     resetMinesOvernight();
 
@@ -169,6 +174,10 @@ export function reconcileOfflineTime(daysPassed: number): 'ok' | 'db_error' {
     db.execSync('COMMIT');
 
     resetOvernightResources();
+    // Wave 5a livestock: a single idempotent daily pass covers the offline gap
+    // (v1 collapses multi-day-away decay into one step, matching how it treats a
+    // single sleep; the guard makes re-entry on the same logical day a no-op).
+    processOvernightLivestock();
     return 'ok';
   } catch (e) {
     try { db.execSync('ROLLBACK'); } catch {}

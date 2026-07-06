@@ -352,6 +352,45 @@ export function getUpgradeDef(role: BuildingRole, currentLevel: number): Buildin
   return BUILDING_UPGRADES[role]?.[target] ?? null;
 }
 
+// ─── Livestock building upgrades (RPG_PROGRESSION_LATTICE.md Wave 5) ──────────
+// Coop/Barn are NOT part of the 6-role container model (no `role`), so their
+// level upgrades can't ride the role-keyed BUILDING_UPGRADES table. They get a
+// parallel, TYPE-keyed table following the exact same pattern: lvl-2 doubles the
+// housing capacity (2 → 4 animals per LivestockLogic.buildingCapacity). No
+// prerequisite gate — the gate is simply owning + affording the upgrade.
+export type LivestockBuildingType = 'Coop' | 'Barn';
+export const MAX_LIVESTOCK_BUILDING_LEVEL = 2;
+
+const LIVESTOCK_BUILDING_UPGRADES_BASE: Record<LivestockBuildingType, Record<number, BuildingUpgradeDef>> = {
+  Coop: {
+    2: { targetLevel: 2, coins: 2000, materials: [{ itemId: 'rpg_wood', quantity: 150 }, { itemId: 'rpg_stone', quantity: 60 }] },
+  },
+  Barn: {
+    2: { targetLevel: 2, coins: 3000, materials: [{ itemId: 'rpg_wood', quantity: 180 }, { itemId: 'rpg_stone', quantity: 80 }] },
+  },
+};
+
+export const LIVESTOCK_BUILDING_UPGRADES: Record<LivestockBuildingType, Record<number, BuildingUpgradeDef>> =
+  TESTING_FREE_BUILDINGS
+    ? {
+        Coop: { 2: { ...LIVESTOCK_BUILDING_UPGRADES_BASE.Coop[2], coins: 0, materials: [] } },
+        Barn: { 2: { ...LIVESTOCK_BUILDING_UPGRADES_BASE.Barn[2], coins: 0, materials: [] } },
+      }
+    : LIVESTOCK_BUILDING_UPGRADES_BASE;
+
+// Upgrade def taking a Coop/Barn from currentLevel → currentLevel+1, or null if
+// already at MAX_LIVESTOCK_BUILDING_LEVEL / not a livestock building type.
+export function getLivestockUpgradeDef(type: string, currentLevel: number): BuildingUpgradeDef | null {
+  if (type !== 'Coop' && type !== 'Barn') return null;
+  const target = currentLevel + 1;
+  if (target > MAX_LIVESTOCK_BUILDING_LEVEL) return null;
+  return LIVESTOCK_BUILDING_UPGRADES[type][target] ?? null;
+}
+
+export function isLivestockBuildingType(type: string): type is LivestockBuildingType {
+  return type === 'Coop' || type === 'Barn';
+}
+
 // Flavor suffix for a building's current level, e.g. "Forgotten Chamber · Lv 2".
 // Library levels carry the doc's flavor (Understanding → Wisdom); other roles
 // just show the number.
