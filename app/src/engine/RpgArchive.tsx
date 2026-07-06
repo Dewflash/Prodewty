@@ -26,6 +26,11 @@ import { RpgSpriteAnimationView, RpgSpriteFrameView } from './RpgItemIcon';
 import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
 import { getSanctuaryTerrainPaintTarget, SanctuaryTerrainPaintIcon, SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
 import { getMasteryLevel, getMasteryTier } from '../db/skills';
+import {
+  getUnderstoodItemIds, getActiveResearchJobs, researchTierForItem,
+  type ResearchJob,
+} from '../db/research';
+import { sqlNow } from '../utils/date';
 
 // Discovery/Understanding ladder (RPG_ARCHITECTURE.md): an item's own
 // rarity maps to a required Research mastery tier. Reaching the tier
@@ -68,12 +73,19 @@ type ArchiveEntryState = RpgArchiveEntry & {
   discovered: boolean;
   discovery: RpgDiscoveryRow | null;
   asset: RpgAssetDefinition | null;
+  // Lattice D7: an active/finished Inspect job for this item, if any.
+  researchJob: ResearchJob | null;
 };
 
 type Props = {
   isOpen: boolean;
   refreshKey: number;
+  // Level of a completed Library in reach (null = not at a Library → no Inspect
+  // action shown, browse-only). Lattice D7.
+  libraryLevel?: number | null;
   onClose: () => void;
+  onStartResearch?: (itemId: string) => void;
+  onClaimResearch?: (jobId: number, itemId: string) => void;
 };
 
 const PAGE_SIZE = 6;
@@ -239,7 +251,8 @@ function ArchiveItemArt({ itemId, asset, discovered, known }: {
   );
 }
 
-export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
+export function RpgArchive({ isOpen, refreshKey, libraryLevel, onClose, onStartResearch, onClaimResearch }: Props) {
+  const atLibrary = libraryLevel != null;
   const { width, height } = useWindowDimensions();
   const [filter, setFilter] = useState<ArchiveFilter>('all');
   const [source, setSource] = useState<RpgSourcePackId>('all');
@@ -263,6 +276,9 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
     try {
       const counts = loadCounts();
       const researchTierRank = getResearchTierRank();
+      const understood = getUnderstoodItemIds();
+      const researchJobs = getActiveResearchJobs();
+      const jobsByItem = new Map(researchJobs.map(job => [job.item_id, job]));
       const nextEntries = getRpgArchiveEntries().map(entry => {
         const quantity = counts.inventory[entry.itemId] ?? 0;
         const placed = counts.placed[entry.itemId] ?? 0;
@@ -272,8 +288,10 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
         // mastery one tier below the item's own rarity tier.
         const seenOrOwned = !!discovery || quantity > 0 || placed > 0;
         const discovered = seenOrOwned && researchTierRank + 1 >= requiredTierRank;
-        // Known = "Understood" — reached the item's own rarity tier.
-        const known = discovered && researchTierRank >= requiredTierRank;
+        // Known = "Understood" — either the global Research tier reached the
+        // item's own rarity tier, OR the player researched THIS item at the
+        // Library (rpg_understanding). Lattice D7 makes Inspect a per-item path.
+        const known = discovered && (researchTierRank >= requiredTierRank || understood.has(entry.itemId));
         return {
           ...entry,
           quantity,
@@ -282,6 +300,7 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
           discovered,
           discovery,
           asset: getRpgAsset(entry.iconAssetId ?? entry.assetId),
+          researchJob: jobsByItem.get(entry.itemId) ?? null,
         };
       });
       setEntries(nextEntries);
@@ -620,6 +639,41 @@ export function RpgArchive({ isOpen, refreshKey, onClose }: Props) {
               ))}
             </View>
           )}
+
+          {/* Library research action (lattice D7). Only for a Discovered-but-
+              -not-Understood item while a completed Library is in reach. */}
+          {atLibrary && selected && selected.discovered && !selected.known && (() => {
+            const job = selected.researchJob;
+            const ready = job ? job.completes_at <= sqlNow() : false;
+            const tier = researchTierForItem(selected.itemId);
+            if (job) {
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={ready ? `Claim research on ${selected.name}` : 'Research in progress'}
+                  disabled={!ready}
+                  onPress={() => ready && onClaimResearch?.(job.id, selected.itemId)}
+                  style={[styles.researchButton, !ready && styles.researchButtonBusy]}
+                >
+                  <Feather name={ready ? 'check' : 'clock'} size={13} color={ready ? '#20130e' : '#f7e6a5'} />
+                  <Text style={[styles.researchButtonText, !ready && styles.researchButtonTextBusy]}>
+                    {ready ? 'Claim understanding' : 'Researching…'}
+                  </Text>
+                </Pressable>
+              );
+            }
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Inspect ${selected.name} to research it`}
+                onPress={() => onStartResearch?.(selected.itemId)}
+                style={styles.researchButton}
+              >
+                <Feather name="search" size={13} color="#20130e" />
+                <Text style={styles.researchButtonText}>Inspect · research (T{tier})</Text>
+              </Pressable>
+            );
+          })()}
         </View>
       </View>
     </View>
@@ -1069,5 +1123,29 @@ const styles = StyleSheet.create({
     color: 'rgba(255,242,187,0.84)',
     fontFamily: fonts.ui.bold,
     fontSize: 8,
+  },
+  researchButton: {
+    marginTop: 8,
+    minHeight: 30,
+    paddingHorizontal: 10,
+    borderRadius: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#f7e6a5',
+  },
+  researchButtonBusy: {
+    backgroundColor: 'rgba(247,230,165,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(247,230,165,0.34)',
+  },
+  researchButtonText: {
+    color: '#20130e',
+    fontFamily: fonts.ui.bold,
+    fontSize: 10,
+  },
+  researchButtonTextBusy: {
+    color: '#f7e6a5',
   },
 });

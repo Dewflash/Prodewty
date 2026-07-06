@@ -49,6 +49,9 @@ type Props = {
   onSellItem: (itemId: string) => void;
   onSellAllItem: (itemId: string) => void;
   onUseOnNearestPlot: (itemId: string) => void;
+  // Lattice D7: a completed Library is in reach, so blueprints can be decoded.
+  canDecodeBlueprint?: boolean;
+  onDecodeBlueprint?: (itemId: string) => void;
 };
 
 const PLOT_USE_ITEM_IDS = new Set(['rpg_fertiliser', 'rpg_sprinkler']);
@@ -144,6 +147,8 @@ export function RpgBackpack({
   onSellItem,
   onSellAllItem,
   onUseOnNearestPlot,
+  canDecodeBlueprint = false,
+  onDecodeBlueprint,
 }: Props) {
   const { width, height } = useWindowDimensions();
   const [inventory, setInventory] = useState<InventorySlot[]>([]);
@@ -597,6 +602,17 @@ export function RpgBackpack({
             >
               <Feather name="droplet" size={14} color="#fff" />
               <Text style={styles.placeText}>Use on nearest plot</Text>
+            </Pressable>
+          ) : selected && (selectedItem?.tags ?? []).includes('blueprint') ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={canDecodeBlueprint ? `Decode ${selectedName} at the Library` : 'Decode at the Library'}
+              disabled={!canDecodeBlueprint}
+              onPress={() => selected && onDecodeBlueprint?.(selected.item_id)}
+              style={[styles.placeButton, !canDecodeBlueprint && styles.disabledButton]}
+            >
+              <Feather name="unlock" size={14} color="#fff" />
+              <Text style={styles.placeText}>{canDecodeBlueprint ? 'Decode at Library' : 'Needs a built Library'}</Text>
             </Pressable>
           ) : selected && selectedSellPrice > 0 ? (
             <>

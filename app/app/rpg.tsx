@@ -80,8 +80,13 @@ import { bootstrapSanctuaryGrowth, getPlotGrowthInfo } from '../src/engine/Sanct
 import { RPG_CRYSTAL_SHARDS_ITEM_ID, RPG_STONE_ITEM_ID, RPG_WATER_DROPS_ITEM_ID, RPG_WOOD_ITEM_ID } from '../src/engine/RpgItemIds';
 import { getToolDef } from '../src/engine/ToolCatalog';
 import { equipItem, getEquipment, unequipItem } from '../src/db/equipment';
-import { getBuildingDef, isBuildingShell, isStation, type BuildingRole } from '../src/engine/BuildingCatalog';
-import { startConstruction, checkAndCompleteConstructions, getConstructionForObject } from '../src/db/construction';
+import { getBuildingDef, isBuildingShell, isStation, getUpgradeDef, buildingLevelLabel, type BuildingRole } from '../src/engine/BuildingCatalog';
+import { startConstruction, startUpgrade, checkAndCompleteConstructions, getConstructionForObject } from '../src/db/construction';
+import {
+  startResearch, claimResearch, getActiveResearchJobs, getResearchJobForItem,
+  researchSlotsForLibraryLevel, isUnderstood, researchTierForItem,
+  decodeBlueprint, isStationBuildable,
+} from '../src/db/research';
 import { startCrafting, claimCrafting, getActiveCraftingJobs, type CraftingJob } from '../src/db/crafting';
 import { getCraftingRecipe, getAllCraftingRecipes } from '../src/engine/CraftingCatalog';
 import { sqlNow } from '../src/utils/date';
@@ -501,6 +506,14 @@ export default function RpgScreen() {
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  // Library level in reach when the Archive was opened (null = not at a Library,
+  // so no Inspect action). Captured on open so the Archive's Inspect flow knows
+  // the research slot count. See getLibraryContext / lattice D7.
+  const [archiveLibraryLevel, setArchiveLibraryLevel] = useState<number | null>(null);
+  const [researchRevision, setResearchRevision] = useState(0);
+  // Whether a completed Library was in reach when the Backpack was opened
+  // (enables blueprint decode; lattice D7).
+  const [backpackAtLibrary, setBackpackAtLibrary] = useState(false);
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
   const [isExploreOpen, setIsExploreOpen] = useState(false);
@@ -1148,7 +1161,18 @@ export default function RpgScreen() {
       if (object) {
         const item = getPlaceableItem(object.type);
         const tags = item?.tags ?? [];
+        const buildingDef = getBuildingDef(object.type);
+        const isShell = buildingDef ? isBuildingShell(buildingDef) : false;
         const detail = (() => {
+          // Building shells surface their level + build/upgrade status (lattice D6).
+          if (isShell && buildingDef) {
+            const construction = getConstructionForObject(object.id);
+            if (!construction?.is_complete) return 'Building…';
+            const level = construction.level ?? 1;
+            const upgrade = getUpgradeDef(buildingDef.role!, level);
+            const levelText = buildingLevelLabel(buildingDef.role, level);
+            return upgrade ? `${levelText} · Interact to upgrade` : levelText;
+          }
           if (tags.includes('gate')) return 'Locked gate';
           if (tags.includes('lever')) return 'Lever';
           if (tags.includes('trap') || tags.includes('hazard')) return 'Trap';
@@ -1972,6 +1996,27 @@ export default function RpgScreen() {
     return null;
   };
 
+  // Library context for research (lattice D7): whether the player is standing
+  // inside/adjacent to a COMPLETED Library, plus that Library's level (drives
+  // research slot count). Returns null when no completed Library is in reach —
+  // the Archive then hides the Inspect action. "In reach" = avatar footprint
+  // cells within 1 tile of the Library footprint (inside counts as reach).
+  const getLibraryContext = (): { objectId: number; level: number } | null => {
+    const cells = avatarCells(avatarX.value, avatarY.value, TILE_SIZE);
+    for (const obj of mapObjects) {
+      const def = getBuildingDef(obj.type);
+      if (!def || def.role !== 'Library') continue;
+      const construction = getConstructionForObject(obj.id);
+      if (!construction?.is_complete) continue;
+      const nearby = cells.some(cell =>
+        cell.row >= obj.row - 1 && cell.row < obj.row + def.colHeight + 1 &&
+        cell.col >= obj.col - 1 && cell.col < obj.col + def.colWidth + 1,
+      );
+      if (nearby) return { objectId: obj.id, level: construction.level ?? 1 };
+    }
+    return null;
+  };
+
   const startCraftingJob = (recipeId: string) => {
     const recipe = getCraftingRecipe(recipeId);
     if (!recipe) return;
@@ -2018,6 +2063,69 @@ export default function RpgScreen() {
     bumpInventoryRevision();
     setCraftingJobsRevision(rev => rev + 1);
     showWorldToast({ text: `Crafted ${outputItem?.name ?? recipeId}`, item: outputItem, tone: 'success' });
+  };
+
+  // ─── Library research (Inspect) handlers (lattice D7) ──────────────────────
+  const startResearchJob = (itemId: string) => {
+    const item = getRpgItem(itemId);
+    const context = getLibraryContext();
+    if (!context) {
+      showWorldToast({ text: 'Stand by a built Library to Inspect', item, tone: 'warn' });
+      return;
+    }
+    const slots = researchSlotsForLibraryLevel(context.level);
+    const result = startResearch(itemId, slots);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'already_understood' ? 'Already understood'
+          : result === 'already_researching' ? 'Already researching this'
+            : result === 'no_slots' ? `All ${slots} research slot${slots > 1 ? 's' : ''} busy`
+              : 'Could not start research',
+        item,
+        tone: 'warn',
+      });
+      return;
+    }
+    setResearchRevision(rev => rev + 1);
+    showWorldToast({ text: `Researching ${item?.name ?? itemId}`, item, tone: 'success' });
+  };
+
+  const claimResearchJob = (jobId: number, itemId: string) => {
+    const item = getRpgItem(itemId);
+    const result = claimResearch(jobId);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'not_ready' ? 'Research not finished' : 'Could not claim research',
+        item,
+        tone: 'warn',
+      });
+      return;
+    }
+    setResearchRevision(rev => rev + 1);
+    showWorldToast({ text: `Understood ${item?.name ?? itemId}`, item, tone: 'success' });
+  };
+
+  // Blueprint decode (lattice D7): consume the blueprint at the Library and
+  // unlock its station in the Shop.
+  const decodeBlueprintItem = (itemId: string) => {
+    const item = getRpgItem(itemId);
+    if (getLibraryContext() === null) {
+      showWorldToast({ text: 'Stand by a built Library to decode', item, tone: 'warn' });
+      return;
+    }
+    const result = decodeBlueprint(itemId);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'already_decoded' ? 'Already decoded'
+          : result === 'not_owned' ? 'No blueprint to decode'
+            : 'Could not decode blueprint',
+        item,
+        tone: 'warn',
+      });
+      return;
+    }
+    bumpInventoryRevision();
+    showWorldToast({ text: `Decoded ${item?.name ?? itemId} — station unlocked`, item, tone: 'success' });
   };
 
   useEffect(() => {
@@ -3051,13 +3159,79 @@ export default function RpgScreen() {
     showObjectReaction(object, drops.length ? rewardText : 'clear', drops[0] ? getRpgItem(drops[0].itemId) : item, 'success');
   };
 
+  // Building level upgrade (lattice D6). Interacting a completed building tries
+  // to start a timed re-build to level+1: checks the (role, level) prerequisite
+  // + cost from BuildingCatalog, deducts materials/coins, then reuses the two-
+  // phase construction machinery via startUpgrade.
+  const upgradeBuilding = (object: MapObject, def: ReturnType<typeof getBuildingDef>) => {
+    if (!def || !def.role) return;
+    const item = getPlaceableItem(object.type);
+    const construction = getConstructionForObject(object.id);
+    if (!construction) {
+      showWorldToast({ text: 'No construction record', item, tone: 'warn' });
+      return;
+    }
+    if (!construction.is_complete) {
+      showWorldToast({ text: `${def.name} is still being built`, item, tone: 'muted' });
+      return;
+    }
+    const level = construction.level ?? 1;
+    const upgrade = getUpgradeDef(def.role, level);
+    if (!upgrade) {
+      showWorldToast({ text: `${def.name} · ${buildingLevelLabel(def.role, level)} (max)`, item, tone: 'muted' });
+      return;
+    }
+    // Prerequisite gate (e.g. Library lvl 2 needs Language Silver).
+    if (upgrade.prerequisiteMet && !upgrade.prerequisiteMet({ masteryLevel: (skill) => getMasteryLevel(skill as SkillType) })) {
+      showWorldToast({ text: upgrade.requirementLabel ?? 'Requirement not met', item, tone: 'warn' });
+      showObjectReaction(object, '🔒', item, 'warn');
+      return;
+    }
+    // Cost check (coins + materials). Zeroed while TESTING_FREE_BUILDINGS.
+    const playerCoins = db.getFirstSync<{ coins: number }>('SELECT coins FROM rpg_state WHERE id = 1')?.coins ?? 0;
+    if (playerCoins < upgrade.coins) {
+      showWorldToast({ text: `Need ${upgrade.coins} coins`, item, tone: 'warn' });
+      return;
+    }
+    for (const mat of upgrade.materials) {
+      if (getInventoryQuantity(mat.itemId) < mat.quantity) {
+        const matItem = getRpgItem(mat.itemId);
+        showWorldToast({ text: `Need ${mat.quantity} ${matItem?.name ?? mat.itemId}`, item: matItem, tone: 'warn' });
+        return;
+      }
+    }
+    try {
+      db.execSync('BEGIN TRANSACTION');
+      if (upgrade.coins > 0) db.runSync('UPDATE rpg_state SET coins = coins - ? WHERE id = 1', upgrade.coins);
+      for (const mat of upgrade.materials) {
+        db.runSync('UPDATE user_inventory SET quantity = quantity - ? WHERE item_id = ?', mat.quantity, mat.itemId);
+      }
+      db.execSync('COMMIT');
+    } catch (e) {
+      try { db.execSync('ROLLBACK'); } catch {}
+      console.warn('Failed to spend upgrade cost', e);
+      showWorldToast({ text: 'Could not start upgrade', item, tone: 'warn' });
+      return;
+    }
+    const result = startUpgrade(object.id, object.type, upgrade.targetLevel);
+    if (!result.ok) {
+      showWorldToast({ text: 'Could not start upgrade', item, tone: 'warn' });
+      return;
+    }
+    refreshCoins();
+    bumpInventoryRevision();
+    refreshMapObjects();
+    showWorldToast({ text: `Upgrading ${def.name} to ${buildingLevelLabel(def.role, upgrade.targetLevel)}`, item, tone: 'success' });
+    showObjectReaction(object, '⬆', item, 'success');
+  };
+
   // Free, naturally-occurring rock — Pickaxe-gated, unlike clutter (which
   // any tool can clear). Same delete-then-nightly-respawn shape as clutter,
   // just with mining drops (Stone + a real Coal source) instead.
   // Ore-vein tiers (lattice D4). Each vein object type names the Mining mastery
   // LEVEL needed to break it: copper = 1 (always crossable), iron = 4 (Silver).
   // Blocked attempts surface the exact requirement via VillagerLogic.gateMessage.
-  const VEIN_TIERS: Record<string, { requiredMiningLevel: number; drops: RpgDrop[] }> = {
+  const VEIN_TIERS: Record<string, { requiredMiningLevel: number; requiresUnderstanding?: string; drops: RpgDrop[] }> = {
     rpg_rock_vein: {
       requiredMiningLevel: 1,
       drops: [
@@ -3067,6 +3241,9 @@ export default function RpgScreen() {
     },
     rpg_iron_vein: {
       requiredMiningLevel: 4, // Mining Silver
+      // World-knowledge gate (lattice D7 §3): must have researched Coal at the
+      // Library — the copper-tier output that stone veins yield — before iron.
+      requiresUnderstanding: 'rpg_coal',
       drops: [
         { itemId: RPG_STONE_ITEM_ID, chance: 1, min: 3, max: 5 },
         { itemId: 'rpg_coal', chance: 0.8, min: 1, max: 2 },
@@ -3083,6 +3260,16 @@ export default function RpgScreen() {
       const veinItem = getPlaceableItem(object.type);
       showWorldToast({ text: gateMessage('Mining', needTier), item: veinItem, tone: 'warn' });
       showObjectReaction(object, '🔒', veinItem, 'warn');
+      return;
+    }
+    // D4 world-knowledge half of the chain (lattice D7 §3): iron veins also
+    // require Understanding of Coal (research it at the Library first). Copper/
+    // stone veins have no knowledge gate (requiresUnderstanding undefined).
+    if (tier.requiresUnderstanding && !isUnderstood(tier.requiresUnderstanding)) {
+      const gateItem = getRpgItem(tier.requiresUnderstanding) ?? getPlaceableItem(object.type);
+      const gateName = getRpgItem(tier.requiresUnderstanding)?.name ?? 'this material';
+      showWorldToast({ text: `Research ${gateName} at the Library first`, item: gateItem, tone: 'warn' });
+      showObjectReaction(object, '🔒', gateItem, 'warn');
       return;
     }
     if (!spendToolEnergy('rpg_pickaxe_basic')) return;
@@ -3136,6 +3323,14 @@ export default function RpgScreen() {
 
     if (isVillagerObject(item)) {
       interactWithVillager(object, item);
+      return;
+    }
+
+    // Building shells (lattice D6): interacting a completed building attempts an
+    // upgrade to the next level; an in-progress build just reports its status.
+    const buildingDefForObject = getBuildingDef(object.type);
+    if (buildingDefForObject && isBuildingShell(buildingDefForObject)) {
+      upgradeBuilding(object, buildingDefForObject);
       return;
     }
 
@@ -4187,6 +4382,7 @@ export default function RpgScreen() {
         setIsCharacterOpen(false);
         setIsCraftingOpen(false);
         setIsExploreOpen(false);
+        setBackpackAtLibrary(getLibraryContext() !== null);
         setIsBackpackOpen(true);
         const repairHint = resolvedTarget.repairZone
           ? getZoneRepairMaterialHint(resolvedTarget.repairZone)
@@ -5009,6 +5205,7 @@ export default function RpgScreen() {
               setIsArchiveOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              setBackpackAtLibrary(getLibraryContext() !== null);
               setIsBackpackOpen(true);
             }}
           >
@@ -5037,6 +5234,9 @@ export default function RpgScreen() {
               setIsBackpackOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              // Capture whether a completed Library is in reach so the Archive
+              // can offer Inspect (lattice D7). null = browse-only.
+              setArchiveLibraryLevel(getLibraryContext()?.level ?? null);
               setIsArchiveOpen(true);
             }}
           >
@@ -5791,11 +5991,16 @@ export default function RpgScreen() {
         onSellItem={handleSellItem}
         onSellAllItem={handleSellAllItem}
         onUseOnNearestPlot={handleUseOnNearestPlot}
+        canDecodeBlueprint={backpackAtLibrary}
+        onDecodeBlueprint={decodeBlueprintItem}
       />
       <RpgArchive
         isOpen={isArchiveOpen}
-        refreshKey={inventoryRevision}
+        refreshKey={inventoryRevision + researchRevision}
+        libraryLevel={archiveLibraryLevel}
         onClose={() => setIsArchiveOpen(false)}
+        onStartResearch={startResearchJob}
+        onClaimResearch={claimResearchJob}
       />
     </View>
   );

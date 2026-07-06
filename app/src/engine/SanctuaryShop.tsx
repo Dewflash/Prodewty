@@ -21,6 +21,7 @@ import {
 import { RpgItemIcon } from './RpgItemIcon';
 import { SanctuaryFootprintPreview } from './SanctuaryFootprintPreview';
 import { SanctuaryTerrainPaintPreview } from './SanctuaryTerrainPaintPreview';
+import { getDecodedBlueprintIds, STATION_BLUEPRINT } from '../db/research';
 
 type OwnedRow = {
   item_id: string;
@@ -141,7 +142,17 @@ export function SanctuaryShop({ isOpen, coins, refreshKey, canPlace = false, onC
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState<ShopPurchaseResult | null>(null);
 
-  const shopEntries = useMemo(() => Object.entries(SHOP_CATALOG), []);
+  // Blueprint-gated stations (fertiliser_mixer/irrigation_bench/vendor_stall)
+  // only appear once their blueprint is decoded at the Library (lattice D7).
+  // Recomputed on open/refresh so a fresh decode surfaces the station.
+  const decodedStations = useMemo(() => getDecodedBlueprintIds(), [isOpen, refreshKey]);
+  const shopEntries = useMemo(
+    () => Object.entries(SHOP_CATALOG).filter(([id]) => {
+      const blueprintId = STATION_BLUEPRINT[id];
+      return !blueprintId || decodedStations.has(blueprintId);
+    }),
+    [decodedStations],
+  );
   const sourceCounts = useMemo(
     () => countRpgSourcePacks(shopEntries, ([, item]) => item.sourceLabel),
     [shopEntries],

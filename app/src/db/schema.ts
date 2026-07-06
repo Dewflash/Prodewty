@@ -1864,6 +1864,76 @@ function runMigrations() {
     `);
     db.execSync('PRAGMA user_version = 97');
   }
+
+  if (version < 98) {
+    // ── Wave 3 — The Library lives (RPG_PROGRESSION_LATTICE.md D6 + D7) ──
+
+    // D6 building levels: every construction starts at level 1; an Upgrade
+    // action re-runs the timed build to level+1 (BuildingCatalog getUpgradeDef).
+    try { db.execSync(`ALTER TABLE sanctuary_constructions ADD COLUMN level INTEGER NOT NULL DEFAULT 1`); } catch {}
+    // While an upgrade build is in flight, target_level holds the level the
+    // building becomes once finish_at passes; checkAndCompleteConstructions
+    // applies it (level := target_level) at completion. NULL/0 = fresh build.
+    try { db.execSync(`ALTER TABLE sanctuary_constructions ADD COLUMN target_level INTEGER NOT NULL DEFAULT 0`); } catch {}
+
+    // D7 Inspect: a timed research job per Discovered-but-not-Understood item.
+    // Mirrors crafting_queue's shape (started_at/completes_at/is_claimed) so the
+    // same claim UI pattern applies. Claiming marks the item Understood (see
+    // rpg_understanding) and grants Research mastery — the item is NOT consumed.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_research_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completes_at TEXT NOT NULL,
+        is_claimed INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+
+    // Per-item Understanding record. The Archive's `known` was previously
+    // derived purely from the global Research tier vs the item's rarity tier;
+    // an explicit row here means "the player researched THIS item at the
+    // Library," so it reads as Understood regardless of the tier gate. This is
+    // what the D4 material chain checks (Understanding of 'rpg_coal' → iron).
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_understanding (
+        item_id TEXT PRIMARY KEY,
+        understood_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
+
+    // D7 blueprint decode: an `unlocked` flag on the global drop record. A
+    // blueprint's station (fertiliser_mixer/irrigation_bench/vendor_stall)
+    // only appears in the Shop once its blueprint is decoded at the Library.
+    try { db.execSync(`ALTER TABLE rpg_blueprint_drops ADD COLUMN unlocked INTEGER NOT NULL DEFAULT 0`); } catch {}
+    // Existing saves: any station already PLACED must stay buildable, so
+    // pre-decode its blueprint (mark unlocked, inserting the drop row if the
+    // player never actually looted the blueprint). Keyed by the station object
+    // type present in sanctuary_objects. Safe on fresh installs (no rows).
+    const STATION_TO_BLUEPRINT: [string, string][] = [
+      ['rpg_fertiliser_mixer', 'blueprint_fertiliser_mixer'],
+      ['rpg_irrigation_bench', 'blueprint_irrigation_bench'],
+      ['rpg_vendor_stall', 'blueprint_vendor_stall'],
+    ];
+    for (const [stationType, blueprintId] of STATION_TO_BLUEPRINT) {
+      try {
+        const placed = db.getFirstSync<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM sanctuary_objects WHERE type = ?`,
+          stationType,
+        )?.n ?? 0;
+        if (placed > 0) {
+          db.runSync(
+            `INSERT INTO rpg_blueprint_drops (blueprint_id, dropped_at, unlocked)
+             VALUES (?, datetime('now','localtime'), 1)
+             ON CONFLICT(blueprint_id) DO UPDATE SET unlocked = 1`,
+            blueprintId,
+          );
+        }
+      } catch {}
+    }
+
+    db.execSync('PRAGMA user_version = 98');
+  }
 }
 
 function addExtendedSkillPointsColumns() {

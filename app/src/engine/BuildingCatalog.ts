@@ -214,6 +214,132 @@ export function getBuildingDef(id: string): BuildingDefinition | null {
   return BUILDING_CATALOG[id] || null;
 }
 
+// ─── Building levels & upgrades (RPG_PROGRESSION_LATTICE.md D6) ──────────────
+// An upgrade re-runs the two-phase timed construction (construction.ts) to
+// level+1. Requirements are per (role, targetLevel): a material/coin cost plus
+// an optional prerequisite predicate + human-readable label. The predicate is
+// pure — the caller (rpg.tsx) passes in the player's live mastery levels — so
+// this stays DB-free and unit-testable.
+
+export type UpgradeMaterialCost = { itemId: string; quantity: number };
+
+export type UpgradeContext = {
+  // Mastery LEVELS keyed by skill name (rpg.tsx supplies getMasteryLevel).
+  masteryLevel: (skill: string) => number;
+};
+
+export type BuildingUpgradeDef = {
+  targetLevel: number;
+  coins: number;
+  materials: UpgradeMaterialCost[];
+  // Optional gate. When present and prerequisiteMet() is false, the upgrade is
+  // blocked and requirementLabel is shown (existing toast style).
+  requirementLabel?: string;
+  prerequisiteMet?: (ctx: UpgradeContext) => boolean;
+};
+
+// Max building level per role (this wave). Library reaches 3; the rest cap at 2.
+export const MAX_BUILDING_LEVEL: Record<BuildingRole, number> = {
+  Library: 3,
+  Workshop: 2,
+  Factory: 2,
+  ToolShed: 2,
+  Market: 2,
+  TownHall: 2,
+};
+
+// Mastery LEVEL thresholds (skills.ts LEVELS_PER_TIER = 3, so Silver = lvl 4,
+// Gold = lvl 7). Duplicated as constants here to avoid a skills.ts import in
+// this pure catalog; kept in sync with skills.ts getMasteryTier boundaries.
+const MASTERY_SILVER_LEVEL = 4;
+const MASTERY_GOLD_LEVEL = 7;
+
+// role → (targetLevel → upgrade def). Only roles/levels with real data ship;
+// getUpgradeDef returns null for anything undefined (e.g. TownHall is defined
+// but unused by UI this wave; Library lvl 3 exists but needs Research Gold).
+const BUILDING_UPGRADES_BASE: Record<BuildingRole, Record<number, BuildingUpgradeDef>> = {
+  Library: {
+    2: {
+      targetLevel: 2,
+      coins: 0,
+      materials: [
+        { itemId: 'rpg_wood', quantity: 20 },
+        { itemId: 'rpg_stone', quantity: 10 },
+      ],
+      requirementLabel: 'Needs Language Silver',
+      prerequisiteMet: ctx => ctx.masteryLevel('language') >= MASTERY_SILVER_LEVEL,
+    },
+    3: {
+      targetLevel: 3,
+      coins: 0,
+      materials: [
+        { itemId: 'rpg_wood', quantity: 40 },
+        { itemId: 'rpg_stone', quantity: 30 },
+        { itemId: 'rpg_crystal_shards', quantity: 5 },
+      ],
+      requirementLabel: 'Needs Research Gold',
+      prerequisiteMet: ctx => ctx.masteryLevel('research') >= MASTERY_GOLD_LEVEL,
+    },
+  },
+  Workshop: {
+    2: { targetLevel: 2, coins: 800, materials: [{ itemId: 'rpg_wood', quantity: 30 }, { itemId: 'rpg_stone', quantity: 20 }] },
+  },
+  Factory: {
+    2: { targetLevel: 2, coins: 1000, materials: [{ itemId: 'rpg_wood', quantity: 40 }, { itemId: 'rpg_stone', quantity: 20 }] },
+  },
+  ToolShed: {
+    2: { targetLevel: 2, coins: 600, materials: [{ itemId: 'rpg_wood', quantity: 25 }, { itemId: 'rpg_stone', quantity: 10 }] },
+  },
+  Market: {
+    2: { targetLevel: 2, coins: 1200, materials: [{ itemId: 'rpg_wood', quantity: 30 }, { itemId: 'rpg_stone', quantity: 30 }] },
+  },
+  // Defined but unused this wave (bundle pages arrive in Wave 4).
+  TownHall: {
+    2: { targetLevel: 2, coins: 500, materials: [{ itemId: 'rpg_wood', quantity: 20 }, { itemId: 'rpg_stone', quantity: 10 }] },
+  },
+};
+
+// Same TESTING_FREE zeroing the shop/build catalog uses: while testing, drop
+// coin+material costs so upgrades can be exercised freely (prerequisites still
+// apply — those are the actual progression gates, not the costs).
+function zeroCosts(
+  base: Record<BuildingRole, Record<number, BuildingUpgradeDef>>,
+): Record<BuildingRole, Record<number, BuildingUpgradeDef>> {
+  const out = {} as Record<BuildingRole, Record<number, BuildingUpgradeDef>>;
+  for (const role of Object.keys(base) as BuildingRole[]) {
+    const levels = base[role];
+    const zeroed: Record<number, BuildingUpgradeDef> = {};
+    for (const lvl of Object.keys(levels)) {
+      zeroed[Number(lvl)] = { ...levels[Number(lvl)], coins: 0, materials: [] };
+    }
+    out[role] = zeroed;
+  }
+  return out;
+}
+
+export const BUILDING_UPGRADES: Record<BuildingRole, Record<number, BuildingUpgradeDef>> =
+  TESTING_FREE_BUILDINGS ? zeroCosts(BUILDING_UPGRADES_BASE) : BUILDING_UPGRADES_BASE;
+
+// The upgrade def taking a building of `role` from currentLevel → currentLevel+1,
+// or null if already maxed / no data for that step.
+export function getUpgradeDef(role: BuildingRole, currentLevel: number): BuildingUpgradeDef | null {
+  const target = currentLevel + 1;
+  if (target > (MAX_BUILDING_LEVEL[role] ?? 1)) return null;
+  return BUILDING_UPGRADES[role]?.[target] ?? null;
+}
+
+// Flavor suffix for a building's current level, e.g. "Forgotten Chamber · Lv 2".
+// Library levels carry the doc's flavor (Understanding → Wisdom); other roles
+// just show the number.
+export function buildingLevelLabel(role: BuildingRole | undefined, level: number): string {
+  if (level <= 1) return `Lv ${level}`;
+  if (role === 'Library') {
+    if (level === 2) return 'Lv 2 · Understanding';
+    if (level >= 3) return 'Lv 3 · Wisdom';
+  }
+  return `Lv ${level}`;
+}
+
 export function isStation(def: BuildingDefinition): boolean {
   return !!def.requiredBuildingRole;
 }
