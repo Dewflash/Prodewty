@@ -8,6 +8,14 @@ import { resetMinesOvernight } from './mines';
 import { logicalToday } from './dayBoundary';
 import { getCropForSeed } from '../engine/RpgObjectCatalog';
 import { getAnimalDef } from '../engine/AnimalCatalog';
+import { getComputedStats } from './game';
+import { ENERGY_MAX_PER_RES } from '../engine/StatEffects';
+
+// Sleep restores energy to the EFFECTIVE max — stored energy_max plus the
+// RES-driven bonus (lattice D8), matching what the HUD shows as capacity.
+function sleepEnergyBonus(): number {
+  try { return Math.max(0, getComputedStats().sta) * ENERGY_MAX_PER_RES; } catch { return 0; }
+}
 
 
 const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
@@ -52,8 +60,8 @@ export function sleepOvernight(): 'ok' | 'db_error' {
     }
 
     db.runSync(
-      'UPDATE rpg_state SET current_day = ?, current_season = ?, current_year = ?, energy = energy_max WHERE id = 1',
-      newDay, newSeason, newYear
+      'UPDATE rpg_state SET current_day = ?, current_season = ?, current_year = ?, energy = energy_max + ? WHERE id = 1',
+      newDay, newSeason, newYear, sleepEnergyBonus()
     );
 
     db.execSync('COMMIT');
@@ -104,8 +112,8 @@ export function reconcileOfflineTime(daysPassed: number): 'ok' | 'db_error' {
 
     // 1. rpg_state updates
     db.runSync(
-      'UPDATE rpg_state SET current_day = ?, current_season = ?, current_year = ?, last_active_date = ?, energy = energy_max WHERE id = 1',
-      newDay, newSeason, newYear, today
+      'UPDATE rpg_state SET current_day = ?, current_season = ?, current_year = ?, last_active_date = ?, energy = energy_max + ? WHERE id = 1',
+      newDay, newSeason, newYear, today, sleepEnergyBonus()
     );
 
     // 2. farming_plots updates

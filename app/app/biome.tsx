@@ -14,6 +14,8 @@ import { crittersForBiome } from '../src/engine/CritterCatalog';
 import { resolveNetCatch } from '../src/engine/CatchLogic';
 import { getInventoryQuantity, addInventoryItem } from '../src/db/garden';
 import { recordRpgDiscovery } from '../src/db/rpgDiscovery';
+import { grantSkillPoints } from '../src/db/skills';
+import { getComputedStats } from '../src/db/game';
 import { db } from '../src/db/schema';
 import { type GuardianDefinition } from '../src/engine/BiomeGuardianCatalog';
 import {
@@ -111,9 +113,19 @@ export default function BiomeScreen() {
   const guardianDef = guardianForBiome(zoneId);
   // Player stats + HP loaded once from rpg_state; biomes are ephemeral so
   // there's no enemy persistence — they regenerate on each travel-in.
-  const playerStats = useRef(db.getFirstSync<{ strength: number; focus: number; agility: number; wisdom: number; resilience: number; hp: number; hp_max: number }>(
-    'SELECT strength, focus, agility, wisdom, resilience, hp, hp_max FROM rpg_state WHERE id = 1',
-  ) ?? { strength: 1, focus: 1, agility: 1, wisdom: 1, resilience: 1, hp: 100, hp_max: 100 });
+  // Damage now reads the FULL 7-stat totals via getComputedStats() (AP +
+  // activity-earned _auto), so real-life gains reach guardian fights (D8),
+  // instead of the old raw 5-column AP-only SELECT.
+  const playerStats = useRef((() => {
+    const s = getComputedStats();
+    const hpRow = db.getFirstSync<{ hp: number; hp_max: number }>(
+      'SELECT hp, hp_max FROM rpg_state WHERE id = 1',
+    ) ?? { hp: 100, hp_max: 100 };
+    return {
+      str: s.str, agi: s.agi, foc: s.foc, wis: s.wis, spr: s.spr, per: s.per, sta: s.sta,
+      hp: hpRow.hp, hp_max: hpRow.hp_max,
+    };
+  })());
   const [playerHp, setPlayerHp] = useState(playerStats.current.hp);
   const playerHpRef = useRef(playerStats.current.hp);
   const deadRef = useRef(false);
@@ -252,6 +264,10 @@ export default function BiomeScreen() {
       });
       guardiansRef.current = guardiansRef.current.filter(x => x.id !== g.id);
       setNearestGuardianId(null);
+      // Mastery accrual (D3): defeating a guardian is both a combat kill and a
+      // survived encounter. Scaled a touch by the guardian's danger (atk).
+      grantSkillPoints('combat', Math.max(5, Math.round(guardianDef.atk)));
+      grantSkillPoints('surviving', 5);
       flashToast(`Defeated the ${guardianDef.name}!`);
     } else {
       flashToast(`Hit the ${guardianDef.name} (${g.hp}/${guardianDef.maxHp})`);
@@ -267,6 +283,8 @@ export default function BiomeScreen() {
 
     const result = chopBiomeTree(zoneId);
     if (!result) return;
+    // Mastery accrual (D3): tree-chop collection feeds Foraging.
+    grantSkillPoints('foraging', 2);
     if (result.seedItemId) {
       const seedItem = getRpgItem(result.seedItemId);
       setToast(`+${result.wood} Wood, found ${seedItem?.name ?? 'a seed'}!`);
@@ -293,6 +311,9 @@ export default function BiomeScreen() {
     if (landed) {
       addInventoryItem(spawn.def.itemId, 1);
       recordRpgDiscovery(spawn.def.itemId, 'forage');
+      // Mastery accrual (D3): net catch feeds Hunting, scaled 2-10 by the
+      // critter's catch difficulty (its rarity proxy — no explicit rarity band).
+      grantSkillPoints('hunting', 2 + Math.round((spawn.def.catchDifficulty / 100) * 8));
       caughtCrittersRef.current[nearestCritterIndex] = true;
       setCaughtCritters(prev => ({ ...prev, [nearestCritterIndex]: true }));
       setNearestCritterIndex(null);

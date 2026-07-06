@@ -98,6 +98,16 @@ import {
 import { getCalendarState, sleepOvernight, fastForwardTime, type CalendarState } from '../src/db/time';
 import { tryDropBlueprint } from '../src/db/blueprints';
 import { travelToZone } from '../src/db/zones';
+import { grantSkillPoints } from '../src/db/skills';
+import { getComputedStats } from '../src/db/game';
+import {
+  combatDamage,
+  fishingWindowMultiplier,
+  perceptionSellMultiplier,
+  effectiveEnergyMaxFromStats,
+  tradingPointsForSale,
+  grantableTradingPoints,
+} from '../src/engine/StatEffects';
 import { getZoneDef } from '../src/engine/ZoneCatalog';
 import { getBiomeTree } from '../src/engine/BiomeTreeCatalog';
 import { logicalToday } from '../src/db/dayBoundary';
@@ -763,7 +773,8 @@ export default function RpgScreen() {
           hp: state.hp ?? 0,
           hp_max: state.hp_max ?? 100,
           energy: state.energy ?? 0,
-          energy_max: state.energy_max ?? 100,
+          // RES (GameStats `sta`) extends effective energy capacity (lattice D8).
+          energy_max: effectiveEnergyMaxFromStats(state.energy_max ?? 100, getComputedStats().sta),
         });
       }
     } catch (e) {
@@ -1617,6 +1628,7 @@ export default function RpgScreen() {
             freshZones = breachZoneIfPerimeterRemoved(movedObjectBefore, freshZones);
           }
           freshZones = restoreBreachedZonesIfRepaired(freshObjects, freshZones);
+          grantSurvivingIfRepaired(sanctuaryZones, freshZones);
           scanForZoneCandidates(freshObjects, undefined, freshZones);
         }
         clearBuildMode();
@@ -1684,6 +1696,7 @@ export default function RpgScreen() {
         const placedTags = getItem(buildItem.itemId)?.tags;
         if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
           const freshZones = restoreBreachedZonesIfRepaired(freshObjects);
+          grantSurvivingIfRepaired(sanctuaryZones, freshZones);
           scanForZoneCandidates(freshObjects, undefined, freshZones);
         }
 
@@ -1817,6 +1830,42 @@ export default function RpgScreen() {
     }
   };
 
+  // ─── Wave 1 lattice helpers (RPG_PROGRESSION_LATTICE.md D3/D8) ────────────
+
+  // Surviving accrual when a breached zone is actually restored: compares the
+  // breached count before/after a repair-capable placement or move.
+  const grantSurvivingIfRepaired = (
+    prevZones: Array<{ state: string }>,
+    nextZones: Array<{ state: string }>,
+  ) => {
+    const breached = (zones: Array<{ state: string }>) =>
+      zones.filter(zone => zone.state === 'breached').length;
+    if (breached(nextZones) < breached(prevZones)) grantSkillPoints('surviving', 5);
+  };
+
+  // Trading accrual on sales: base points ∝ log10(value), capped at 20 BASE
+  // points/day — the cap limits farmable sell-spam, while the stat→earn
+  // multiplier still applies on top (the real-life stat reward is never
+  // capped). Day bucket + running total live on rpg_state (migration v96).
+  const grantTradingForSale = (saleValue: number) => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const row = db.getFirstSync<{ trading_points_today: number; trading_points_day: string | null }>(
+        'SELECT trading_points_today, trading_points_day FROM rpg_state WHERE id = 1',
+      );
+      const pointsToday = row?.trading_points_day === today ? (row?.trading_points_today ?? 0) : 0;
+      const granted = grantableTradingPoints(pointsToday, tradingPointsForSale(saleValue));
+      if (granted <= 0) return;
+      db.runSync(
+        'UPDATE rpg_state SET trading_points_today = ?, trading_points_day = ? WHERE id = 1',
+        pointsToday + granted, today,
+      );
+      grantSkillPoints('trading', granted);
+    } catch (e) {
+      console.warn('Failed to grant trading mastery', e);
+    }
+  };
+
   // A completed Vendor Stall (Market station) bumps sell prices — the
   // backend gate is "is one built at all", same convention as
   // findStationObjectId's other callers (crafting stations).
@@ -1824,7 +1873,9 @@ export default function RpgScreen() {
     const base = getResourceSellPrice(itemId);
     if (base <= 0) return { price: base, hasStall: false };
     const hasStall = findStationObjectId('VendorStall') !== null;
-    return { price: hasStall ? Math.round(base * 1.2) : base, hasStall };
+    // PER sell bonus (lattice D8) stacks multiplicatively with the stall +20%.
+    const perMult = perceptionSellMultiplier(getComputedStats().per);
+    return { price: Math.round(base * (hasStall ? 1.2 : 1) * perMult), hasStall };
   };
 
   const handleSellItem = (itemId: string) => {
@@ -1833,6 +1884,7 @@ export default function RpgScreen() {
     addSandboxInventoryItem(itemId, -1, 'inventory');
     db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', price);
     refreshCoins();
+    grantTradingForSale(price);
     showWorldToast({
       text: `Sold ${getRpgItem(itemId)?.name ?? itemId} for +${price} coins${hasStall ? ' (Vendor Stall bonus)' : ''}`,
       tone: 'success',
@@ -1847,6 +1899,7 @@ export default function RpgScreen() {
     const total = price * quantity;
     db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', total);
     refreshCoins();
+    grantTradingForSale(total);
     showWorldToast({
       text: `Sold ${quantity} ${getRpgItem(itemId)?.name ?? itemId} for +${total} coins${hasStall ? ' (Vendor Stall bonus)' : ''}`,
       tone: 'success',
@@ -2503,6 +2556,8 @@ export default function RpgScreen() {
     if (nextHp <= 0) {
       defeatedEnemyUids.current.add(enemy.uid);
       db.runSync('INSERT OR IGNORE INTO dungeon_enemy_kills (uid) VALUES (?)', enemy.uid);
+      // Mastery accrual (lattice D3): a dungeon kill feeds Combat.
+      grantSkillPoints('combat', 5);
       setEnemies(prev => prev.filter(e => e.uid !== enemy.uid));
       const drops = rollHarvestDrops(def.drops);
       drops.forEach(drop => addSandboxInventoryItem(drop.itemId, drop.quantity, 'loot'));
@@ -2838,6 +2893,8 @@ export default function RpgScreen() {
         recordRpgDiscovery(drop.itemId, 'forage');
       });
       db.execSync('COMMIT');
+      // Mastery accrual (lattice D3): clearing clutter is light foraging work.
+      grantSkillPoints('foraging', 1);
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
       console.warn('Failed to clear sanctuary clutter', e);
@@ -2886,6 +2943,8 @@ export default function RpgScreen() {
         recordRpgDiscovery(drop.itemId, 'forage');
       });
       db.execSync('COMMIT');
+      // Mastery accrual (lattice D3): breaking a vein feeds Mining.
+      grantSkillPoints('mining', 3);
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
       console.warn('Failed to mine rock vein', e);
@@ -2999,6 +3058,8 @@ export default function RpgScreen() {
     if (item.interactLoot?.repeatable) {
       const drops = rollHarvestDrops(item.interactLoot.drops);
       drops.forEach(drop => addSandboxInventoryItem(drop.itemId, drop.quantity, 'loot'));
+      // Mastery accrual (lattice D3): repeatable object forage feeds Foraging.
+      grantSkillPoints('foraging', 2);
       if (item.interactLoot.coins > 0) {
         db.runSync('UPDATE rpg_state SET coins = coins + ? WHERE id = 1', item.interactLoot.coins);
         refreshCoins();
@@ -3244,11 +3305,11 @@ export default function RpgScreen() {
         }
       }
 
-      const stats = db.getFirstSync<{ str: number; foc: number; agi: number; wis: number; res: number }>(
-        'SELECT strength as str, focus as foc, agility as agi, wisdom as wis, resilience as res FROM rpg_state WHERE id = 1',
-      );
-      if (stats && targetEnemy) {
-        const atk = Math.floor((stats.str + stats.foc + stats.agi + stats.wis + stats.res) / 5);
+      // Lattice D8: damage from the FULL 7-stat totals (AP + activity-earned
+      // _auto) via the shared StatEffects formula — the old raw SELECT read
+      // only 5 AP columns, so real-life gains never reached the Dungeon.
+      if (targetEnemy) {
+        const atk = combatDamage(getComputedStats());
         resolveEnemyHit(targetEnemy, atk);
       } else if (activeZone === 'dungeon') {
         showWorldToast({ text: 'No enemy in range', tone: 'muted' });
@@ -3789,7 +3850,7 @@ export default function RpgScreen() {
           }
           return prev;
         });
-      }, 1800);
+      }, Math.round(1800 * fishingWindowMultiplier(getComputedStats().agi)));
     }, waitMs);
   };
 
@@ -3801,6 +3862,9 @@ export default function RpgScreen() {
     if (landed) {
       addSandboxInventoryItem(hookedFish.itemId, 1, 'forage');
       bumpInventoryRevision();
+      // Mastery accrual (lattice D3): landing a fish feeds Fishing, scaled
+      // 2-10 by the fish's difficulty (its rarity proxy).
+      grantSkillPoints('fishing', 2 + Math.round((hookedFish.difficulty / 100) * 8));
       showWorldToast({ text: `Caught a ${hookedFish.name}!`, item: getRpgItem(hookedFish.itemId), tone: 'success' });
     } else {
       showWorldToast({ text: `The ${hookedFish.name} slipped off the hook.`, tone: 'muted' });
@@ -5352,6 +5416,8 @@ export default function RpgScreen() {
                         });
                         return;
                       }
+                      // Mastery accrual (lattice D3): setting out feeds Surviving.
+                      grantSkillPoints('surviving', 2);
                       refreshPlayerHp();
                       setIsExploreOpen(false);
                       router.push(`/biome?type=${biomeId}`);

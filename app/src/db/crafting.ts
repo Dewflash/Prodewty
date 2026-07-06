@@ -1,7 +1,9 @@
 import { db } from './schema';
 import { getCraftingRecipe } from '../engine/CraftingCatalog';
 import { sqlNow } from '../utils/date';
-import { addSkillPoints } from './skills';
+import { grantSkillPoints } from './skills';
+import { getComputedStats } from './game';
+import { applyFocusTimerReduction } from '../engine/StatEffects';
 
 export type CraftingJob = {
   id: number;
@@ -78,7 +80,12 @@ export function startCrafting(recipeId: string, buildingObjectId: number | null 
     }
 
     const now = new Date();
-    const completesAt = new Date(now.getTime() + recipe.timeMinutes * 60 * 1000);
+    // Focus → craft speed (StatEffects.applyFocusTimerReduction): shave 1% off
+    // the job duration per FOC point, capped at 30%. Applied to whole minutes
+    // so a job still always takes at least a minute.
+    const focTotal = getComputedStats().foc;
+    const effectiveMinutes = applyFocusTimerReduction(recipe.timeMinutes, focTotal);
+    const completesAt = new Date(now.getTime() + effectiveMinutes * 60 * 1000);
 
     db.runSync(
       `INSERT INTO crafting_queue (recipe_id, started_at, completes_at, building_object_id, is_claimed)
@@ -133,9 +140,13 @@ export function claimCrafting(jobId: number): 'ok' | 'not_ready' | 'no_job' | 'd
 
     db.execSync('COMMIT');
 
-    // Give some mining points for crafting (e.g., smelting).
+    // Mastery accrual (RPG_PROGRESSION_LATTICE.md D3): Furnace smelts feed
+    // Mining; every other claimed craft feeds Crafting. Both go through
+    // grantSkillPoints so the stat→earn multiplier applies.
     if (recipe.requiredBuilding === 'Furnace') {
-      addSkillPoints('mining', 10);
+      grantSkillPoints('mining', 10);
+    } else {
+      grantSkillPoints('crafting', 8);
     }
 
     return 'ok';

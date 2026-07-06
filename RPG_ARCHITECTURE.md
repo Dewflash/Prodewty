@@ -4,6 +4,10 @@ Forward-looking spec only. For how we got here / discovery notes, see
 `RPG_ARCHITECTURE_AUDIT.md` (v0, historical). This doc is for
 brainstorming and building against — keep it current, not chronological.
 
+Progression sequencing, building levels, the villager→Language loop,
+material tier gates, and the verified as-built baseline live in
+`RPG_PROGRESSION_LATTICE.md` (2026-07-06) — read it alongside this doc.
+
 ## Regions
 
 Three regions, all distinct from each other:

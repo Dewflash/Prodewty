@@ -1831,6 +1831,17 @@ function runMigrations() {
     `);
     db.execSync('PRAGMA user_version = 95');
   }
+
+  if (version < 96) {
+    // Trading mastery daily cap (RPG_PROGRESSION_LATTICE.md D3): selling grants
+    // Trading points ∝ log of sale value, capped at 20 points/day. Two columns
+    // track the running total for the current logical day; the day bucket lets
+    // the counter reset at the day boundary without a nightly job (rpg.tsx
+    // compares trading_points_day to logicalToday() before granting).
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN trading_points_today INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN trading_points_day TEXT`); } catch {}
+    db.execSync('PRAGMA user_version = 96');
+  }
 }
 
 function addExtendedSkillPointsColumns() {

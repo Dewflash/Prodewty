@@ -1,5 +1,13 @@
 import { db } from './schema';
 import { sqlNow } from '../utils/date';
+import { grantSkillPoints } from './skills';
+
+// Research mastery accrual (RPG_PROGRESSION_LATTICE.md D3): the first time an
+// item is ever discovered grants Research points. Wired here (the single choke
+// point every discovery flows through) rather than at each call site. System
+// bootstrap/flag rows (item ids under the "system." namespace) are internal
+// bookkeeping, never real discoveries, so they don't grant.
+const RESEARCH_POINTS_PER_DISCOVERY = 3;
 
 export type RpgDiscoverySource =
   | 'bootstrap'
@@ -24,6 +32,13 @@ export function recordRpgDiscovery(itemId: string | null | undefined, source: Rp
   if (!itemId) return;
   const now = sqlNow();
   try {
+    // Detect a genuine first-discovery (the row didn't exist before this call)
+    // so Research mastery accrues exactly once per item. Checked before the
+    // upsert; the two run in the same synchronous tick.
+    const isFirst = !db.getFirstSync<{ item_id: string }>(
+      'SELECT item_id FROM rpg_discoveries WHERE item_id = ? LIMIT 1', itemId,
+    );
+
     db.runSync(
       `INSERT INTO rpg_discoveries (item_id, first_seen_at, last_seen_at, source, seen_count)
        VALUES (?, ?, ?, ?, 1)
@@ -36,6 +51,10 @@ export function recordRpgDiscovery(itemId: string | null | undefined, source: Rp
       now,
       source,
     );
+
+    if (isFirst && !itemId.startsWith('system.')) {
+      grantSkillPoints('research', RESEARCH_POINTS_PER_DISCOVERY);
+    }
   } catch (e) {
     console.warn('Failed to record RPG discovery', e);
   }

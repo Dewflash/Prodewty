@@ -1,5 +1,6 @@
 import { db } from './schema';
 import { getRPGState } from './rpg';
+import { getComputedStats } from './game';
 
 // 11 canonical masteries (per RPG_ARCHITECTURE.md) + foraging, kept as a
 // bonus/extra category tied to the existing forage feature even though
@@ -63,6 +64,69 @@ export function addSkillPoints(skill: SkillType, amount: number): void {
   } catch (e) {
     console.warn(`Failed to add ${skill} points`, e);
   }
+}
+
+// ─── Stat→mastery earn multiplier (RPG_PROGRESSION_LATTICE.md D2) ────────────
+// "Stats power, masteries permit." The 7 real-life stats never gate content;
+// instead each mastery earns points faster when its LINKED stats are high.
+// Mapping is RPG_ARCHITECTURE.md's Real-Life Stats ↔ Mastery table, keyed by
+// GameStats keys (str/agi/foc/wis/spr/per/sta — note the legacy UI inversion:
+// the player's "Resilience"/RES is `sta`, "Spirituality"/SPR is `spr`):
+//   Strength     → attacking(=combat), mining
+//   Agility      → hunting, fishing, mining
+//   Resilience   → surviving, hunting, fishing, mining   (GameStats `sta`)
+//   Perception   → research
+//   Spirituality → livestock, language                    (GameStats `spr`)
+//   Wisdom       → research, language, trading
+//   Focus        → crafting, farming
+export type StatKey = 'str' | 'agi' | 'foc' | 'wis' | 'spr' | 'per' | 'sta';
+
+export const STAT_MASTERY_LINKS: Record<StatKey, SkillType[]> = {
+  str: ['combat', 'mining'],
+  agi: ['hunting', 'fishing', 'mining'],
+  sta: ['surviving', 'hunting', 'fishing', 'mining'],
+  per: ['research'],
+  spr: ['livestock', 'language'],
+  wis: ['research', 'language', 'trading'],
+  foc: ['crafting', 'farming'],
+};
+
+// Which stats boost a given mastery (reverse of STAT_MASTERY_LINKS).
+export function linkedStatsForSkill(skill: SkillType): StatKey[] {
+  return (Object.keys(STAT_MASTERY_LINKS) as StatKey[]).filter(k =>
+    STAT_MASTERY_LINKS[k].includes(skill),
+  );
+}
+
+// +2% earned points per linked stat point (AP + activity-earned _auto totals),
+// capped at 2.0× (so at most double). Pure enough to test by injecting stats.
+export const MASTERY_EARN_BONUS_PER_STAT = 0.02;
+export const MASTERY_EARN_MULTIPLIER_CAP = 2.0;
+
+export function masteryEarnMultiplierFromStats(
+  skill: SkillType,
+  stats: Record<StatKey, number>,
+): number {
+  const linkedSum = linkedStatsForSkill(skill).reduce((acc, k) => acc + (stats[k] ?? 0), 0);
+  const raw = 1 + MASTERY_EARN_BONUS_PER_STAT * Math.max(0, linkedSum);
+  return Math.min(MASTERY_EARN_MULTIPLIER_CAP, raw);
+}
+
+// Live wrapper: reads the player's full stat totals via getComputedStats().
+export function masteryEarnMultiplier(skill: SkillType): number {
+  const s = getComputedStats();
+  return masteryEarnMultiplierFromStats(skill, {
+    str: s.str, agi: s.agi, foc: s.foc, wis: s.wis, spr: s.spr, per: s.per, sta: s.sta,
+  });
+}
+
+// Grants mastery points with the stat→earn multiplier applied. basePoints is
+// the raw action value (the farming point scale: small actions 1-3, big
+// payoffs 10-15). Result is floored; a base of ≥1 always grants at least 1.
+export function grantSkillPoints(skill: SkillType, basePoints: number): void {
+  if (basePoints <= 0) return;
+  const scaled = Math.floor(basePoints * masteryEarnMultiplier(skill));
+  addSkillPoints(skill, Math.max(1, scaled));
 }
 
 export function getMasteryLevel(skill: SkillType): number {

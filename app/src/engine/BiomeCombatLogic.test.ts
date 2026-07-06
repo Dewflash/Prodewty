@@ -62,8 +62,8 @@ console.log('Turret (predator plant) state machine + firing:');
 
 console.log('Combat math:');
 {
-  check('attack damage is avg of stats (floored, min 1)', playerAttackDamage({ strength: 10, focus: 10, agility: 10, wisdom: 10, resilience: 10 }) === 10);
-  check('attack damage never below 1', playerAttackDamage({ strength: 0, focus: 0, agility: 0, wisdom: 0, resilience: 0 }) === 1);
+  check('attack damage is avg of stats (floored, min 1)', playerAttackDamage({ str: 10, agi: 10, foc: 10, wis: 10, spr: 10, sta: 10 }) === 10);
+  check('attack damage never below 1', playerAttackDamage({ str: 0, agi: 0, foc: 0, wis: 0, spr: 0, sta: 0 }) === 1);
   check('applyDamage floors at 0', applyDamage(5, 20) === 0);
   check('applyDamage subtracts', applyDamage(20, 7) === 13);
   check('isDead at 0', isDead(0) === true && isDead(1) === false);

@@ -2,7 +2,7 @@ import { db } from './schema';
 import { getRPGState } from './rpg';
 import { sqlNow } from '../utils/date';
 import { getCropForSeed } from '../engine/RpgObjectCatalog';
-import { addSkillPoints } from './skills';
+import { grantSkillPoints } from './skills';
 import { activeGardenCellSet, type ZoneRecordLike, type ZoneType, type ZoneState } from '../engine/ZoneLogic';
 
 export type FarmingPlot = {
@@ -87,7 +87,7 @@ export async function tillSoil(row: number, col: number): Promise<'ok' | 'no_ene
 
       db.execSync('COMMIT');
       
-      addSkillPoints('farming', 2);
+      grantSkillPoints('farming', 2);
       return 'ok';
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
@@ -126,7 +126,7 @@ export async function plantSeed(row: number, col: number, seedId: string): Promi
       
       db.execSync('COMMIT');
       
-      addSkillPoints('farming', 3);
+      grantSkillPoints('farming', 3);
       return 'ok';
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
@@ -158,7 +158,7 @@ export async function waterPlot(row: number, col: number): Promise<'ok' | 'no_en
       
       db.execSync('COMMIT');
       
-      addSkillPoints('farming', 1);
+      grantSkillPoints('farming', 1);
       return 'ok';
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}
@@ -360,7 +360,7 @@ export async function harvestPlot(row: number, col: number): Promise<'ok' | 'no_
       
       db.execSync('COMMIT');
       
-      addSkillPoints('farming', 15);
+      grantSkillPoints('farming', 15);
       return 'ok';
     } catch (e) {
       try { db.execSync('ROLLBACK'); } catch {}

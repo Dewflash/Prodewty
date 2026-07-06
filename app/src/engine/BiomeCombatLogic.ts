@@ -4,6 +4,7 @@
 // SQLite / asset imports; rng is injectable for deterministic tests.
 
 import { BIOME_GUARDIAN, getGuardianDef, type GuardianDefinition } from './BiomeGuardianCatalog';
+import { combatDamage, type StatTotals } from './StatEffects';
 
 export type Rng = () => number;
 
@@ -79,10 +80,13 @@ export function turretShouldFire(state: TurretState, msSinceLastShot: number, co
 }
 
 // --- Shared combat math ------------------------------------------------
-// Player's swing damage from their five stats (mirrors the dungeon's
-// avg-of-stats so biome and dungeon combat feel consistent).
-export function playerAttackDamage(stats: { strength: number; focus: number; agility: number; wisdom: number; resilience: number }): number {
-  return Math.max(1, Math.floor((stats.strength + stats.focus + stats.agility + stats.wisdom + stats.resilience) / 5));
+// Player's swing damage. Now driven by the full 7-stat totals (AP + activity-
+// earned _auto) via the shared StatEffects.combatDamage so biome and dungeon
+// combat feel consistent AND real-life gains reach guardian fights (D8). The
+// partial StatTotals input means callers can pass whatever subset they have;
+// missing keys count as 0.
+export function playerAttackDamage(stats: Partial<StatTotals>): number {
+  return combatDamage(stats);
 }
 
 export function applyDamage(hp: number, dmg: number): number {
