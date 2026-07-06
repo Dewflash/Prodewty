@@ -1817,11 +1817,16 @@ function validateFarmAnimalsV1() {
   ['resource.cloth', 'resource.trash', 'resource.dwarvishHelm', 'resource.omelet'].forEach(assetId => {
     if (!assetRegistry.includes(`'${assetId}'`)) fail(`Asset registry must declare rewired placeholder: ${assetId}`);
   });
-  ['cloth', 'trash', 'dwarvishHelm', 'omelet'].forEach(sourceId => {
+  ['cloth', 'trash', 'omelet'].forEach(sourceId => {
     if (!assetRegistry.includes(`${sourceId}: RPG_`)) {
       fail(`Asset registry must expose source-backed rewired candidate: ${sourceId}`);
     }
   });
+  // dwarvishHelm graduated from a rewired candidate to a verified UI frame
+  // (icon purge WO3): keep it pinned to real frame art, not a loose source.
+  if (!assetRegistry.includes('dwarvishHelm: rpgUiIcon')) {
+    fail('Dwarvish Helm must use the verified UI helm frame');
+  }
   if (catalog.includes("description: 'A small egg from a Chick. Placeholder seed-packet art")) {
     fail('Egg must no longer use seed-packet placeholder copy');
   }

@@ -69,25 +69,24 @@ const RPG_ANIMAL_CALF_SHEET = require('../../assets/game/craftpix-net-291971-fre
 const RPG_TREE_SEED_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon83_1_2.png');
 const RPG_FERTILISER_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon108_1_2.png');
 const RPG_FISH_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon98_1_2.png');
-const RPG_BAIT_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon90_1_2.png');
+const RPG_BAIT_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon96_1_2.png');
 const RPG_SQUID_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon107_1_2.png');
-const RPG_SEAWEED_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon96_1_2.png');
+const RPG_SEAWEED_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon73_1_2.png');
 const RPG_SALAD_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon97_1_2.png');
-const RPG_HAY_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon69_1_2.png');
+const RPG_HAY_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon60_1_2.png');
 const RPG_COAL_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon47_1_2.png');
-const RPG_WOOD_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon46_1_2.png');
+const RPG_WOOD_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon75_1_2.png');
 const RPG_WOOD_PLANK_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon59_1_2.png');
 const RPG_CHEESE_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon78_1_2.png');
 const RPG_MAYONNAISE_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon87_1_2.png');
 const RPG_TURNIP_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon77_1_2.png');
 const RPG_CABBAGE_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon74_1_2.png');
 const RPG_PUMPKIN_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon116_1_2.png');
-const RPG_EGG_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon84_1_2.png');
-const RPG_WOOL_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon88_1_2.png');
-const RPG_CLOTH_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon85_1_2.png');
+const RPG_EGG_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon113_1_2.png');
+const RPG_WOOL_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon89_1_2.png');
+const RPG_CLOTH_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon117_1_2.png');
 const RPG_TRUFFLE_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon76_1_2.png');
 const RPG_TRASH_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon48_1_2.png');
-const RPG_DWARVISH_HELM_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon40_1_2.png');
 const RPG_OMELET_ICON = require('../../assets/game/craftpix-net-994534-free-basic-pixel-art-fantasy-icons-16x16-for-ui/PNG/Separately/Icon112_1_2.png');
 const RPG_STONE_ICON = require('../../assets/game/craftpix-net-974061-free-rocks-and-stones-top-down-pixel-art/PNG/Objects_separately/Rock5_1_no_shadow.png');
 const RPG_GEODE_ICON = require('../../assets/game/craftpix-net-974061-free-rocks-and-stones-top-down-pixel-art/PNG/Objects_separately/Rock2_1_no_shadow.png');
@@ -370,6 +369,7 @@ export const RPG_UI_FRAMES = {
   copperBar: rpgUiIcon(16, 4),
   ironBar: rpgUiIcon(15, 4),
   goldBar: rpgUiIcon(15, 5),
+  dwarvishHelm: rpgUiIcon(11, 1),
 } satisfies Record<string, RpgSpriteFrame>;
 
 export const RPG_RESOURCE_SOURCES = {
@@ -394,7 +394,6 @@ export const RPG_RESOURCE_SOURCES = {
   cloth: RPG_CLOTH_ICON,
   truffle: RPG_TRUFFLE_ICON,
   trash: RPG_TRASH_ICON,
-  dwarvishHelm: RPG_DWARVISH_HELM_ICON,
   omelet: RPG_OMELET_ICON,
   stone: RPG_STONE_ICON,
   geode: RPG_GEODE_ICON,
@@ -606,30 +605,30 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.bait': {
     id: 'resource.bait',
-    name: 'Bait Candidate',
+    name: 'Bait',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.bait,
-    tags: ['fishing', 'bait', 'placeholder'],
-    note: 'Clean worm-like candidate replacing a generic leaf icon.',
+    tags: ['fishing', 'bait'],
+    note: 'Green worm with a red head (fantasy-icons Icon96_1_2.png). Reads clearly as fishing bait.',
   },
   'resource.hay': {
     id: 'resource.hay',
-    name: 'Hay Candidate',
+    name: 'Hay',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.hay,
-    tags: ['farm', 'hay', 'animal-feed', 'placeholder'],
-    note: 'Grain bundle candidate replacing a generic leaf icon.',
+    tags: ['farm', 'hay', 'animal-feed'],
+    note: 'Golden wheat/hay sheaf (fantasy-icons Icon60_1_2.png). Reads as a hay bundle.',
   },
   'resource.fish': {
     id: 'resource.fish',
-    name: 'Fish Candidate',
+    name: 'Fish',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.fish,
-    tags: ['fishing', 'fish', 'placeholder'],
-    note: 'Generic fish candidate replacing generic water-drop frames on fish items.',
+    tags: ['fishing', 'fish'],
+    note: 'Blue-green fish (fantasy-icons Icon98_1_2.png). Reads clearly as a fish; shared generic fish icon across carp/catfish/pufferfish (no distinct per-species art in repo).',
   },
   'resource.squid': {
     id: 'resource.squid',
@@ -647,16 +646,16 @@ export const RPG_ASSET_REGISTRY = {
     verified: false,
     source: RPG_RESOURCE_SOURCES.seaweed,
     tags: ['fishing', 'seaweed', 'plant', 'placeholder'],
-    note: 'Green aquatic strand candidate replacing a generic leaf frame.',
+    note: 'Green leafy sprig strand (fantasy-icons Icon73_1_2.png). Placeholder: reads as a leafy strand but is a land herb, not true seaweed; moved off the green worm frame (Icon96, now used for bait). No true seaweed art in repo.',
   },
   'resource.salad': {
     id: 'resource.salad',
-    name: 'Salad Candidate',
+    name: 'Salad',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.salad,
-    tags: ['food', 'cooked', 'placeholder'],
-    note: 'Bowl of greens candidate replacing the generic leaves icon.',
+    tags: ['food', 'cooked'],
+    note: 'Bowl of leafy greens (fantasy-icons Icon97_1_2.png). Reads clearly as a salad.',
   },
   'crop.turnipProduct': {
     id: 'crop.turnipProduct',
@@ -738,30 +737,30 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.copperBar': {
     id: 'resource.copperBar',
-    name: 'Copper Bar Candidate',
+    name: 'Copper Bar',
     category: 'resource',
-    verified: false,
+    verified: true,
     frame: RPG_UI_FRAMES.copperBar,
-    tags: ['metal', 'upgrade', 'copper', 'placeholder'],
-    note: 'Brown/orange ingot candidate replacing a tiny red crystal shard.',
+    tags: ['metal', 'upgrade', 'copper'],
+    note: 'Brown/orange metal ingot bar (UI Icons.png row 16, col 4). Reads clearly as a copper bar.',
   },
   'resource.ironBar': {
     id: 'resource.ironBar',
-    name: 'Iron Bar Candidate',
+    name: 'Iron Bar',
     category: 'resource',
-    verified: false,
+    verified: true,
     frame: RPG_UI_FRAMES.ironBar,
-    tags: ['metal', 'crafting', 'iron', 'placeholder'],
-    note: 'Silver ingot candidate replacing a tiny black crystal shard.',
+    tags: ['metal', 'crafting', 'iron'],
+    note: 'Pale silver metal ingot bar (UI Icons.png row 15, col 4). Reads clearly as an iron bar.',
   },
   'resource.goldBar': {
     id: 'resource.goldBar',
-    name: 'Gold Bar Candidate',
+    name: 'Gold Bar',
     category: 'resource',
-    verified: false,
+    verified: true,
     frame: RPG_UI_FRAMES.goldBar,
-    tags: ['metal', 'crafting', 'gold', 'placeholder'],
-    note: 'Gold ingot candidate replacing a tiny yellow crystal shard.',
+    tags: ['metal', 'crafting', 'gold'],
+    note: 'Yellow-gold metal ingot bar (UI Icons.png row 15, col 5). Reads clearly as a gold bar.',
   },
   'resource.coal': {
     id: 'resource.coal',
@@ -774,21 +773,21 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.woodPlank': {
     id: 'resource.woodPlank',
-    name: 'Wood Plank Candidate',
+    name: 'Wood Plank',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.woodPlank,
-    tags: ['wood', 'crafting', 'placeholder'],
-    note: 'Small wood-strip candidate replacing a loose stick bundle on the processed wood item.',
+    tags: ['wood', 'crafting'],
+    note: 'Single planed wood strip (fantasy-icons Icon59_1_2.png). Reads as a processed plank distinct from the raw log bundle.',
   },
   'resource.wood': {
     id: 'resource.wood',
-    name: 'Wood Candidate',
+    name: 'Wood',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.wood,
-    tags: ['drop', 'tree', 'crafting', 'placeholder'],
-    note: 'Branch-like candidate replacing a broken-tree object on the raw wood resource.',
+    tags: ['drop', 'tree', 'crafting'],
+    note: 'Bundle of stacked brown logs (fantasy-icons Icon75_1_2.png). Reads as raw wood/lumber; replaces a paintbrush-like frame (Icon46) that read as a tool.',
   },
   'resource.trash': {
     id: 'resource.trash',
@@ -801,12 +800,12 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.egg': {
     id: 'resource.egg',
-    name: 'Egg Candidate',
+    name: 'Egg',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.egg,
-    tags: ['animal', 'product', 'egg', 'placeholder'],
-    note: 'Nest-like egg candidate replacing a farm-supply frame that also resembled cooked product.',
+    tags: ['animal', 'product', 'egg'],
+    note: 'Blue/white speckled egg (fantasy-icons Icon113_1_2.png). Reads clearly as a single egg; replaces a grain-bowl frame (Icon84) that did not read as an egg.',
   },
   'resource.cheese': {
     id: 'resource.cheese',
@@ -828,30 +827,30 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.milk': {
     id: 'resource.milk',
-    name: 'Milk Bottle Candidate',
+    name: 'Milk',
     category: 'resource',
-    verified: false,
+    verified: true,
     frame: RPG_UI_FRAMES.milkProduct,
-    tags: ['animal', 'product', 'milk', 'placeholder'],
-    note: 'Clean white bottle icon replacing a bad farm-supply crop that showed unrelated mushrooms and berries.',
+    tags: ['animal', 'product', 'milk'],
+    note: 'White corked bottle (UI Icons.png row 7, col 4). Reads clearly as a milk bottle at inventory size.',
   },
   'resource.wool': {
     id: 'resource.wool',
-    name: 'Wool Candidate',
+    name: 'Wool',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.wool,
-    tags: ['animal', 'product', 'wool', 'placeholder'],
-    note: 'Soft white textile candidate replacing a farm-supply slice that mixed cotton with unrelated vegetables.',
+    tags: ['animal', 'product', 'wool'],
+    note: 'Bowl of soft white fibre (fantasy-icons Icon89_1_2.png). Reads as a raw wool tuft; replaces a white feather frame (Icon88) that read as a quill.',
   },
   'resource.cloth': {
     id: 'resource.cloth',
-    name: 'Cloth Candidate',
+    name: 'Cloth',
     category: 'resource',
-    verified: false,
+    verified: true,
     source: RPG_RESOURCE_SOURCES.cloth,
-    tags: ['cloth', 'crafting', 'artisan', 'placeholder'],
-    note: 'Purple fabric/thread-like candidate replacing a duplicate raw wool icon.',
+    tags: ['cloth', 'crafting', 'artisan'],
+    note: 'Folded white/blue cloth roll (fantasy-icons Icon117_1_2.png). Replaces a purple feather frame (Icon85) that did not read as fabric.',
   },
   'resource.truffle': {
     id: 'resource.truffle',
@@ -891,12 +890,12 @@ export const RPG_ASSET_REGISTRY = {
   },
   'resource.dwarvishHelm': {
     id: 'resource.dwarvishHelm',
-    name: 'Dwarvish Helm Candidate',
+    name: 'Dwarvish Helm',
     category: 'resource',
-    verified: false,
-    source: RPG_RESOURCE_SOURCES.dwarvishHelm,
-    tags: ['artifact', 'relic', 'museum', 'helm', 'placeholder'],
-    note: 'Helmet-like icon replacing a temple chest placeholder on the Dwarvish Helm item.',
+    verified: true,
+    frame: RPG_UI_FRAMES.dwarvishHelm,
+    tags: ['artifact', 'relic', 'museum', 'helm'],
+    note: 'Silver/blue full battle helm with eye-slits (UI Icons.png row 11, col 1). Reads clearly as a helmet; replaces the fantasy backpack frame (Icon40).',
   },
   'resource.omelet': {
     id: 'resource.omelet',

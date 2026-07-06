@@ -86,10 +86,10 @@ function mechanismLabel(item: RpgItemDefinition | null | undefined) {
 
 function placeholderProductLabel(item: RpgItemDefinition | null | undefined) {
   const tags = item?.tags ?? [];
+  // Egg, milk, and wool now use verified real icons and no longer carry the
+  // `placeholder` tag, so they fall through here and render badge-free. Only
+  // animal products still lacking clean art keep a short text badge (truffle).
   if (!tags.includes('animal_product') || !tags.includes('placeholder')) return null;
-  if (tags.includes('egg')) return 'EGG';
-  if (tags.includes('milk')) return 'MILK';
-  if (tags.includes('wool')) return 'WOOL';
   if (tags.includes('truffle')) return 'TRUF';
   return item?.name?.slice(0, 4).toUpperCase() ?? null;
 }

@@ -1,6 +1,6 @@
 # RPG Asset Atlas
 
-Last updated: 2026-07-06
+Last updated: 2026-07-06 (icon purge wave 1)
 
 This document records verified RPG sandbox assets and coordinates. It is the companion artifact for Phase 1 of `RPG_SANDBOX_PHASE_PLAN.md`.
 
@@ -24,6 +24,7 @@ Generated contact sheets are stored under `docs/rpg-asset-atlas/`.
 | `remaining-placeholder-candidates.png` | mixed candidate sources | variable | Before choosing replacements for leftover placeholder items |
 | `wired-remaining-placeholder-fixes.png` | mixed candidate sources | variable | Before/after proof for the latest rewired item icons |
 | `wired-squid-fix.png` | fantasy icon sources | variable | Before/after proof replacing the squid bait/worm reuse |
+| `icon-purge-wave1.png` | mixed candidate sources | variable | Before/after proof for the text-badge purge (egg/milk/wool) + wood/cloth/bait/hay/helm/fish/salad/metal-bar upgrades |
 | `wired-wood-cloth-fixes.png` | mixed candidate sources | variable | Before/after proof replacing raw wood, wood plank, and cloth reuses |
 | `sanctuary-terrain-frames.png` | `Tiles_exterior.png` | 16x16 | The 6 shipped sanctuary ground frames (4 grass + dirt + stone), read back for visual verification |
 
@@ -46,6 +47,20 @@ These frames are safe for current production use.
 | `amethyst` | `Violet_crystal4.png` | full file | 16x16 | `rpg_amethyst` |
 | `ruby` | `Red_crystal4.png` | full file | 16x16 | `rpg_ruby` |
 | `diamond` | `White_crystal4.png` | full file | 16x16 | `rpg_diamond` |
+| `egg` | `Icon113_1_2.png` | full file | 16x16 | `rpg_egg` — blue/white speckled egg (badge removed) |
+| `milk` | `Icons.png` | row 7, col 4 | 16x16 | `rpg_milk` — white corked bottle (badge removed) |
+| `wool` | `Icon89_1_2.png` | full file | 16x16 | `rpg_wool` — bowl of soft white fibre (badge removed) |
+| `cloth` | `Icon117_1_2.png` | full file | 16x16 | `rpg_cloth` — folded white/blue cloth roll |
+| `wood` | `Icon75_1_2.png` | full file | 16x16 | `rpg_wood` — bundle of stacked brown logs |
+| `woodPlank` | `Icon59_1_2.png` | full file | 16x16 | `rpg_wood_plank` — single planed strip |
+| `bait` | `Icon96_1_2.png` | full file | 16x16 | `rpg_bait` — green worm w/ red head |
+| `hay` | `Icon60_1_2.png` | full file | 16x16 | `rpg_hay` — golden wheat/hay sheaf |
+| `fish` | `Icon98_1_2.png` | full file | 16x16 | fish items — blue-green fish (shared) |
+| `salad` | `Icon97_1_2.png` | full file | 16x16 | `rpg_salad` — bowl of leafy greens |
+| `copperBar` | `Icons.png` | row 16, col 4 | 16x16 | `rpg_copper_bar` — copper ingot |
+| `ironBar` | `Icons.png` | row 15, col 4 | 16x16 | `rpg_iron_bar` — iron ingot |
+| `goldBar` | `Icons.png` | row 15, col 5 | 16x16 | `rpg_gold_bar` — gold ingot |
+| `dwarvishHelm` | `Icons.png` | row 11, col 1 | 16x16 | `rpg_dwarvish_helm` — silver/blue battle helm |
 | `archiveClosedBook` | `Open_book.png` | row 0, col 0 | 272x272 | Archive HUD button |
 | `archiveOpenBook` | `Open_book.png` | row 2, col 3 | 272x272 | Archive overlay panel |
 | `terrainGrassBase` | `Tiles_exterior.png` | col 17, row 10 (x 272, y 160) | 16x16 | Sanctuary GRASS base (flat warm grass rgb 122,173,85) |
@@ -70,6 +85,19 @@ Notes:
 - `woodPlank` now uses a small wood-strip candidate. Earlier code reused a loose stick bundle.
 - `cloth` now uses a purple fabric/thread-like candidate. Earlier code reused the raw wool candidate.
 - `inventoryPanel` includes the full right-side inventory panel from the source sheet. Earlier code used a narrower local crop; this was corrected by moving the frame into `RpgObjectCatalog.ts`.
+
+Icon purge wave 1 (2026-07-06) — text badges eliminated + wrong-semantic reuses corrected:
+
+- `egg` now uses `Icon113_1_2.png` (blue/white speckled egg). The prior `Icon84_1_2.png` was a bowl of grain that never read as an egg. The "EGG" text badge is removed (item lost its `placeholder` tag).
+- `milk` keeps the `Icons.png` row 7, col 4 white corked bottle; the "MILK" text badge is removed.
+- `wool` now uses `Icon89_1_2.png` (bowl of soft white fibre). The prior `Icon88_1_2.png` was a white feather/quill. The "WOOL" text badge is removed.
+- `cloth` now uses `Icon117_1_2.png` (folded cloth roll). The prior `Icon85_1_2.png` was a purple feather.
+- `wood` now uses `Icon75_1_2.png` (stacked logs). The prior `Icon46_1_2.png` read as a paintbrush/tool.
+- `bait` now uses `Icon96_1_2.png` (green worm). The prior `Icon90_1_2.png` read as a thin red sliver. `Icon96` was previously mis-assigned to seaweed.
+- `hay` now uses `Icon60_1_2.png` (wheat sheaf). The prior `Icon69_1_2.png` was a bread loaf.
+- `dwarvishHelm` now uses `Icons.png` row 11, col 1 (silver/blue battle helm). The prior `Icon40_1_2.png` was a blue backpack.
+- `fish`, `salad`, `copperBar`, `ironBar`, `goldBar` were visually confirmed correct and promoted from candidate to verified (art unchanged).
+- `seaweed` moved off the green-worm frame (now bait) to `Icon73_1_2.png` (green leafy sprig strand); it stays a candidate/placeholder because it is a land herb, not true seaweed — no clean seaweed art exists in the repo.
 
 ## Candidate Resource Sources
 
@@ -337,9 +365,10 @@ Runtime behavior:
 ## Open Asset Issues
 
 - Backpack and shop now use real React Native touch grids instead of sprite-panel hitbox alignment; phone review should focus on touch comfort and visual sizing.
-- Seeds use a generic acorn marker, not crop-specific seed bags.
-- Crop stage art is deliberately unresolved; produce icons are still candidate-quality.
-- Egg, milk, wool, truffle, fertiliser, sprinkler, bait, fish, squid, seaweed, salad, hay, coal, wood plank, cheese, mayonnaise, metal bars, crop outputs, trash, Dwarvish Helm, omelet, stone, and geode are still candidates/placeholders, but the known blank/mixed/cut or semantically generic crops have been replaced where clear alternatives existed.
+- Seeds use a generic acorn marker, not crop-specific seed bags. The farm `Supplies.png` sheet was re-reviewed and still exposes no clean seed-packet frame, so crop seeds keep the shared acorn plus the short `placeholderSeedLabel` text differentiator. The generic acorn seed itself (`seed.treeGeneric`) remains verified.
+- Crop stage art is deliberately unresolved; harvested produce icons (`turnip`, `cabbage`, `pumpkin`) are still candidate-quality.
+- Resolved in icon purge wave 1 (badges removed / verified): egg, milk, wool, cloth, wood, wood plank, bait, hay, fish, salad, copper/iron/gold bars, Dwarvish Helm.
+- Still candidate/placeholder (no clean semantic match found in the current asset set, not forced): truffle (keeps a `TRUF` text badge — no dark-fungus icon exists), squid (white-claws frame; no true squid/octopus), seaweed (green herb sprig; no aquatic strand), coal (grey-stone frame reads ambiguous), cheese, mayonnaise, omelet, trash, fertiliser, sprinkler (watering-can stand-in), stone, geode, and the three crop outputs.
 - Some untracked asset sheets remain in the worktree and should only be staged when a phase needs them.
 
 ## Phase 1 Audit
