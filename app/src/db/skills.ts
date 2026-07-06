@@ -120,13 +120,55 @@ export function masteryEarnMultiplier(skill: SkillType): number {
   });
 }
 
+// ─── Mastery-gain event bus (WO4 HUD juice) ─────────────────────────────────
+// grantSkillPoints lives in a db module and must never touch UI. Instead it
+// emits a lightweight event the live screen (rpg.tsx) subscribes to, so the
+// HUD can show +N fly-ups and level-up celebrations. Pure fan-out, no React.
+export type MasteryGainEvent = {
+  skill: SkillType;
+  amount: number;      // points actually granted (post-multiplier)
+  fromLevel: number;   // mastery level before this grant
+  toLevel: number;     // mastery level after this grant
+  leveledUp: boolean;  // toLevel > fromLevel
+  tierUp: boolean;     // crossed into a new tier (Bronze→Silver, …)
+  tier: MasteryTier;   // tier AFTER the grant
+};
+
+type MasteryGainListener = (e: MasteryGainEvent) => void;
+const masteryGainListeners = new Set<MasteryGainListener>();
+
+export function subscribeMasteryGain(fn: MasteryGainListener): () => void {
+  masteryGainListeners.add(fn);
+  return () => { masteryGainListeners.delete(fn); };
+}
+
+function emitMasteryGain(e: MasteryGainEvent): void {
+  for (const fn of masteryGainListeners) {
+    try { fn(e); } catch { /* a bad listener must never break accrual */ }
+  }
+}
+
 // Grants mastery points with the stat→earn multiplier applied. basePoints is
 // the raw action value (the farming point scale: small actions 1-3, big
 // payoffs 10-15). Result is floored; a base of ≥1 always grants at least 1.
 export function grantSkillPoints(skill: SkillType, basePoints: number): void {
   if (basePoints <= 0) return;
+  const before = getSkillState()[`${skill}_points`] as number;
   const scaled = Math.floor(basePoints * masteryEarnMultiplier(skill));
-  addSkillPoints(skill, Math.max(1, scaled));
+  const granted = Math.max(1, scaled);
+  addSkillPoints(skill, granted);
+
+  const fromLevel = calculateMasteryLevel(before);
+  const toLevel = calculateMasteryLevel(before + granted);
+  emitMasteryGain({
+    skill,
+    amount: granted,
+    fromLevel,
+    toLevel,
+    leveledUp: toLevel > fromLevel,
+    tierUp: getMasteryTier(toLevel) !== getMasteryTier(fromLevel),
+    tier: getMasteryTier(toLevel),
+  });
 }
 
 export function getMasteryLevel(skill: SkillType): number {

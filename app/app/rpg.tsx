@@ -8,6 +8,10 @@ import Animated, {
   useDerivedValue,
   useFrameCallback,
   useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
@@ -90,7 +94,8 @@ import {
 import { startCrafting, claimCrafting, getActiveCraftingJobs, type CraftingJob } from '../src/db/crafting';
 import { getCraftingRecipe, getAllCraftingRecipes } from '../src/engine/CraftingCatalog';
 import { sqlNow } from '../src/utils/date';
-import { getSkillState, getMasteryTier, ALL_SKILLS, POINTS_PER_MASTERY, type SkillType } from '../src/db/skills';
+import { playSound } from '../src/services/audio';
+import { getSkillState, getMasteryTier, ALL_SKILLS, POINTS_PER_MASTERY, subscribeMasteryGain, type SkillType, type MasteryGainEvent } from '../src/db/skills';
 import {
   tillSoil,
   plantSeed as plantFarmSeed,
@@ -209,6 +214,10 @@ function isFarmingSeed(itemId: string): boolean {
   return getRpgItem(itemId)?.sourceLabel === 'Crop Seeds';
 }
 const STARTER_FARMING_SEED_ITEM_IDS = ['rpg_turnip_seed', 'rpg_cabbage_seed', 'rpg_pumpkin_seed'];
+// WO4 HUD juice: at most this many "+N mastery" fly-ups drift at once.
+const MAX_FLYUPS = 2;
+const FLYUP_LIFETIME_MS = 1100;
+
 const MASTERY_ICONS: Record<SkillType, keyof typeof Feather.glyphMap> = {
   farming: 'sun',
   mining: 'triangle',
@@ -272,6 +281,23 @@ type WorldCellReaction = {
   label: string;
   item?: RpgItemDefinition | null;
   tone: 'success' | 'muted' | 'warn';
+};
+// WO4 HUD juice — a Hay-Day-style "+N Farming" pill that drifts up and fades.
+// Rapid grants of the same skill coalesce into one pill (amount accumulates,
+// nonce bumps to retrigger the drift); at most MAX_FLYUPS render at once.
+type MasteryFlyUp = {
+  id: number;
+  skill: SkillType;
+  amount: number;
+  nonce: number;
+};
+// A stronger, springier celebration when a grant crosses a mastery level.
+type LevelUpMoment = {
+  id: number;
+  skill: SkillType;
+  level: number;
+  tier: string;
+  tierUp: boolean;
 };
 type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 // Real equippable tools, persisted via player_equipment/equipItem (see
@@ -445,6 +471,153 @@ function pickPlacementReason(current: PlacementReason, next: PlacementReason) {
   return PLACEMENT_REASON_PRIORITY[next] > PLACEMENT_REASON_PRIORITY[current] ? next : current;
 }
 
+// ─── WO4 HUD juice — mastery gain fly-up pill ───────────────────────────────
+// Hay-Day-style "+N Farming" pill: spring-pops in, drifts up ~26px, fades out.
+// Re-runs its drift whenever `nonce` bumps (coalesced same-skill grants).
+function MasteryFlyUpPill({ skill, amount, nonce, index }: {
+  skill: SkillType;
+  amount: number;
+  nonce: number;
+  index: number;
+}) {
+  const drift = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.6);
+
+  useEffect(() => {
+    drift.value = 0;
+    opacity.value = 0;
+    scale.value = 0.6;
+    scale.value = withSpring(1, { damping: 12, stiffness: 220, mass: 0.6 });
+    opacity.value = withSequence(
+      withTiming(1, { duration: 120 }),
+      withDelay(500, withTiming(0, { duration: 460 })),
+    );
+    drift.value = withTiming(-26, { duration: 1080 });
+  }, [nonce, drift, opacity, scale]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: drift.value }, { scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.masteryFlyUp, index > 0 && { marginTop: 4 }, style]}>
+      <Feather name={MASTERY_ICONS[skill]} size={13} color="#fff2bb" />
+      <Text style={styles.masteryFlyUpText}>+{amount} {MASTERY_LABELS[skill]}</Text>
+    </Animated.View>
+  );
+}
+
+// ─── WO4 HUD juice — springy pressable ──────────────────────────────────────
+// A Pressable that springs down to 0.95 on press-in and back on release —
+// subtle, consistent tactile feedback for the main HUD action buttons.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+function SpringPressable({
+  onPress, disabled, style, accessibilityRole, accessibilityLabel,
+  accessibilityHint, accessibilityState, children,
+}: React.ComponentProps<typeof Pressable>) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedPressable
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={accessibilityState}
+      disabled={disabled}
+      onPress={onPress}
+      onPressIn={() => { scale.value = withSpring(0.95, { damping: 15, stiffness: 320 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 12, stiffness: 260 }); }}
+      style={[style, animStyle]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
+
+// ─── WO4 HUD juice — collect bounce ─────────────────────────────────────────
+// A tasteful spring scale-in on a toast's item icon when it lands in the pack.
+function ToastItemIcon({ item, bounce }: { item: RpgItemDefinition; bounce: boolean }) {
+  const scale = useSharedValue(bounce ? 0.4 : 1);
+  useEffect(() => {
+    if (!bounce) return;
+    scale.value = 0.4;
+    scale.value = withSpring(1, { damping: 8, stiffness: 240, mass: 0.5 });
+  }, [bounce, scale]);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={style}>
+      <RpgItemIcon item={item} size={22} />
+    </Animated.View>
+  );
+}
+
+// ─── WO4 HUD juice — springy mastery progress bar ───────────────────────────
+// react-native-svg isn't a dependency, so we keep the linear bar but make it
+// springy: the fill width eases to its new fraction whenever progress changes.
+const MASTERY_BAR_TRACK_W = 18;
+function MasteryBar({ fraction }: { fraction: number }) {
+  const w = useSharedValue(Math.max(0, Math.min(1, fraction)) * MASTERY_BAR_TRACK_W);
+  useEffect(() => {
+    w.value = withSpring(Math.max(0, Math.min(1, fraction)) * MASTERY_BAR_TRACK_W, {
+      damping: 15,
+      stiffness: 160,
+    });
+  }, [fraction, w]);
+  const style = useAnimatedStyle(() => ({ width: w.value }));
+  return (
+    <View style={styles.masteryBarTrack}>
+      <Animated.View style={[styles.masteryBarFill, style]} />
+    </View>
+  );
+}
+
+// ─── WO4 HUD juice — level-up celebration banner ────────────────────────────
+// Distinct from fly-ups: a scale-in spring; tier-ups get the biggest pop.
+function LevelUpBanner({ moment }: { moment: LevelUpMoment }) {
+  const scale = useSharedValue(0.5);
+  const opacity = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = 0.5;
+    opacity.value = 0;
+    opacity.value = withSequence(
+      withTiming(1, { duration: 140 }),
+      withDelay(moment.tierUp ? 1900 : 1300, withTiming(0, { duration: 420 })),
+    );
+    scale.value = withSequence(
+      withSpring(moment.tierUp ? 1.12 : 1.0, { damping: 9, stiffness: 180, mass: 0.7 }),
+      withSpring(1.0, { damping: 14, stiffness: 200 }),
+    );
+  }, [moment.id, moment.tierUp, scale, opacity]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  const label = MASTERY_LABELS[moment.skill];
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.levelUpBanner, moment.tierUp && styles.levelUpBannerTier, style]}
+    >
+      <Feather name={moment.tierUp ? 'award' : MASTERY_ICONS[moment.skill]} size={20} color="#fff2bb" />
+      <View style={styles.levelUpTextStack}>
+        <Text style={styles.levelUpTitle}>
+          {moment.tierUp
+            ? `${label} — ${moment.tier}!`
+            : `${label} reached Lv ${moment.level}`}
+        </Text>
+        <Text style={styles.levelUpSub}>
+          {moment.tierUp ? `Lv ${moment.level} · new tier` : moment.tier}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function RpgScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const TILE_SIZE = getResponsiveTileSize(windowWidth);
@@ -528,6 +701,12 @@ export default function RpgScreen() {
   const [interactionPrompt, setInteractionPrompt] = useState<InteractionTarget | null>(null);
   const [worldToast, setWorldToast] = useState<WorldToast | null>(null);
   const [worldCellReaction, setWorldCellReaction] = useState<WorldCellReaction | null>(null);
+  // WO4 HUD juice: mastery-gain fly-ups + level-up celebration.
+  const [masteryFlyUps, setMasteryFlyUps] = useState<MasteryFlyUp[]>([]);
+  const [levelUpMoment, setLevelUpMoment] = useState<LevelUpMoment | null>(null);
+  const flyUpTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const flyUpBySkill = useRef<Map<SkillType, number>>(new Map());
+  const levelUpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [spriteSource, setSpriteSource] = useState(WALK_SPRITE);
   const [spriteFrameCount, setSpriteFrameCount] = useState(6);
   const [enemies, setEnemies] = useState<LiveEnemy[]>([]);
@@ -1735,6 +1914,8 @@ export default function RpgScreen() {
 
         bumpInventoryRevision();
         const freshObjects = refreshMapObjects();
+        // WO4 placement thunk: a quick 1.05→1.0 pulse on the just-placed object.
+        pulseObject(insertResult.lastInsertRowId);
         const placedTags = getItem(buildItem.itemId)?.tags;
         if (placedTags?.includes('structure_piece') || placedTags?.includes('entrance')) {
           const freshZones = restoreBreachedZonesIfRepaired(freshObjects);
@@ -2637,6 +2818,72 @@ export default function RpgScreen() {
     });
 
   const worldGesture = Gesture.Simultaneous(pinchGesture, buildPanGesture);
+
+  // WO4 HUD juice — react to every grantSkillPoints accrual. Fly-ups coalesce
+  // rapid same-skill grants and cap at MAX_FLYUPS; level-ups fire a distinct
+  // spring-in celebration (with a fitting SFX) on top.
+  const handleMasteryGain = useCallback((e: MasteryGainEvent) => {
+    setMasteryFlyUps(prev => {
+      const existingId = flyUpBySkill.current.get(e.skill);
+      if (existingId != null && prev.some(f => f.id === existingId)) {
+        // Coalesce: bump amount + nonce, refresh the fade timer.
+        const timer = flyUpTimers.current.get(existingId);
+        if (timer) clearTimeout(timer);
+        flyUpTimers.current.set(existingId, setTimeout(() => {
+          flyUpTimers.current.delete(existingId);
+          flyUpBySkill.current.delete(e.skill);
+          setMasteryFlyUps(cur => cur.filter(f => f.id !== existingId));
+        }, FLYUP_LIFETIME_MS));
+        return prev.map(f =>
+          f.id === existingId ? { ...f, amount: f.amount + e.amount, nonce: f.nonce + 1 } : f,
+        );
+      }
+
+      const id = Date.now() + Math.floor(Math.random() * 1000);
+      flyUpBySkill.current.set(e.skill, id);
+      flyUpTimers.current.set(id, setTimeout(() => {
+        flyUpTimers.current.delete(id);
+        if (flyUpBySkill.current.get(e.skill) === id) flyUpBySkill.current.delete(e.skill);
+        setMasteryFlyUps(cur => cur.filter(f => f.id !== id));
+      }, FLYUP_LIFETIME_MS));
+
+      const next = [...prev, { id, skill: e.skill, amount: e.amount, nonce: 0 }];
+      // Keep the newest MAX_FLYUPS; drop the oldest (and its timer/index).
+      while (next.length > MAX_FLYUPS) {
+        const dropped = next.shift()!;
+        const t = flyUpTimers.current.get(dropped.id);
+        if (t) clearTimeout(t);
+        flyUpTimers.current.delete(dropped.id);
+        if (flyUpBySkill.current.get(dropped.skill) === dropped.id) flyUpBySkill.current.delete(dropped.skill);
+      }
+      return next;
+    });
+
+    if (e.leveledUp) {
+      if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
+      setLevelUpMoment({
+        id: Date.now(),
+        skill: e.skill,
+        level: e.toLevel,
+        tier: e.tier,
+        tierUp: e.tierUp,
+      });
+      // New tier gets the milestone flourish; a plain level-up is lighter.
+      playSound(e.tierUp ? 'milestonetopribbon' : 'levelup');
+      levelUpTimer.current = setTimeout(() => setLevelUpMoment(null), e.tierUp ? 2600 : 2000);
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeMasteryGain(handleMasteryGain);
+    return () => {
+      unsub();
+      flyUpTimers.current.forEach(t => clearTimeout(t));
+      flyUpTimers.current.clear();
+      flyUpBySkill.current.clear();
+      if (levelUpTimer.current) clearTimeout(levelUpTimer.current);
+    };
+  }, [handleMasteryGain]);
 
   const showWorldToast = (toast: Omit<WorldToast, 'id'>) => {
     if (worldToastTimer.current) clearTimeout(worldToastTimer.current);
@@ -5604,11 +5851,28 @@ export default function RpgScreen() {
       {worldToast && (
         <View style={[styles.worldToast, { top: 158 + safeAreaInsets.top }, worldToast.tone === 'success' && styles.worldToastSuccess]}>
           {worldToast.item ? (
-            <RpgItemIcon item={worldToast.item} size={22} />
+            // WO4 collect bounce: a spring scale-in on the landed item's icon.
+            <ToastItemIcon key={worldToast.id} item={worldToast.item} bounce={worldToast.tone === 'success'} />
           ) : (
             <Feather name={worldToast.tone === 'warn' ? 'alert-circle' : 'info'} size={16} color="#fff" />
           )}
           <Text style={styles.worldToastText}>{worldToast.text}</Text>
+        </View>
+      )}
+
+      {/* WO4 HUD juice: mastery-gain fly-ups, top-center under the toast. */}
+      {masteryFlyUps.length > 0 && (
+        <View pointerEvents="none" style={[styles.masteryFlyUpColumn, { top: 204 + safeAreaInsets.top }]}>
+          {masteryFlyUps.map((f, i) => (
+            <MasteryFlyUpPill key={f.id} skill={f.skill} amount={f.amount} nonce={f.nonce} index={i} />
+          ))}
+        </View>
+      )}
+
+      {/* WO4 HUD juice: level-up / new-tier celebration. */}
+      {levelUpMoment && (
+        <View pointerEvents="none" style={[styles.levelUpWrap, { top: 250 + safeAreaInsets.top }]}>
+          <LevelUpBanner moment={levelUpMoment} />
         </View>
       )}
 
@@ -5895,9 +6159,7 @@ export default function RpgScreen() {
                       <Text numberOfLines={1} style={styles.masteryLabel}>{MASTERY_LABELS[skill]}</Text>
                       <Text numberOfLines={1} style={styles.masteryTier}>Lv {level} · {tier}</Text>
                     </View>
-                    <View style={styles.masteryBarTrack}>
-                      <View style={[styles.masteryBarFill, { width: `${(progressInLevel / POINTS_PER_MASTERY) * 100}%` }]} />
-                    </View>
+                    <MasteryBar fraction={progressInLevel / POINTS_PER_MASTERY} />
                   </View>
                 );
               });
@@ -5907,7 +6169,7 @@ export default function RpgScreen() {
       )}
 
       <View style={[styles.actionBtns, { bottom: 40 + safeAreaInsets.bottom, right: 20 + safeAreaInsets.right }]}>
-        <Pressable
+        <SpringPressable
           accessibilityRole="button"
           accessibilityLabel={
             buildItem
@@ -5930,8 +6192,8 @@ export default function RpgScreen() {
         >
           <Feather name={activeTool ? activeTool.icon : 'mouse-pointer'} size={20} color="#fff" />
           <Text style={styles.actionText}>Interact</Text>
-        </Pressable>
-        <Pressable
+        </SpringPressable>
+        <SpringPressable
           accessibilityRole="button"
           accessibilityLabel={
             buildItem
@@ -5948,7 +6210,7 @@ export default function RpgScreen() {
         >
           <Feather name="crosshair" size={20} color="#fff" />
           <Text style={styles.actionText}>Attack</Text>
-        </Pressable>
+        </SpringPressable>
       </View>
 
       <SanctuaryShop
@@ -7299,6 +7561,62 @@ const styles = StyleSheet.create({
     fontFamily: fonts.ui.bold,
     fontSize: 12,
     marginLeft: 8,
+  },
+  masteryFlyUpColumn: {
+    position: 'absolute',
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 111,
+  },
+  masteryFlyUp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 13,
+    backgroundColor: 'rgba(22,18,14,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,242,187,0.5)',
+  },
+  masteryFlyUpText: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 12,
+  },
+  levelUpWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 112,
+  },
+  levelUpBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(28,22,14,0.9)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,242,187,0.6)',
+  },
+  levelUpBannerTier: {
+    borderColor: '#fff2bb',
+    backgroundColor: 'rgba(46,34,12,0.94)',
+  },
+  levelUpTextStack: {
+    minWidth: 0,
+  },
+  levelUpTitle: {
+    color: '#fff2bb',
+    fontFamily: fonts.ui.bold,
+    fontSize: 15,
+  },
+  levelUpSub: {
+    color: 'rgba(255,242,187,0.7)',
+    fontFamily: fonts.ui.regular,
+    fontSize: 11,
+    marginTop: 1,
   },
   worldCellReaction: {
     position: 'absolute',
