@@ -2007,6 +2007,32 @@ function runMigrations() {
     // inserts the object — see db/livestockState.ts linkLivestockObject).
     db.execSync('PRAGMA user_version = 100');
   }
+
+  if (version < 101) {
+    // ── Wave 5b — Processors v1 (RPG_PROGRESSION_LATTICE.md Wave 5) ──
+    // Factory-role artisan stations (Cheese Press / Mayonnaise Machine / Loom)
+    // turn livestock produce into higher-value artisan goods on a timed job,
+    // exactly mirroring crafting_queue's shape/flow (start → wait → claim). The
+    // legacy System-A sanctuary_processors table + db/processors.ts are treated
+    // as MISSING per the lattice gap audit; this is a fresh System-B store.
+    //
+    //  • recipe_id — ProcessingCatalog recipe key (e.g. 'process_cheese').
+    //  • station_object_id — the sanctuary_objects id of the placed station this
+    //    job runs on (one active job per station; the "busy" gate keys on this).
+    //  • started_at / completes_at — sqlNow timestamps; FOC shaves the duration
+    //    the same way crafting does (StatEffects.applyFocusTimerReduction).
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_processing_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recipe_id TEXT NOT NULL,
+        station_object_id INTEGER,
+        started_at TEXT NOT NULL,
+        completes_at TEXT NOT NULL,
+        is_claimed INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.execSync('PRAGMA user_version = 101');
+  }
 }
 
 function addExtendedSkillPointsColumns() {

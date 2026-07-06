@@ -124,6 +124,34 @@ in-game alone can cross faster than living well.
   PER→sell price bonus (cap 15%) + rare-forage highlight (Wave 5);
   WIS→research speed + Understanding cost; SPR→livestock/language rates.
 
+### D9. Asset-backed content rule (added 2026-07-06, owner directive)
+No new player-facing item may enter a gameplay flow unless its icon is
+`verified: true` in `RpgAssetRegistry.ts`, OR it is explicitly flagged
+in `RPG_ASSET_ATLAS.md` "Open Asset Issues" as **NEEDS EXTERNAL ART**
+with the flow noted. Before flagging, an in-repo sweep (visually Read
+candidate PNGs across all packs) is mandatory. Items flagged external
+go to the owner's sourcing list — never silently shipped as placeholder.
+
+### D10. Theme test (added 2026-07-06, owner directive)
+Every mechanic must pass the *cozy rustic sanctuary* test: hearths,
+looms, presses, gardens — not machines or industrial processing.
+Stardew is a genre-feel benchmark, not a content checklist; reject
+Stardew imports that fail the theme (first casualty: the Mayonnaise
+Machine — unwired, pending reflavor as a Kitchen/Cooking station).
+Prefer basic, legible transformations of things the player raised or
+grew (milk→cheese, wool→cloth, egg→cooked dish at a hearth).
+
+### D11. Identity: discovery-first (added 2026-07-06, owner directive)
+This game is NOT a Stardew copy — Stardew was only the template used to
+explain the vision. Its own identity: **cozy but adventurous; simple,
+forgiving mechanics; centered on world-building, discovery, and
+exploration**, with a leveling system that borrows the app's gamified
+real-life language (7 stats, Bronze→Platinum masteries, XP). Priority
+consequence: discovery/exploration systems (Archive completion,
+research, biomes, critters, guardians, Mines, runes) outrank farm-sim
+depth (seasonal pricing, deeper artisan chains) whenever they compete
+for a wave slot. Difficulty stays gentle — gates inform, never punish.
+
 ## Build order (waves = one agent work order each)
 
 - **Wave 1 — Make the engine honest** (no new UI): D8 stat pipeline fix +
@@ -140,9 +168,24 @@ in-game alone can cross faster than living well.
   sanctuary visual tier + minecart perk), remove `TESTING_FREE_*` flags,
   Trading mastery vendor-stock tiers, unify `ConstructionCatalog` into
   `BuildingCatalog`.
-- **Wave 5 — Breadth** (each independent): livestock v1 (System B
-  rebuild), processors v1, seasonal pricing (port MarketEngine content),
-  procedural Mines, PER rare-forage glow.
+- **Wave 5 — Breadth** (re-cut 2026-07-06 per D9/D10/D11, discovery
+  first): livestock v1 ✅, processors v1 (cheese+cloth; mayo cut),
+  then in this order:
+  1. **Asset verification sweep** (D9 debt: in-repo frames or
+     NEEDS-EXTERNAL-ART flags for unverified icons in active flows —
+     stone, coal, crop products, truffle first).
+  2. **Wave 6 — Discovery & exploration expansion** (the identity
+     wave): procedural Mines under the Mountain biome (ore floors,
+     nightly reset — the adventure spike), 1-2 new
+     critters/guardians per biome from existing verified pack art,
+     rune stones in biomes (Language Gold hook: translate → lore-free
+     "world knowledge" notes + Research points), PER rare-forage glow,
+     and an **Archive "world completion" meter** surfaced in the HUD
+     (X/Y discovered · understood — discovery AS the progression face).
+  3. **Cooking v1 at a hearth/Kitchen** (egg→omelet, cabbage→salad) —
+     art-gated on the owner's sourcing.
+  4. Seasonal pricing (polish tier; port MarketEngine content, delete
+     the dormant module).
 - **HUD juice pass** runs parallel after icon purge (WO4): mastery
   progress rings, +N fly-ups, level-up toasts — the lattice must be
   *felt*, Hay-Day-style.

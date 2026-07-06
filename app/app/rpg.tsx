@@ -93,6 +93,8 @@ import {
   decodeBlueprint, isStationBuildable,
 } from '../src/db/research';
 import { startCrafting, claimCrafting, getActiveCraftingJobs, type CraftingJob } from '../src/db/crafting';
+import { startProcessing, claimProcessing, getActiveProcessingJobs } from '../src/db/processing';
+import { getProcessingRecipeForStation } from '../src/engine/ProcessingCatalog';
 import { getCraftingRecipe, getAllCraftingRecipes } from '../src/engine/CraftingCatalog';
 import { sqlNow } from '../src/utils/date';
 import { playSound } from '../src/services/audio';
@@ -716,6 +718,7 @@ export default function RpgScreen() {
   const [bundleRevision, setBundleRevision] = useState(0);
   const [craftingPage, setCraftingPage] = useState(0);
   const [craftingJobsRevision, setCraftingJobsRevision] = useState(0);
+  const [processingJobsRevision, setProcessingJobsRevision] = useState(0);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [buildItem, setBuildItem] = useState<BuildItem | null>(null);
   const [placementReport, setPlacementReport] = useState<PlacementReport | null>(null);
@@ -1380,6 +1383,21 @@ export default function RpgScreen() {
             const upgrade = getUpgradeDef(buildingDef.role!, level);
             const levelText = buildingLevelLabel(buildingDef.role, level);
             return upgrade ? `${levelText} · Interact to upgrade` : levelText;
+          }
+          // Processing stations (Wave 5b) surface their job status/remaining
+          // time so Interact reads as start/wait/claim, like other stations.
+          if (buildingDef && getProcessingRecipeForStation(buildingDef.type)) {
+            const construction = getConstructionForObject(object.id);
+            if (!construction?.is_complete) return 'Building…';
+            const recipe = getProcessingRecipeForStation(buildingDef.type)!;
+            const outputItem = getRpgItem(recipe.outputItemId);
+            const outputName = outputItem?.name ?? recipe.outputItemId;
+            const job = getActiveProcessingJobs().find(j => j.station_object_id === object.id);
+            if (!job) return `Interact to make ${outputName}`;
+            const remainingMs = new Date(job.completes_at.replace(' ', 'T')).getTime() - Date.now();
+            if (remainingMs <= 0) return `${outputName} ready · Interact to collect`;
+            const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+            return `${outputName} · ${remainingMinutes}m left`;
           }
           if (tags.includes('gate')) return 'Locked gate';
           if (tags.includes('lever')) return 'Lever';
@@ -2301,6 +2319,71 @@ export default function RpgScreen() {
     showWorldToast({ text: `Crafted ${outputItem?.name ?? recipeId}`, item: outputItem, tone: 'success' });
   };
 
+  // ─── Processing stations (Wave 5b: Cheese Press / Loom) ────────────────────
+  // Interacting with a placed, completed processing station starts its timed
+  // job (start → wait → claim), the same start/claim + toast pattern as
+  // crafting. The recipe is resolved from the station's BuildingCatalog `type`,
+  // and there's one active job per station object. Returns true if the object
+  // was a wired processing station (so interactWithObject stops there).
+  const handleProcessingStation = (object: MapObject): boolean => {
+    const buildingDef = getBuildingDef(object.type);
+    if (!buildingDef) return false;
+    const recipe = getProcessingRecipeForStation(buildingDef.type);
+    if (!recipe) return false; // not a wired processing station (e.g. MayoMachine — intentionally inert)
+
+    const item = getPlaceableItem(object.type);
+    const outputItem = getRpgItem(recipe.outputItemId);
+    const inputItem = getRpgItem(recipe.inputItemId);
+
+    // Station must be a completed build before it can process (mirrors
+    // findStationObjectId's is_complete gate used by crafting stations).
+    const construction = getConstructionForObject(object.id);
+    if (!construction?.is_complete) {
+      showWorldToast({ text: `${buildingDef.name} is still being built`, item, tone: 'warn' });
+      return true;
+    }
+
+    const activeJob = getActiveProcessingJobs().find(job => job.station_object_id === object.id);
+    if (activeJob) {
+      if (activeJob.completes_at > sqlNow()) {
+        showWorldToast({ text: `${outputItem?.name ?? recipe.outputItemId} not ready yet`, item: outputItem, tone: 'muted' });
+        return true;
+      }
+      const result = claimProcessing(activeJob.id);
+      if (result !== 'ok') {
+        showWorldToast({
+          text: result === 'not_ready' ? 'Not finished yet' : 'Could not claim',
+          item: outputItem,
+          tone: 'warn',
+        });
+        return true;
+      }
+      recordRpgDiscovery(recipe.outputItemId, 'inventory');
+      bumpInventoryRevision();
+      setProcessingJobsRevision(rev => rev + 1);
+      showWorldToast({ text: `Made ${outputItem?.name ?? recipe.outputItemId}`, item: outputItem, tone: 'success' });
+      return true;
+    }
+
+    // No active job → start one.
+    const result = startProcessing(recipe.recipeId, object.id);
+    if (result !== 'ok') {
+      showWorldToast({
+        text: result === 'missing_ingredients'
+          ? `Need ${recipe.inputQuantity} ${inputItem?.name ?? recipe.inputItemId}`
+          : result === 'station_busy' ? `${buildingDef.name} is busy`
+            : 'Could not start',
+        item: inputItem,
+        tone: 'warn',
+      });
+      return true;
+    }
+    bumpInventoryRevision();
+    setProcessingJobsRevision(rev => rev + 1);
+    showWorldToast({ text: `Processing ${outputItem?.name ?? recipe.outputItemId}…`, item: outputItem, tone: 'success' });
+    return true;
+  };
+
   // ─── Library research (Inspect) handlers (lattice D7) ──────────────────────
   const startResearchJob = (itemId: string) => {
     const item = getRpgItem(itemId);
@@ -2399,6 +2482,19 @@ export default function RpgScreen() {
     const interval = setInterval(() => setCraftingJobsRevision(rev => rev + 1), 5000);
     return () => clearInterval(interval);
   }, [isCraftingOpen]);
+
+  // Keep a targeted processing station's prompt detail ("Xm left" → "ready")
+  // fresh while the player stands at it, without a manual re-target.
+  useEffect(() => {
+    if (interactionPrompt?.kind !== 'object' || !interactionPrompt.object) return;
+    const def = getBuildingDef(interactionPrompt.object.type);
+    if (!def || !getProcessingRecipeForStation(def.type)) return;
+    const target = interactionPrompt.object;
+    const interval = setInterval(() => {
+      setInteractionPrompt(resolveInteractionTargetAt(target.row, target.col));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [interactionPrompt, resolveInteractionTargetAt]);
 
   useEffect(() => {
     try {
@@ -3888,6 +3984,11 @@ export default function RpgScreen() {
       upgradeLivestockBuilding(object, buildingDefForObjectEarly);
       return;
     }
+
+    // Processing stations (Wave 5b: Cheese Press / Loom) run a timed job on
+    // Interact. Stations aren't building shells, so this must come before the
+    // lever/farm-animal branches or a station would fall through to them.
+    if (handleProcessingStation(object)) return;
 
     // Building shells (lattice D6): interacting a completed building attempts an
     // upgrade to the next level; an in-progress build just reports its status.

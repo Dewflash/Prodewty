@@ -814,7 +814,12 @@ export const RPG_ASSET_REGISTRY = {
     verified: false,
     source: RPG_RESOURCE_SOURCES.cheese,
     tags: ['food', 'artisan', 'cheese', 'placeholder'],
-    note: 'Cheese-like wedge candidate replacing a reused milk bottle icon.',
+    // Wave 5b (2026-07-06): Cheese Press flow shipped, but a full repo asset
+    // sweep (fantasy-icons 994534, UI Icons.png 255216, dungeon supplies 218281)
+    // found NO frame that reads as cheese at 16-32px — the current Icon78 frame
+    // is actually a green gourd. Stays verified:false pending external art; see
+    // RPG_ASSET_ATLAS.md "Open Asset Issues" (rpg_cheese NEEDS EXTERNAL ART).
+    note: 'Cheese placeholder — no cheese-wedge frame exists in the repo (audited Wave 5b). Needs external art; NOT a real cheese icon.',
   },
   'resource.mayonnaise': {
     id: 'resource.mayonnaise',
