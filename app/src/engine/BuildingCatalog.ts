@@ -27,9 +27,10 @@ export type BuildingDefinition = {
   requiredBuildingRole?: BuildingRole;
 };
 
-// TESTING (2026-06-30): all building/station costs zeroed so big buildings
-// can be placed freely while testing. Set to false to restore real costs.
-const TESTING_FREE_BUILDINGS = true;
+// Real building/station costs are live (Wave 4 economy truth). Historically a
+// TESTING flag zeroed these while iterating on big-building placement; it is now
+// false so the coin/material economy is honest.
+const TESTING_FREE_BUILDINGS = false;
 
 const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
   rpg_coop: {
@@ -181,8 +182,13 @@ const BUILDING_CATALOG_BASE: Record<string, BuildingDefinition> = {
     id: 'rpg_village_hearth',
     name: 'Village Hearth',
     type: 'TownHall',
-    priceCoins: 300,
-    priceWood: 100,
+    // Wave 4 economy-truth audit: the Hearth is the spec'd cheapest/earliest
+    // building (no prerequisites). With a fresh 50-coin start and free
+    // forage/mining, 150 coins + 40 wood + 20 stone is reachable in an early
+    // session (was 300/100/20 — the 100-wood ask was a ~70-chop grind for a
+    // first build). Still the cheapest shell by every axis.
+    priceCoins: 150,
+    priceWood: 40,
     priceStone: 20,
     colWidth: 5,
     colHeight: 5,

@@ -1934,6 +1934,45 @@ function runMigrations() {
 
     db.execSync('PRAGMA user_version = 98');
   }
+
+  if (version < 99) {
+    // ── Wave 4 — Town Hall bundles v1 (RPG_ARCHITECTURE.md Bundle System) ──
+    // Stardew community-center-style donations at the Village Hearth (Town Hall).
+    // Progress is keyed by BUNDLE id + item id (NOT the Town Hall object id) so
+    // it survives the building being relocated/rebuilt — the bundle is a
+    // world-level goal, not tied to a specific placed object.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_bundle_progress (
+        bundle_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        quantity_donated INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (bundle_id, item_id)
+      );
+    `);
+    // Completion ledger — a completed bundle grants its perk once; the perk
+    // itself lives on the rpg_state columns below, this row is the "done" flag
+    // that stops re-granting and drives the celebration/greyed-out UI state.
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS rpg_bundles_completed (
+        bundle_id TEXT PRIMARY KEY,
+        completed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `);
+
+    // Permanent bundle perks (BundleCatalog rewards). Explicit columns match the
+    // schema's per-feature convention (no JSON blob store exists) and compose
+    // cleanly with the existing StatEffects call sites:
+    //  • hearth_sell_bonus: permanent +10% sell prices ("Hearth Blessing").
+    //  • bundle_energy_bonus: +N flat effective energy_max (composed alongside
+    //    the RES→energy_max bonus at the refreshPlayerHp call site).
+    //  • hearth_free_seed_day: logical-day bucket for the daily free seed claim
+    //    at the Town Hall (day-keyed like villager first-chats).
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN hearth_sell_bonus INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN bundle_energy_bonus INTEGER NOT NULL DEFAULT 0`); } catch {}
+    try { db.execSync(`ALTER TABLE rpg_state ADD COLUMN hearth_free_seed_day TEXT`); } catch {}
+
+    db.execSync('PRAGMA user_version = 99');
+  }
 }
 
 function addExtendedSkillPointsColumns() {

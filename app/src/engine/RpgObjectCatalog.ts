@@ -1931,10 +1931,9 @@ const SHOP_CATALOG_BASE = {
   rpg_materials_chest: RPG_ITEM_CATALOG.rpg_materials_chest,
 } satisfies Record<string, RpgPlaceableItem>;
 
-// TESTING (2026-06-30): every Shop price zeroed. Set to false (or delete
-// this wrapper, restoring SHOP_CATALOG_BASE directly) to bring real prices
-// back before launch.
-const TESTING_FREE_SHOP = true;
+// Real shop prices are live (Wave 4 economy truth). Historically this zeroed
+// every price while testing big buildings; it is now false so buying costs coins.
+const TESTING_FREE_SHOP = false;
 export const SHOP_CATALOG: Record<string, RpgPlaceableItem> = TESTING_FREE_SHOP
   ? Object.fromEntries(
       Object.entries(SHOP_CATALOG_BASE).map(([id, item]) => [id, { ...item, price: 0 }]),

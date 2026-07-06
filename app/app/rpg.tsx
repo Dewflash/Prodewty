@@ -127,6 +127,16 @@ import {
 } from '../src/engine/StatEffects';
 import { getZoneDef } from '../src/engine/ZoneCatalog';
 import { getBiomeTree } from '../src/engine/BiomeTreeCatalog';
+import {
+  getBundleViews,
+  donateToBundle,
+  hasHearthSellBonus,
+  getBundleEnergyBonus,
+  hasFreeSeedPerk,
+  claimDailyFreeSeed,
+  BUNDLE_TRADING_POINTS,
+  type BundleView,
+} from '../src/db/bundles';
 import { logicalToday } from '../src/db/dayBoundary';
 import {
   findEnclosedRegions,
@@ -690,6 +700,10 @@ export default function RpgScreen() {
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
   const [isExploreOpen, setIsExploreOpen] = useState(false);
+  // Town Hall bundle donation panel (Wave 4). Opened by interacting a completed
+  // Village Hearth; bundleRevision re-reads donation progress after each donate.
+  const [isBundlesOpen, setIsBundlesOpen] = useState(false);
+  const [bundleRevision, setBundleRevision] = useState(0);
   const [craftingPage, setCraftingPage] = useState(0);
   const [craftingJobsRevision, setCraftingJobsRevision] = useState(0);
   const [inventoryRevision, setInventoryRevision] = useState(0);
@@ -983,8 +997,10 @@ export default function RpgScreen() {
           hp: state.hp ?? 0,
           hp_max: state.hp_max ?? 100,
           energy: state.energy ?? 0,
-          // RES (GameStats `sta`) extends effective energy capacity (lattice D8).
-          energy_max: effectiveEnergyMaxFromStats(state.energy_max ?? 100, getComputedStats().sta),
+          // RES (GameStats `sta`) extends effective energy capacity (lattice D8),
+          // plus the flat +N Hearth Provisions bundle perk (Wave 4 bundle 2).
+          energy_max: effectiveEnergyMaxFromStats(state.energy_max ?? 100, getComputedStats().sta)
+            + getBundleEnergyBonus(),
         });
       }
     } catch (e) {
@@ -1152,6 +1168,7 @@ export default function RpgScreen() {
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
     setIsCraftingOpen(false);
+    setIsBundlesOpen(false);
     setInteractionPrompt(null);
     buildActive.value = 0;
     buildColWidth.value = 0;
@@ -1225,6 +1242,7 @@ export default function RpgScreen() {
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
     setIsCraftingOpen(false);
+    setIsBundlesOpen(false);
   };
 
   const beginPlantMode = (seedItemId: string) => {
@@ -1257,6 +1275,7 @@ export default function RpgScreen() {
     setIsArchiveOpen(false);
     setIsCharacterOpen(false);
     setIsCraftingOpen(false);
+    setIsBundlesOpen(false);
   };
 
   const clearBuildMode = () => {
@@ -2098,7 +2117,10 @@ export default function RpgScreen() {
     const hasStall = findStationObjectId('VendorStall') !== null;
     // PER sell bonus (lattice D8) stacks multiplicatively with the stall +20%.
     const perMult = perceptionSellMultiplier(getComputedStats().per);
-    return { price: Math.round(base * (hasStall ? 1.2 : 1) * perMult), hasStall };
+    // Hearth Blessing (Wave 4 bundle 1): permanent +10% sell prices, composed
+    // multiplicatively on top of the stall + PER bonuses.
+    const hearthMult = hasHearthSellBonus() ? 1.1 : 1;
+    return { price: Math.round(base * (hasStall ? 1.2 : 1) * perMult * hearthMult), hasStall };
   };
 
   const handleSellItem = (itemId: string) => {
@@ -3472,6 +3494,76 @@ export default function RpgScreen() {
     showObjectReaction(object, '⬆', item, 'success');
   };
 
+  // ─── Town Hall bundles (Wave 4) ─────────────────────────────────────────
+  // Interacting a completed Village Hearth opens the donation panel. A build
+  // still in progress reports its status (matches upgradeBuilding's behaviour).
+  const townHallObjectRef = useRef<MapObject | null>(null);
+  const openTownHall = (object: MapObject, def: ReturnType<typeof getBuildingDef>) => {
+    const item = getPlaceableItem(object.type);
+    const construction = getConstructionForObject(object.id);
+    if (construction && !construction.is_complete) {
+      showWorldToast({ text: `${def?.name ?? 'Town Hall'} is still being built`, item, tone: 'muted' });
+      return;
+    }
+    townHallObjectRef.current = object;
+    setBundleRevision(r => r + 1);
+    setIsArchiveOpen(false);
+    setIsCraftingOpen(false);
+    setIsExploreOpen(false);
+    setIsCharacterOpen(false);
+    setIsBundlesOpen(true);
+  };
+
+  // Donate as much of one item as the bundle still needs. On the donation that
+  // completes a bundle: coins + perk are applied inside donateToBundle's
+  // transaction, then grantSkillPoints('trading', 15) fires HERE so the HUD-juice
+  // mastery fly-up / level-up banner runs in the React tree.
+  const handleDonateToBundle = (bundleId: string, itemId: string) => {
+    const result = donateToBundle(bundleId, itemId);
+    if (!result.ok) {
+      if (result.reason === 'nothing_to_donate') {
+        showWorldToast({ text: `No ${getRpgItem(itemId)?.name ?? itemId} to donate`, item: getRpgItem(itemId), tone: 'warn' });
+      }
+      return;
+    }
+    bumpInventoryRevision();
+    setBundleRevision(r => r + 1);
+    if (result.bundleCompleted) {
+      grantSkillPoints('trading', BUNDLE_TRADING_POINTS);
+      refreshCoins();
+      refreshPlayerHp(); // energy perk may have changed the effective max.
+      const obj = townHallObjectRef.current;
+      if (obj) showObjectReaction(obj, '★', getPlaceableItem(obj.type), 'success');
+      showWorldToast({
+        text: `${result.def.name} complete! ${result.def.reward.perkLabel} (+${result.def.reward.coins} coins)`,
+        tone: 'success',
+      });
+    } else {
+      showWorldToast({
+        text: `Donated ${result.donated} ${getRpgItem(itemId)?.name ?? itemId}`,
+        item: getRpgItem(itemId), tone: 'success',
+      });
+    }
+  };
+
+  // Daily free-seed claim (bundle 3 perk), day-keyed like villager first-chats.
+  const handleClaimFreeSeed = () => {
+    const result = claimDailyFreeSeed(logicalToday());
+    if (!result.ok) {
+      showWorldToast({
+        text: result.reason === 'already_claimed_today' ? 'Already claimed your seed today'
+          : result.reason === 'not_unlocked' ? 'Complete the Artisan Bundle first'
+            : 'Could not claim seed',
+        tone: 'warn',
+      });
+      return;
+    }
+    bumpInventoryRevision();
+    setBundleRevision(r => r + 1);
+    const seedItem = getRpgItem(result.seedId);
+    showWorldToast({ text: `Town Larder: +1 ${seedItem?.name ?? result.seedId}`, item: seedItem, tone: 'success' });
+  };
+
   // Free, naturally-occurring rock — Pickaxe-gated, unlike clutter (which
   // any tool can clear). Same delete-then-nightly-respawn shape as clutter,
   // just with mining drops (Stone + a real Coal source) instead.
@@ -3577,6 +3669,12 @@ export default function RpgScreen() {
     // upgrade to the next level; an in-progress build just reports its status.
     const buildingDefForObject = getBuildingDef(object.type);
     if (buildingDefForObject && isBuildingShell(buildingDefForObject)) {
+      // Town Hall (Village Hearth) is the Bundle System's home (Wave 4): a
+      // completed one opens the donation panel instead of upgrading.
+      if (buildingDefForObject.role === 'TownHall') {
+        openTownHall(object, buildingDefForObject);
+        return;
+      }
       upgradeBuilding(object, buildingDefForObject);
       return;
     }
@@ -4629,6 +4727,7 @@ export default function RpgScreen() {
         setIsCharacterOpen(false);
         setIsCraftingOpen(false);
         setIsExploreOpen(false);
+        setIsBundlesOpen(false);
         setBackpackAtLibrary(getLibraryContext() !== null);
         setIsBackpackOpen(true);
         const repairHint = resolvedTarget.repairZone
@@ -5452,6 +5551,7 @@ export default function RpgScreen() {
               setIsArchiveOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              setIsBundlesOpen(false);
               setBackpackAtLibrary(getLibraryContext() !== null);
               setIsBackpackOpen(true);
             }}
@@ -5467,6 +5567,7 @@ export default function RpgScreen() {
               setIsArchiveOpen(false);
               setIsBackpackOpen(false);
               setIsCraftingOpen(false);
+              setIsBundlesOpen(false);
               setIsCharacterOpen(true);
             }}
           >
@@ -5481,6 +5582,7 @@ export default function RpgScreen() {
               setIsBackpackOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              setIsBundlesOpen(false);
               // Capture whether a completed Library is in reach so the Archive
               // can offer Inspect (lattice D7). null = browse-only.
               setArchiveLibraryLevel(getLibraryContext()?.level ?? null);
@@ -5498,6 +5600,7 @@ export default function RpgScreen() {
               setIsArchiveOpen(false);
               setIsBackpackOpen(false);
               setIsCharacterOpen(false);
+              setIsBundlesOpen(false);
               setIsCraftingOpen(true);
             }}
           >
@@ -5513,6 +5616,7 @@ export default function RpgScreen() {
               setIsBackpackOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              setIsBundlesOpen(false);
               setIsExploreOpen(true);
             }}
           >
@@ -5527,6 +5631,7 @@ export default function RpgScreen() {
               setIsArchiveOpen(false);
               setIsCharacterOpen(false);
               setIsCraftingOpen(false);
+              setIsBundlesOpen(false);
               setIsShopOpen(true);
             }}
           >
@@ -6000,6 +6105,81 @@ export default function RpgScreen() {
         </View>
       )}
 
+      {isBundlesOpen && !buildItem && (
+        <View style={[styles.craftingPanel, { top: 128 + safeAreaInsets.top, right: 20 + safeAreaInsets.right }]}>
+          <View style={styles.craftingHeader}>
+            <View>
+              <Text style={styles.craftingTitle}>Village Hearth</Text>
+              <Text style={styles.craftingSubtitle}>Donate item sets to unlock permanent perks</Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close bundles"
+              style={styles.characterCloseButton}
+              onPress={() => setIsBundlesOpen(false)}
+            >
+              <Feather name="x" size={15} color="#fff" />
+            </Pressable>
+          </View>
+          <View style={styles.recipeList}>
+            {/* bundleRevision (bumped on donate) forces this re-read of progress */}
+            {getBundleViews().map((view: BundleView) => (
+              <View key={view.def.id} style={styles.recipeCard}>
+                <View style={styles.recipeTitleStack}>
+                  <Text numberOfLines={1} style={styles.recipeName}>
+                    {view.def.name}{view.completed ? ' ✓' : ''}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.recipeOutputText}>
+                    {view.completed ? view.def.reward.perkLabel : view.def.description}
+                  </Text>
+                </View>
+                {!view.completed && (
+                  <>
+                    <View style={styles.recipeIngredients}>
+                      {view.items.map(it => {
+                        const itItem = getRpgItem(it.itemId);
+                        const owned = getInventoryQuantity(it.itemId);
+                        const done = it.donated >= it.required;
+                        const canDonate = !done && owned > 0;
+                        return (
+                          <Pressable
+                            key={`${view.def.id}-${it.itemId}`}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Donate ${itItem?.name ?? it.itemId}`}
+                            disabled={!canDonate}
+                            onPress={() => handleDonateToBundle(view.def.id, it.itemId)}
+                            style={[styles.ingredientPill, !done && !canDonate && styles.ingredientPillMissing]}
+                          >
+                            <RpgItemIcon item={itItem} size={16} fallbackLabel={it.itemId} />
+                            <Text numberOfLines={1} style={[styles.ingredientText, !done && !canDonate && styles.ingredientTextMissing]}>
+                              {itItem?.name ?? it.itemId} {Math.min(it.donated, it.required)}/{it.required}{done ? ' ✓' : canDonate ? ' · tap' : ''}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <Text numberOfLines={1} style={styles.recipeOutputText}>
+                      Reward: +{view.def.reward.coins} coins · {view.def.reward.perkLabel}
+                    </Text>
+                  </>
+                )}
+                {view.completed && view.def.reward.perk === 'hearth_free_seed_day' && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Claim daily free seed"
+                    style={styles.craftButton}
+                    onPress={handleClaimFreeSeed}
+                  >
+                    <Feather name="gift" size={14} color="#fff" />
+                    <Text style={styles.craftButtonText}>Claim seed</Text>
+                  </Pressable>
+                )}
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       {isExploreOpen && !buildItem && (
         <View style={[styles.craftingPanel, { top: 128 + safeAreaInsets.top, right: 20 + safeAreaInsets.right }]}>
           <View style={styles.craftingHeader}>
@@ -6232,6 +6412,7 @@ export default function RpgScreen() {
             setIsCharacterOpen(false);
             setIsCraftingOpen(false);
             setIsExploreOpen(false);
+            setIsBundlesOpen(false);
             handleBackpackPlaceItem(itemId);
           }
           return result;
